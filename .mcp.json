@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "dfhack": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "--project", "server", "df-mcp"]
+    }
+  }
+}

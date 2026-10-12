@@ -19,9 +19,9 @@ DFHack Claude Integration Mod: a DFHack Lua mod (`mod/`) plus a Python MCP serve
 
 1. Read `docs/ProjectPlan.md` before structural work and `docs/protocol.md` before touching any RPC op.
 2. A protocol change edits the Lua handler, the Python tool, `docs/protocol.md`, and the protocol version together, in one branch.
-3. Permission checks live in Lua at dispatch. Every game call goes through `rpc.claude_bridge.dispatch`. The only exception is `console.run`, which uses DFHack `RunCommand` after a Lua allowlist check.
+3. Permission checks live in Lua at dispatch. Every game call goes through `rpc.claude_bridge.dispatch`. The client's raw `RunCommand` is for dev tooling only, never for an MCP tool.
 4. No tool that evaluates arbitrary Lua ships unless it is behind its own permission and off by default.
-5. Lua: DFHack conventions. `--@ module = true` header, `local _ENV = mkmodule(...)` in internal modules, no globals except `OVERLAY_WIDGETS`, 4-space indent, snake_case, early return on `dfhack_flags.module`. Prefer `dfhack.*` helpers over raw `df.global` walks.
+5. Lua: DFHack script conventions. `--@ module = true` header, module-level functions are the exports and everything else is `local`, internal modules load with `reqscript('internal/claude-bridge/<name>')`, 4-space indent, snake_case, control script returns early on `dfhack_flags.module`. Prefer `dfhack.*` helpers over raw `df.global` walks and wrap uncertain struct access in `pcall`.
 6. Python: uv, ruff, pytest, type hints, Python 3.11. The MCP server logs to stderr only; stdout is the transport.
 7. Cite DFHack docs by the `stable` URL and the version checked. Do not trust memory for `df.*` struct fields; look them up or verify in-game with `:lua`.
 8. Never read, write, or commit DF save folders or `dfhack-config` beyond the mod's own state file. No ports, absolute paths, or credentials in committed files.
