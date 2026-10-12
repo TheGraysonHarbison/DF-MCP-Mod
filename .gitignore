@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+*.egg-info/
+
+# Dwarf Fortress / DFHack: never commit game data
+save/
+data/
+dfhack-config/
+*.log
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Local MCP overrides
+.mcp.local.json
