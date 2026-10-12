@@ -33,6 +33,22 @@ Quickfort Command For DFHack: https://docs.dfhack.org/en/stable/docs/tools/quick
 3. Method for Claude to access the DFHack Console, execute commands and see its output.
 4. Method for Claude to see all units on the map including Citizens, vistors, animals and enemies.
 
+**Second Pass (unit analysis):**
+
+1. Unit lists in three buckets, each with its own method, plus one for everything: Citizens (the fort's permanent
+   population), Domesticated (pets, livestock, war and hunting animals) and Other (visitors, merchants, enemies,
+   wildlife, undead). Every row carries the unit id, which is the key every other unit method takes, plus a finer
+   `kind` label, gender, creature, and mood or owner.
+2. A search method so Claude can go from a name, nickname, or description like "cat" to a unit id.
+3. A basic-info method for one unit, matching the list row.
+4. A unit sheet method that reads one category of the in-game profile, with its sub-category where the game has one:
+   Overview, Relations, Groups, Military (squads, uniform, kills), Thoughts (recent, memories), Personality (traits,
+   values, preferences, needs), Items, Health (status, wounds, treatment, history, description), Skills (labor, combat,
+   social, other, knowledge), Rooms and Labor (work details, workshops, locations, work animals).
+5. A method that returns the whole unit sheet in one JSON, with every list capped by a per-call limit.
+6. A method to nickname a unit. This is the first action that changes the game and sits behind its own permission
+   toggle, off by default.
+
 **MORE TO BE ADDED**
 
 ## Progress
@@ -46,8 +62,14 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 1 | 2. Season, month, day, time, weather | verified in-game 2026-10-12 (`get_time`) |
 | 1 | 3. Console access with allowlist | verified in-game 2026-10-12 (`run_console_command`) |
 | 1 | 4. All units on the map | implemented (`list_units`, `get_unit`), awaiting in-game verification |
-| 2 | Event queue, in-game chat, autonomy timer | not started |
-| 3 | Actions: petitions, quickfort, orders, military | not started |
+| 2 | 1. Unit lists by bucket and the unit id key (`list_units`, `list_citizens`, `list_domesticated`, `list_others`) | planned 2026-10-12, see [plan section 8](docs/ProjectPlan.md#8-phase-2-addendum-unit-analysis-planned-2026-10-12) |
+| 2 | 2. Unit search (`find_unit`) | planned |
+| 2 | 3. Basic info for one unit (`get_unit`) | planned, replaces the Phase 1 detail op |
+| 2 | 4. Unit sheet by category and sub-category (`get_unit_sheet`) | planned, needs the in-game struct check first |
+| 2 | 5. Whole unit sheet in one call (`get_unit_full_sheet`) | planned |
+| 2 | 6. Nickname a unit (`set_unit_nickname`, `units_write` permission) | planned |
+| 3 | Event queue, in-game chat, autonomy timer | not started |
+| 4 | Actions: petitions, quickfort, orders, military | not started |
 
 ## Running it
 
