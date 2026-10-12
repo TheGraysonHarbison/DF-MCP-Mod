@@ -22,13 +22,27 @@ local ALWAYS_ALLOWED = {core = true}
 
 local settings = nil
 
-local function settings_path()
+-- Same location scriptmanager.getModStatePath() produces. Computed here because DFHack
+-- 53.16-r2 ships that helper with a '+' where '..' belongs, so calling it raises
+-- "attempt to perform arithmetic on a string value".
+local function state_dir()
+    if dfhack.getConfigPath then
+        return dfhack.getConfigPath() .. '/mods/' .. MOD_ID .. '/'
+    end
     local dir = scriptmanager.getModStatePath(MOD_ID)
     local last = dir:sub(-1)
     if last ~= '/' and last ~= '\\' then
         dir = dir .. '/'
     end
-    pcall(dfhack.filesystem.mkdir_recursive, dir)
+    return dir
+end
+
+local function settings_path()
+    local dir = state_dir()
+    local ok, err = pcall(dfhack.filesystem.mkdir_recursive, dir)
+    if not ok then
+        dfhack.printerr(('claude-bridge: cannot create %s: %s'):format(dir, tostring(err)))
+    end
     return dir .. 'settings.json'
 end
 
