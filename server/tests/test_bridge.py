@@ -47,7 +47,7 @@ def test_call_sends_envelope_and_unwraps_result():
     assert request["op"] == "core.ping"
     assert request["args"] == {}
     assert request["id"] == 1
-    assert request["v"] == 1
+    assert request["v"] == 2
 
 
 def test_error_response_becomes_bridge_error():

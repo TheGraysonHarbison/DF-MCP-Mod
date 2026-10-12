@@ -61,10 +61,10 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 1 | 1. Settings panel and permission allowlist | verified in-game 2026-10-12 (`claude-bridge settings`) |
 | 1 | 2. Season, month, day, time, weather | verified in-game 2026-10-12 (`get_time`) |
 | 1 | 3. Console access with allowlist | verified in-game 2026-10-12 (`run_console_command`) |
-| 1 | 4. All units on the map | implemented (`list_units`, `get_unit`), awaiting in-game verification |
-| 2 | 1. Unit lists by bucket and the unit id key (`list_units`, `list_citizens`, `list_domesticated`, `list_others`) | planned 2026-10-12, see [plan section 8](docs/ProjectPlan.md#8-phase-2-addendum-unit-analysis-planned-2026-10-12) |
-| 2 | 2. Unit search (`find_unit`) | planned |
-| 2 | 3. Basic info for one unit (`get_unit`) | planned, replaces the Phase 1 detail op |
+| 1 | 4. All units on the map | superseded by Phase 2 item 1 |
+| 2 | 1. Unit lists by bucket and the unit id key (`list_units`, `list_citizens`, `list_domesticated`, `list_others`) | implemented, awaiting in-game verification; design in [plan section 8](docs/ProjectPlan.md#8-phase-2-addendum-unit-analysis-planned-2026-10-12) |
+| 2 | 2. Unit search (`find_unit`) | implemented, awaiting in-game verification |
+| 2 | 3. Basic info for one unit (`get_unit`) | implemented, awaiting in-game verification |
 | 2 | 4. Unit sheet by category and sub-category (`get_unit_sheet`) | planned, needs the in-game struct check first |
 | 2 | 5. Whole unit sheet in one call (`get_unit_full_sheet`) | planned |
 | 2 | 6. Nickname a unit (`set_unit_nickname`, `units_write` permission) | planned |
