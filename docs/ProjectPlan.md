@@ -1,6 +1,6 @@
 # Project Plan: DFHack Claude Integration Mod
 
-Status: Phase 0 and Phase 1 scaffolded on branch `repo/scaffold`, awaiting in-game verification. Last updated 2026-10-12.
+Status: Phase 0 and Phase 1 implemented on branch `repo/scaffold` and verified in-game on 2026-10-12 against DFHack 53.16-r2. Last updated 2026-10-12.
 
 This document is the agreed plan for the project. The README describes the idea and current progress for readers; this file describes how we build it. When the two disagree, fix this file first, then the README.
 
@@ -262,8 +262,8 @@ These are the rules the repo's `CLAUDE.md` carries. Kept here so the rationale s
 ## 7. Open items
 
 - License choice before the first public push.
-- Verify the `package.loaded` route for `RunLua` against a running game; the fallback is a `claude-bridge rpc` console subcommand over `RunCommand`.
-- No Dwarf Fortress install on the dev machine yet, so the scaffold PR is unit-tested only. First in-game run: `tools/link-mod.sh`, `enable claude-bridge`, then `tools/smoke-test.py`.
+- The `package.loaded` route for `RunLua` is confirmed working in-game (2026-10-12).
+- Still to do after the in-game run: a pass over the `units.get` detail fields against the 53.x `df.unit` struct.
 - `gh` is not installed on the dev machine; PRs are opened from the GitHub compare URL until it is.
 - Decide whether `.mcp.json` is committed or templated as `.mcp.json.example` once the uv entry point exists.
 - Unit detail fields for `units.get` need a pass against the 53.x `df.unit` struct before the op is documented.
