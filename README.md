@@ -20,9 +20,9 @@ Dwarf Fortress Modding Guide: https://dwarffortresswiki.org/Modding
 
 DFHack Documentaion: https://docs.dfhack.org/en/stable/
 
-DFHack Modding Guide: https://docs.dfhack.org/en/50.09-r2/docs/guides/modding-guide.html
+DFHack Modding Guide: https://docs.dfhack.org/en/stable/docs/guides/modding-guide.html
 
-Quickfort Command For DFHack: https://docs.dfhack.org/en/50.09-r2/docs/tools/quickfort.html#quickfort
+Quickfort Command For DFHack: https://docs.dfhack.org/en/stable/docs/tools/quickfort.html
 
 ## Feature List:
 
@@ -34,3 +34,23 @@ Quickfort Command For DFHack: https://docs.dfhack.org/en/50.09-r2/docs/tools/qui
 4. Method for Claude to see all units on the map including Citizens, vistors, animals and enemies.
 
 **MORE TO BE ADDED**
+
+## Progress
+
+Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire protocol in [docs/protocol.md](docs/protocol.md).
+
+| Phase | Item | State |
+|---|---|---|
+| 0 | Repo scaffold, mod skeleton, Python RPC client, `ping` round trip | implemented, awaiting in-game verification |
+| 1 | 1. Settings panel and permission allowlist | implemented (`claude-bridge settings`), awaiting in-game verification |
+| 1 | 2. Season, month, day, time, weather | implemented (`get_time`), awaiting in-game verification |
+| 1 | 3. Console access with allowlist | implemented (`run_console_command`), awaiting in-game verification |
+| 1 | 4. All units on the map | implemented (`list_units`, `get_unit`), awaiting in-game verification |
+| 2 | Event queue, in-game chat, autonomy timer | not started |
+| 3 | Actions: petitions, quickfort, orders, military | not started |
+
+## Running it
+
+1. `tools/link-mod.sh <Dwarf Fortress folder>` once, then `enable claude-bridge` in the DFHack console.
+2. Open Claude Code in this repository. The `.mcp.json` here starts the server with `uv run --project server df-mcp`.
+3. Ask Claude to `ping`.

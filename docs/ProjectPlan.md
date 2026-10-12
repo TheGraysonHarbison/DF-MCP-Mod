@@ -1,6 +1,6 @@
 # Project Plan: DFHack Claude Integration Mod
 
-Status: planning, pre-initial-commit. Last updated 2026-10-12.
+Status: Phase 0 and Phase 1 scaffolded on branch `repo/scaffold`, awaiting in-game verification. Last updated 2026-10-12.
 
 This document is the agreed plan for the project. The README describes the idea and current progress for readers; this file describes how we build it. When the two disagree, fix this file first, then the README.
 
@@ -27,8 +27,8 @@ Constraints that shaped every decision below:
      v
  server/  Python MCP server  (mcp 2.x, MCPServer class, Python 3.11)
      |  DFHack remote RPC: protobuf over TCP, localhost:5000
-     |    RunLua    -> rpc.claude_bridge.dispatch(json) -> json
-     |    RunCommand -> DFHack console, output captured
+     |    RunLua -> rpc.claude_bridge.dispatch(json) -> json
+     |    (console commands run inside the dispatcher after the allowlist check)
      v
  mod/     DFHack Lua mod "claude-bridge"
      |  eventful hooks, repeat-util pollers, overlay settings panel
@@ -46,8 +46,8 @@ Why:
 
 - Already running in every DFHack install, localhost-only by default, no plugin to enable.
 - `RunLua` suspends the DF core for the duration of the call, so Lua reads game state safely without us managing suspension.
-- `RunCommand` gives feature 3 (console access) for free, with output returned as text fragments.
-- The Python side is a small protobuf framing client (handshake, `BindMethod`, request, reply, quit). No maintained Python client exists, so we write our own and keep it under 300 lines.
+- Console commands run through `dfhack.run_command_silent` inside the dispatcher, so the allowlist check and the execution are one code path. `RunCommand` stays available in the client for dev tooling only.
+- The Python side is a small protobuf framing client (handshake, `BindMethod`, request, reply, quit) with a hand-rolled codec for the five messages we use (see `docs/decisions/0002-protobuf-codec.md`). No maintained Python client exists and the dev machine has no `protoc`.
 
 Rejected for now: the `luasocket` plugin with our own newline-delimited JSON port. It gives true push, but the plugin is tagged dev and we would own buffering, reconnects, and partial reads. The Lua dispatch layer is written transport-agnostic so this can be added later if poll latency becomes a problem.
 
@@ -74,7 +74,7 @@ Rules:
 - Payloads are plain data: numbers, strings, booleans, arrays, objects. Never raw DF structs or pointers. Unit references use the DF unit id.
 - Any change to an op's shape updates `docs/protocol.md`, the Lua handler, the Python tool, and a protocol version constant in the same commit.
 
-The module name must satisfy DFHack's `RunLua` filter (`rpc.*`). Mod scripts are loaded with `reqscript`, not `require`, so the control script publishes the dispatcher by assigning it into `package.loaded["rpc.claude_bridge"]` on enable. This is to be verified in Phase 0 before anything else is built; the fallback is `RunCommand` with a `claude-bridge rpc <json>` subcommand.
+The module name must satisfy DFHack's `RunLua` filter (`rpc.*`). Mod scripts are loaded with `reqscript`, not `require`, so the control script publishes the dispatcher by assigning it into `package.loaded["rpc.claude_bridge"]` on enable. Implemented in the scaffold PR; still to be verified against a running game. The fallback is `RunCommand` with a `claude-bridge rpc <json>` subcommand. See `docs/decisions/0001-transport.md`.
 
 ### 2.3 Events
 
@@ -127,7 +127,7 @@ Each phase ends with a demo and a README progress update.
 |---|---|---|---|
 | 1. Settings panel | `settings.get` | `get_permissions` | Overlay window, state file, permission enforcement in dispatch |
 | 2. Time and weather | `time.now` | `get_time` | year, season, month, day, tick, paused, weather at map centre, elapsed real seconds since save |
-| 3. Console | `console.run` | `run_console_command` | Routed through DFHack `RunCommand`; allowlist checked in Lua first |
+| 3. Console | `console.run` | `run_console_command` | `dfhack.run_command_silent` inside the dispatcher after the allowlist check; `lua` also needs the `lua_eval` permission |
 | 4. Units | `units.list`, `units.get` | `list_units`, `get_unit` | Categories: citizens, residents, visitors, merchants, diplomats, animals, wildlife, invaders, undead. Summary rows plus a detail op with health, mood, labors, skills, relationships |
 
 Also in Phase 1: `docs/protocol.md` for every op above, and a `tools/smoke-test.py` that exercises each op against a running game.
@@ -193,14 +193,16 @@ DF-MCP-Mod/
     pyproject.toml          uv project, package df_mcp, entry point df-mcp
     src/df_mcp/
       __init__.py
-      dfhack_rpc.py         protobuf framing client for the DFHack remote server
-      proto/                generated CoreProtocol pb2 plus the .proto it came from
+      wire.py               hand-rolled protobuf codec for the CoreProtocol messages we use
+      dfhack_rpc.py         framing client for the DFHack remote server
       bridge.py             call(op, args) -> result, error mapping, reconnect
       server.py             MCPServer construction and transport
       tools/                one module per namespace, registers tools
     tests/
-      test_dfhack_rpc.py    framing tests against recorded bytes
-      test_bridge.py        envelope and error mapping with a fake transport
+      test_wire.py          codec round trips
+      test_dfhack_rpc.py    framing tests against a scripted fake socket
+      test_bridge.py        envelope and error mapping with a fake client
+      test_server.py        tool registration and annotations
   tools/
     link-mod.sh             adds mod/scripts_modinstalled to DFHack script-paths.txt
     smoke-test.py           exercises every op against a running game
@@ -245,9 +247,9 @@ These are the rules the repo's `CLAUDE.md` carries. Kept here so the rationale s
 
 1. Read `docs/ProjectPlan.md` before structural work and `docs/protocol.md` before touching any op. Reason: both sides of the bridge must agree.
 2. A protocol change edits the Lua handler, the Python tool, `docs/protocol.md`, and the protocol version in one branch. Reason: a split change breaks the bridge on whichever side lands first.
-3. Permission checks live in Lua at dispatch. Never add a Python-side shortcut that calls DFHack without going through `rpc.claude_bridge.dispatch`, except `console.run`, which goes through `RunCommand` only after a Lua allowlist check. Reason: the player's settings panel is the only trust boundary.
+3. Permission checks live in Lua at dispatch. Never add a Python-side shortcut that calls DFHack without going through `rpc.claude_bridge.dispatch`. The raw `RunCommand` method on the client is for dev tooling (`tools/smoke-test.py`) only. Reason: the player's settings panel is the only trust boundary.
 4. No tool that evaluates arbitrary Lua ships unless it is behind its own permission and off by default. Reason: that is full code execution in the player's game.
-5. Lua follows DFHack conventions: `--@ module = true` header, `local _ENV = mkmodule(...)` for internal modules, no globals except `OVERLAY_WIDGETS`, 4-space indent, snake_case, early return on `dfhack_flags.module`. Use `dfhack.*` helpers over raw `df.global` walks when one exists.
+5. Lua follows DFHack script conventions: `--@ module = true` header on every module, module-level functions are the exports and everything else is `local`, internal modules load with `reqscript('internal/claude-bridge/<name>')`, 4-space indent, snake_case, the control script returns early on `dfhack_flags.module`. Use `dfhack.*` helpers over raw `df.global` walks when one exists, and wrap uncertain struct access in `pcall` so one missing field cannot take down an op.
 6. Python uses uv, ruff, pytest, type hints, Python 3.11. The MCP server logs to stderr only. Reason: stdout is the MCP transport.
 7. DFHack docs are cited by the `stable` URL and the version they were checked against. Do not rely on memory for `df.*` struct fields; look them up or check in-game with `:lua`.
 8. Never read, write, or commit DF save folders or `dfhack-config` beyond the mod's own state file. Never put ports, paths, or credentials in committed files; `.mcp.json` uses relative paths only.
@@ -260,7 +262,9 @@ These are the rules the repo's `CLAUDE.md` carries. Kept here so the rationale s
 ## 7. Open items
 
 - License choice before the first public push.
-- Verify the `package.loaded` route for `RunLua` in Phase 0; the fallback is a `claude-bridge rpc` console subcommand over `RunCommand`.
+- Verify the `package.loaded` route for `RunLua` against a running game; the fallback is a `claude-bridge rpc` console subcommand over `RunCommand`.
+- No Dwarf Fortress install on the dev machine yet, so the scaffold PR is unit-tested only. First in-game run: `tools/link-mod.sh`, `enable claude-bridge`, then `tools/smoke-test.py`.
+- `gh` is not installed on the dev machine; PRs are opened from the GitHub compare URL until it is.
 - Decide whether `.mcp.json` is committed or templated as `.mcp.json.example` once the uv entry point exists.
 - Unit detail fields for `units.get` need a pass against the 53.x `df.unit` struct before the op is documented.
 
