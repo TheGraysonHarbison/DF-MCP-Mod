@@ -417,7 +417,7 @@ Decisions agreed on 2026-10-12 after a live probe of the fort's `plotinfo` recor
 
 | Question | Decision |
 |---|---|
-| "~" rule | The stored counts are exact, so the estimate marker is a display rule. When the achieved precision is below `all_accurate`, round to the step the level names (`nearest_10` to 10, and so on; `NONE` behaves as nearest 10, which matches the top bar on the test fort showing a rounded value for 15) and prefix `~`. Verify the exact step once a bookkeeper is appointed. |
+| "~" rule | The stored counts are exact, so the estimate marker is a display rule, and the game's own rule is undocumented, so we define ours: when the achieved precision is below `all_accurate`, round **up** to the next multiple of the step the level names (`nearest_10` to 10, `nearest_100` to 100, and so on; `NONE` behaves as 10) and prefix `~`. 15 shows as `~20`, 71 as `~80`. |
 | Stocks shape | Category, then rows of item kind plus material: `{"weapons": {"name": "weapon", "total": 8, "rows": [{"item": "short sword", "material": "copper", "count": 3, "unavailable": 0}]}}`. Empty categories are omitted entirely. |
 | 3.1 default | The setting is on: Claude reads true counts. Off puts Claude in bookkeeper view. |
 | Bookkeeper view | Top bar: rounded per the rule above. Stocks: category totals from `tasks.item_counts` rounded the same way, with no rows unless the achieved precision is `all_accurate`, in which case it equals true view. On a fort with no bookkeeper this is all zeros, which is what the player sees. |

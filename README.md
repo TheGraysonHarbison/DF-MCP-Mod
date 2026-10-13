@@ -96,7 +96,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 2 | 6. Nickname a unit (`set_unit_nickname`, `units_write` permission) | verified in-game 2026-10-12 |
 | 2.1 | Noble positions: list and assign (`list_nobles`, `assign_noble`, `nobles_write` permission) | verified in-game 2026-10-12 |
 | 2.2 | Console op refuses `claude-bridge perm/allow/deny` | verified in-game 2026-10-12 |
-| 3 | Stock amounts, item and artifact search | not started |
+| 3 | Stock amounts, item and artifact search (`get_stock_bar`, `list_stocks`, `find_items`, `list_artifacts`) | verified in-game 2026-10-12 |
 | 3.1 | Stock accuracy setting (true counts vs. bookkeeper view) | not started |
 | 3.2 | Settlement wealth and status | not started |
 | 4 | Work orders: read and create | not started |
