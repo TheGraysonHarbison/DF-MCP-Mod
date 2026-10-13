@@ -1,6 +1,6 @@
 # Project Plan: DFHack Claude Integration Mod
 
-Status: Phase 0 and Phase 1 implemented on branch `repo/scaffold` and verified in-game on 2026-10-12 against DFHack 53.16-r2. Phase 2 (unit analysis) planned, see section 8. Last updated 2026-10-12.
+Status: Phases 0, 1, and 2 (with addendums 2.1 and 2.2) merged and verified in-game on 2026-10-12 against DFHack 53.16-r2. Roadmap for Phases 3 and 4 revised the same day; see section 3. Last updated 2026-10-12.
 
 This document is the agreed plan for the project. The README describes the idea and current progress for readers; this file describes how we build it. When the two disagree, fix this file first, then the README.
 
@@ -93,7 +93,7 @@ Chosen: a Claude Code session with a blocking `wait_for_event` tool.
 
 The MCP server exposes `wait_for_event(timeout_seconds)`, which polls `events.poll` on a short interval until an event arrives or the timeout passes. Claude runs a loop: wait, act, wait. The in-game chat and the autonomy timer are just event kinds, so one loop handles all three README features (event response, chat, autonomy).
 
-Why: no second runtime, uses the Team seat, and the whole system is observable from one terminal. A Python conductor using the Agent SDK remains a possible Phase 5 if running without a terminal matters.
+Why: no second runtime, uses the Team seat, and the whole system is observable from one terminal. A Python conductor using the Agent SDK remains a future candidate if running without a terminal matters.
 
 ### 2.5 Permissions
 
@@ -136,31 +136,32 @@ Also in Phase 1: `docs/protocol.md` for every op above, and a `tools/smoke-test.
 
 Let Claude see every unit on the map in three buckets (citizen, domesticated, other), select one reliably by id, read its unit sheet by category and sub-category or all at once, and give it a nickname. Full design in section 8. Ops: `units.list`, `units.find`, `units.get`, `units.sheet`, `units.full_sheet`, `units.set_nickname`. The nickname op is the first write and lives behind its own `units_write` permission, off by default.
 
-### Phase 3: Events, chat, autonomy
+Roadmap revised 2026-10-12 so each phase covers one distinct area. Phases 3 and 4 are observe-then-act within their area; everything that used to be Phases 3 to 5 (events, chat, autonomy, petitions, quickfort, military, transport and packaging candidates) is unscheduled and listed under "Future" below.
 
-- Event queue (2.3) with `events.poll` and `wait_for_event`.
-- Chat overlay: text input in-game, history pane, messages appear as `chat.message` events; Claude replies with `chat.say`, shown in the pane and as a DF announcement.
-- Autonomy timer with pause awareness, configured in the settings panel.
-- Event-kind filters in settings.
-- A documented "play loop" prompt in `docs/playing.md` describing how to start a session.
+### Phase 3: Stocks and Pops
 
-### Phase 4: Act
+Namespace `stocks` (read, default on). Each item is its own PR with a design pass first, as in section 8.
 
-Each action is its own op, its own permission, and its own PR.
+- 3.0 Stock amounts by category, and search for items and artifacts by name, type, or material. Candidates: `stocks.summary`, `stocks.find`, `stocks.artifacts`.
+- 3.1 Stock accuracy setting in the settings panel: `true` reads the real counts from the item vectors; `bookkeeper` reports what the fort's Stocks screen would show given the bookkeeper's precision level, or nothing without one. Default to be decided in the design pass.
+- 3.2 Settlement wealth and status: created, imported, exported, and architectural wealth, fort title and population tier, and whatever else the Status screen shows.
 
-- Petitions: `petitions.list`, `petitions.respond(id, accept)`.
-- Quickfort: `build.quickfort(blueprint_text, cursor)` with `--dry-run` first, run through the quickfort command.
-- Manager orders: `orders.list`, `orders.create`, `orders.cancel`.
-- Military: squads, alerts, stations.
-- Labors and unit assignment.
-- Zones and stockpiles.
+### Phase 4: Logistics and World
 
-### Phase 5: Candidates, not committed
+Reads stay under one namespace (`world` or `logistics`, decided in the design pass); every write gets its own `_write` namespace, off by default, following `units_write` and `nobles_write`.
 
-- Luasocket push transport if poll latency is a problem.
-- Python conductor using the Claude Agent SDK for headless play.
-- Steam Workshop packaging of `mod/`.
-- Legends and adventure mode.
+- 4.0 Work orders: read the manager's orders and create new ones.
+- 4.1 Workshops: list them, select one by id, read its inventory and assigned orders.
+- 4.2 Tiles: read what is at a map position, whether it is solid, empty, or what lies on the ground.
+- 4.3 Build workshops.
+- 4.4 Stockpiles: list them with settings and contents.
+- 4.5 Paint stockpiles.
+
+### Future (after 4.5, not scheduled)
+
+- Event queue (2.3) with `events.poll` and `wait_for_event`; chat overlay with `chat.message` and `chat.say`; autonomy timer; event-kind filters; a documented play loop in `docs/playing.md`. The driver loop design in 2.4 stays as written.
+- Petitions, quickfort blueprints through the quickfort command, military (squads, alerts, stations), labor assignment, zones.
+- Luasocket push transport, a headless Python conductor using the Agent SDK, Steam Workshop packaging, legends and adventure mode.
 
 ---
 
@@ -176,7 +177,7 @@ DF-MCP-Mod/
   docs/
     ProjectPlan.md          this file
     protocol.md             every RPC op, request and response shapes, error codes
-    playing.md              how to run a play session (Phase 3)
+    playing.md              how to run a play session (future)
     decisions/              short ADRs, numbered, one decision each
   mod/                      the DFHack mod, installable as-is
     info.txt                ID claude-bridge, versions, author, description
@@ -192,7 +193,7 @@ DF-MCP-Mod/
         events.lua          event queue, eventful hooks, pollers
         timer.lua           autonomy timer
         ui/settings.lua     settings overlay window
-        ui/chat.lua         chat overlay window (Phase 3)
+        ui/chat.lua         chat overlay window (future)
   server/                   the Python MCP server
     pyproject.toml          uv project, package df_mcp, entry point df-mcp
     src/df_mcp/

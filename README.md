@@ -55,7 +55,27 @@ Quickfort Command For DFHack: https://docs.dfhack.org/en/stable/docs/tools/quick
   own permission, off by default).
 - 2.2 The `claude-bridge` console allowlist entry can no longer be used to change the mod's own settings.
 
-**MORE TO BE ADDED**
+**Phase 3: Stocks and Pops.** Claude can see stock amounts and search for items and artifacts.
+
+- 3.1 A setting that controls stock accuracy: read the true counts, or only what the fort appears to have through its
+  bookkeeper (or the lack of one).
+- 3.2 Settlement wealth and status.
+
+**Phase 4: Logistics and World.** Claude can observe the map, zones, workshops, and work orders. Starts with reading and
+making work orders.
+
+- 4.1 Look at all workshops and select one, seeing its inventory and assigned work orders.
+- 4.2 Read tiles at positions in the world: solid, empty, or what is on the ground.
+- 4.3 Build workshops.
+- 4.4 Look at all stockpiles, their settings and contents.
+- 4.5 Paint stockpiles.
+
+**Future plans** (after 4.5, not scheduled):
+
+- Event queue, in-game chat window, and an autonomy timer so Claude is prompted by petitions, sieges, deaths, and on a
+  schedule.
+- Petitions, quickfort blueprints, military (squads, alerts, stations), labor assignment, zones.
+- Push transport, a headless Python conductor, Steam Workshop packaging, legends and adventure mode.
 
 ## Progress
 
@@ -76,8 +96,15 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 2 | 6. Nickname a unit (`set_unit_nickname`, `units_write` permission) | verified in-game 2026-10-12 |
 | 2.1 | Noble positions: list and assign (`list_nobles`, `assign_noble`, `nobles_write` permission) | verified in-game 2026-10-12 |
 | 2.2 | Console op refuses `claude-bridge perm/allow/deny` | verified in-game 2026-10-12 |
-| 3 | Event queue, in-game chat, autonomy timer | not started |
-| 4 | Actions: petitions, quickfort, orders, military | not started |
+| 3 | Stock amounts, item and artifact search | not started |
+| 3.1 | Stock accuracy setting (true counts vs. bookkeeper view) | not started |
+| 3.2 | Settlement wealth and status | not started |
+| 4 | Work orders: read and create | not started |
+| 4.1 | Workshops: list, select, inventory, assigned orders | not started |
+| 4.2 | Read map tiles at a position | not started |
+| 4.3 | Build workshops | not started |
+| 4.4 | Stockpiles: list, settings, contents | not started |
+| 4.5 | Paint stockpiles | not started |
 
 ## Known bugs
 
