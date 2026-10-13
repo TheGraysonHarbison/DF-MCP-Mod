@@ -30,7 +30,10 @@ The enabled flag is per fort, like other DFHack enableable scripts.
 
 ## What Claude can see and do
 
-Only what the permissions allow. Reading units, time, and these settings is on by default.
+Only what the permissions allow. The settings window groups them into General, Units, Items,
+and Commands. Reading units, stocks, time, and these settings is on by default. "True stock
+counts" is on by default; turn it off and Claude only sees the estimates and bookkeeper records a
+player would see.
 Renaming units (`units_write`) and assigning noble positions (`nobles_write`) are off until you
 turn them on. Console access is deny-all until
 you allowlist commands, and running `lua` through the console additionally requires the

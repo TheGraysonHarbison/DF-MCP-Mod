@@ -97,8 +97,11 @@ local function print_status()
     local s = state.get_settings()
     print(('claude-bridge is %s'):format(enabled and 'enabled' or 'disabled'))
     print('permissions:')
-    for _, ns in ipairs(state.NAMESPACES) do
-        print(('  %-10s %s'):format(ns.key, s.permissions[ns.key] and 'on' or 'off'))
+    for _, group in ipairs(state.GROUPS) do
+        print('  ' .. group)
+        for _, ns in ipairs(state.namespaces_in(group)) do
+            print(('    %-12s %s'):format(ns.key, s.permissions[ns.key] and 'on' or 'off'))
+        end
     end
     print('console allowlist: ' .. (#s.console_allow > 0 and table.concat(s.console_allow, ', ') or '(empty)'))
 end

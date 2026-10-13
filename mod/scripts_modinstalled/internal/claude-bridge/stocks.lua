@@ -2,6 +2,7 @@
 --@ module = true
 
 local rpc = reqscript('internal/claude-bridge/rpc')
+local state = reqscript('internal/claude-bridge/state')
 local nobles = reqscript('internal/claude-bridge/nobles')
 
 -- Top-bar categories in the game's order, and the plotinfo.tasks.food field behind each.
@@ -67,9 +68,14 @@ function bookkeeper_info()
     }
 end
 
--- Until 3.1 adds the setting, Claude always sees the true counts beside the player's view.
+-- The stocks_true toggle (settings window, Items group). Off means bookkeeper view: Claude
+-- sees only what the player's screens show, estimates and all.
 local function true_view()
-    return true
+    return state.is_allowed('stocks_true')
+end
+
+local function mode_name()
+    return true_view() and 'true' or 'bookkeeper'
 end
 
 ----------------------------------------------------------------------------------------------
@@ -101,7 +107,7 @@ local function bar(args)
         end
         local entry = bar_entry(food, spec, info.step, truthful)
         entry.category = spec.key
-        entry.mode = truthful and 'true' or 'bookkeeper'
+        entry.mode = mode_name()
         entry.bookkeeper = info
         return entry
     end
@@ -110,7 +116,7 @@ local function bar(args)
         counts[spec.key] = bar_entry(food, spec, info.step, truthful)
     end
     return {
-        mode = truthful and 'true' or 'bookkeeper',
+        mode = mode_name(),
         bookkeeper = info,
         counts = counts,
     }
@@ -246,6 +252,28 @@ local function parse_limit(args)
     return math.floor(limit)
 end
 
+-- Bookkeeper view of the stocks: the per-type counts the bookkeeper has recorded
+-- (plotinfo.tasks.item_counts), rounded like the top bar, with no item rows.
+local function recorded_categories(wanted)
+    local info = bookkeeper_info()
+    local counts = df.global.plotinfo.tasks.item_counts
+    local out, total = {}, 0
+    for type_id = 0, df.item_type._last_item do
+        local recorded = safe(function() return counts[type_id] end) or 0
+        if recorded > 0 then
+            local token = (df.item_type[type_id] or tostring(type_id)):lower()
+            local caption = safe(function() return df.item_type.attrs[type_id].caption end) or token
+            if wanted == nil or wanted == token or wanted == caption:lower() then
+                local shown = estimate(recorded, info.step)
+                out[token] = {name = caption, total = shown.value, display = shown.display,
+                              estimated = shown.estimated}
+                total = total + 1
+            end
+        end
+    end
+    return out, total, info
+end
+
 local function list(args)
     local limit, err = parse_limit(args)
     if err then return err end
@@ -254,6 +282,17 @@ local function list(args)
         return rpc.error_result(rpc.ERR_BAD_REQUEST, '"query" must be a string')
     end
     local wanted = args.category and tostring(args.category):lower() or nil
+    if not true_view() and bookkeeper_info().step ~= 0 then
+        if query ~= nil then
+            return rpc.error_result(rpc.ERR_NOT_ALLOWED,
+                'bookkeeper view: item rows are unknown until the bookkeeper reaches full '
+                .. 'accuracy, so "query" cannot be used')
+        end
+        local categories, total, info = recorded_categories(wanted)
+        return {mode = 'bookkeeper', bookkeeper = info, categories = categories, count = total,
+                truncated = {},
+                note = total == 0 and 'the bookkeeper has recorded no stock yet' or nil}
+    end
     local categories = collect(query)
     local out, truncated, total = {}, {}, 0
     for key, cat in pairs(categories) do
@@ -269,8 +308,7 @@ local function list(args)
                 note = ('no items in category "%s"'):format(wanted)}
     end
     table.sort(truncated)
-    return {mode = true_view() and 'true' or 'bookkeeper', categories = out, count = total,
-            truncated = truncated}
+    return {mode = mode_name(), categories = out, count = total, truncated = truncated}
 end
 
 local function find(args)
@@ -279,6 +317,10 @@ local function find(args)
     end
     local limit, err = parse_limit(args)
     if err then return err end
+    if not true_view() and bookkeeper_info().step ~= 0 then
+        return rpc.error_result(rpc.ERR_NOT_ALLOWED,
+            'bookkeeper view: item search needs a bookkeeper at full accuracy')
+    end
     local rows = {}
     for key, cat in pairs(collect(args.query)) do
         for _, row in ipairs(cat.rows) do
