@@ -10,7 +10,7 @@ from mcp.server import MCPServer
 
 from df_mcp import __version__
 from df_mcp.bridge import Bridge
-from df_mcp.tools import console, core, nobles, orders, stocks, time, units
+from df_mcp.tools import console, core, nobles, orders, stocks, time, units, workshops
 
 INSTRUCTIONS = """\
 You are connected to a running Dwarf Fortress game through DFHack. Start with `ping` to confirm
@@ -23,12 +23,13 @@ fort's positions and holders; `assign_noble` appoints a citizen and needs `noble
 `get_stock_bar`, `list_stocks`, `find_items`, and `list_artifacts` cover what the fort owns;
 `get_fort_status` gives wealth, rank, and population. Work orders: `list_work_orders`,
 `find_job_types`, and with `orders_write` `create_work_order`, `edit_work_order`,
-`delete_work_order`; only the manager dwarf approves them.
+`delete_work_order`; only the manager dwarf approves them. `list_workshops` and
+`get_workshop` show built workshops, their jobs, and their contents.
 `run_console_command` only runs commands the player has allowlisted in-game. Every call pauses
 the game briefly, so batch what you can.
 """
 
-TOOL_MODULES = (core, time, units, nobles, stocks, orders, console)
+TOOL_MODULES = (core, time, units, nobles, stocks, orders, workshops, console)
 
 
 def build_server(bridge: Bridge) -> MCPServer:

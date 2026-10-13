@@ -35,6 +35,8 @@ NAMESPACES = {
      label = 'Read work orders'},
     {key = 'orders_write', group = 'Logistics', hotkey = 'CUSTOM_W', default = false,
      label = 'Create, edit, delete work orders'},
+    {key = 'workshops', group = 'Logistics', hotkey = 'CUSTOM_K', default = true,
+     label = 'Read workshops'},
     {key = 'console',  group = 'Commands', hotkey = 'CUSTOM_C', default = false,
      label = 'Run allowlisted console cmds'},
     {key = 'lua_eval', group = 'Commands', hotkey = 'CUSTOM_L', default = false,

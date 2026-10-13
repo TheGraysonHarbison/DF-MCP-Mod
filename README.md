@@ -100,7 +100,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 3.1 | Stock accuracy setting (true counts vs. bookkeeper view), settings grouped into General, Units, Items, Commands | verified in-game 2026-10-12 |
 | 3.2 | Settlement wealth and status (`get_fort_status`) | verified in-game 2026-10-12 |
 | 4 | Work orders: read, search job types, create, edit, delete (`list_work_orders`, `find_job_types`, `create_work_order`, `edit_work_order`, `delete_work_order`, `orders_write` permission) | verified in-game 2026-10-12 |
-| 4.1 | Workshops: list, select, inventory, assigned orders | not started |
+| 4.1 | Workshops: list, filter by type, inspect jobs and contents (`list_workshops`, `get_workshop`) | verified in-game 2026-10-12 |
 | 4.2 | Read map tiles at a position | not started |
 | 4.3 | Build workshops | not started |
 | 4.4 | Stockpiles: list, settings, contents | not started |
