@@ -71,6 +71,13 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 3 | Event queue, in-game chat, autonomy timer | not started |
 | 4 | Actions: petitions, quickfort, orders, military | not started |
 
+## Known bugs
+
+- Allowlisting the `claude-bridge` console command (handy for `claude-bridge reload` during development) also allows
+  `claude-bridge perm ...`, `allow ...`, and `deny ...` through the console tool, so Claude could change its own
+  permissions. Planned fix: the console op refuses the mod's own settings subcommands regardless of the allowlist.
+  Until then, only allowlist `claude-bridge` while developing.
+
 ## Running it
 
 1. `tools/link-mod.sh <Dwarf Fortress folder>` once, then `enable claude-bridge` in the DFHack console.
