@@ -5,13 +5,10 @@ local gui = require('gui')
 local widgets = require('gui.widgets')
 local state = reqscript('internal/claude-bridge/state')
 
-local PERM_HOTKEYS = {'CUSTOM_T', 'CUSTOM_U', 'CUSTOM_N', 'CUSTOM_B', 'CUSTOM_M', 'CUSTOM_S',
-                      'CUSTOM_C', 'CUSTOM_L'}
-
 SettingsWindow = defclass(SettingsWindow, widgets.Window)
 SettingsWindow.ATTRS{
     frame_title = 'Claude Bridge settings',
-    frame = {w = 58, h = 26},
+    frame = {w = 58, h = 34},
     resizable = true,
     resize_min = {w = 44, h = 18},
 }
@@ -27,18 +24,25 @@ function SettingsWindow:init()
     })
     y = y + 1
 
-    for i, ns in ipairs(state.NAMESPACES) do
-        table.insert(views, widgets.ToggleHotkeyLabel{
-            view_id = 'perm_' .. ns.key,
+    for _, group in ipairs(state.GROUPS) do
+        table.insert(views, widgets.Label{
             frame = {t = y, l = 1},
-            key = PERM_HOTKEYS[i] or 'CUSTOM_SHIFT_' .. string.char(64 + i),
-            label = ns.label,
-            initial_option = s.permissions[ns.key] == true,
-            on_change = function(value)
-                state.set_permission(ns.key, value)
-            end,
+            text = {{text = group, pen = COLOR_LIGHTCYAN}},
         })
         y = y + 1
+        for _, ns in ipairs(state.namespaces_in(group)) do
+            table.insert(views, widgets.ToggleHotkeyLabel{
+                view_id = 'perm_' .. ns.key,
+                frame = {t = y, l = 3},
+                key = ns.hotkey,
+                label = ns.label,
+                initial_option = s.permissions[ns.key] == true,
+                on_change = function(value)
+                    state.set_permission(ns.key, value)
+                end,
+            })
+            y = y + 1
+        end
     end
 
     y = y + 1

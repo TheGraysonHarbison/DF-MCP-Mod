@@ -8,17 +8,43 @@ MOD_ID = 'claude-bridge'
 MOD_VERSION = '0.2.0'
 PROTOCOL_VERSION = 2
 
--- Permission namespaces. Order is the display order in the settings window.
+-- Settings groups, in display order.
+GROUPS = {'General', 'Units', 'Items', 'Commands'}
+
+-- Permission namespaces and plain toggles. Order within a group is the display order in the
+-- settings window; `hotkey` is the toggle's key there. Entries with `toggle = true` are not
+-- op namespaces: the dispatcher ignores them and a handler reads them with is_allowed().
 NAMESPACES = {
-    {key = 'time',     label = 'Read date, time and weather',  default = true},
-    {key = 'units',    label = 'Read units',                  default = true},
-    {key = 'units_write', label = 'Rename units (nickname)',    default = false},
-    {key = 'nobles',   label = 'Read noble positions',        default = true},
-    {key = 'nobles_write', label = 'Assign noble positions',  default = false},
-    {key = 'settings', label = 'Read these settings',         default = true},
-    {key = 'console',  label = 'Run allowlisted console cmds', default = false},
-    {key = 'lua_eval', label = 'Allow "lua" via console',      default = false},
+    {key = 'time',     group = 'General',  hotkey = 'CUSTOM_T', default = true,
+     label = 'Read date, time and weather'},
+    {key = 'settings', group = 'General',  hotkey = 'CUSTOM_S', default = true,
+     label = 'Read these settings'},
+    {key = 'units',    group = 'Units',    hotkey = 'CUSTOM_U', default = true,
+     label = 'Read units'},
+    {key = 'units_write', group = 'Units', hotkey = 'CUSTOM_N', default = false,
+     label = 'Rename units (nickname)'},
+    {key = 'nobles',   group = 'Units',    hotkey = 'CUSTOM_B', default = true,
+     label = 'Read noble positions'},
+    {key = 'nobles_write', group = 'Units', hotkey = 'CUSTOM_M', default = false,
+     label = 'Assign noble positions'},
+    {key = 'stocks',   group = 'Items',    hotkey = 'CUSTOM_I', default = true,
+     label = 'Read stocks and artifacts'},
+    {key = 'stocks_true', group = 'Items', hotkey = 'CUSTOM_R', default = true, toggle = true,
+     label = 'True stock counts (off: bookkeeper view)'},
+    {key = 'console',  group = 'Commands', hotkey = 'CUSTOM_C', default = false,
+     label = 'Run allowlisted console cmds'},
+    {key = 'lua_eval', group = 'Commands', hotkey = 'CUSTOM_L', default = false,
+     label = 'Allow "lua" via console'},
 }
+
+-- Entries of one group, in order.
+function namespaces_in(group)
+    local out = {}
+    for _, ns in ipairs(NAMESPACES) do
+        if ns.group == group then table.insert(out, ns) end
+    end
+    return out
+end
 
 -- Namespaces that are always allowed. 'core' carries only ping.
 local ALWAYS_ALLOWED = {core = true}

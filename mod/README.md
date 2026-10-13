@@ -18,7 +18,7 @@ disable claude-bridge         stop it
 claude-bridge status          show enabled state, permissions, and console allowlist
 claude-bridge settings        open the settings window
 claude-bridge perm <ns> on|off   toggle a permission namespace (time, units, units_write, nobles,
-                                 nobles_write, console, settings)
+                                 nobles_write, stocks, console, settings)
 claude-bridge allow <command> add a console command Claude may run
 claude-bridge deny <command>  remove it again
 claude-bridge test <json>     run a request through the dispatcher locally and print the reply
@@ -30,7 +30,10 @@ The enabled flag is per fort, like other DFHack enableable scripts.
 
 ## What Claude can see and do
 
-Only what the permissions allow. Reading units, time, and these settings is on by default.
+Only what the permissions allow. The settings window groups them into General, Units, Items,
+and Commands. Reading units, stocks, time, and these settings is on by default. "True stock
+counts" is on by default; turn it off and Claude only sees the estimates and bookkeeper records a
+player would see.
 Renaming units (`units_write`) and assigning noble positions (`nobles_write`) are off until you
 turn them on. Console access is deny-all until
 you allowlist commands, and running `lua` through the console additionally requires the
