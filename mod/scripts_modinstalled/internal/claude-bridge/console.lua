@@ -7,8 +7,31 @@ local rpc = reqscript('internal/claude-bridge/rpc')
 -- Commands that evaluate arbitrary Lua need the lua_eval permission as well as an allowlist entry.
 local LUA_COMMANDS = {lua = true, [':lua'] = true}
 
+-- Subcommands of this mod that change its own settings. Never runnable through the bridge,
+-- whatever the allowlist says, so the settings panel stays the only trust boundary.
+-- Anything that is not a plain word (quotes, separators, `-` flags) is refused too.
+local MOD_COMMAND = 'claude-bridge'
+local MOD_SAFE_SUBCOMMANDS = {status = true, help = true, reload = true, test = true}
+
 local function command_name(line)
     return line:match('^%s*(%S+)')
+end
+
+local function mod_subcommand(line)
+    return line:match('^%s*%S+%s+(%S+)')
+end
+
+-- Returns an error message when the line must not run, else nil.
+local function guard_mod_command(line)
+    if line:find(';', 1, true) then
+        return 'command separators are not allowed in a ' .. MOD_COMMAND .. ' line'
+    end
+    local sub = mod_subcommand(line)
+    if sub == nil or MOD_SAFE_SUBCOMMANDS[sub] then
+        return nil
+    end
+    return ('"%s %s" cannot be run through the bridge; only the player may change these settings')
+        :format(MOD_COMMAND, sub)
 end
 
 local function run(args)
@@ -21,6 +44,12 @@ local function run(args)
         return rpc.error_result(rpc.ERR_NOT_ALLOWED,
             ('"%s" is not on the console allowlist; the player can add it with: claude-bridge allow %s')
                 :format(name, name))
+    end
+    if name == MOD_COMMAND then
+        local why = guard_mod_command(line)
+        if why then
+            return rpc.error_result(rpc.ERR_NOT_ALLOWED, why)
+        end
     end
     if LUA_COMMANDS[name] and not state.is_allowed('lua_eval') then
         return rpc.error_result(rpc.ERR_NOT_ALLOWED,
