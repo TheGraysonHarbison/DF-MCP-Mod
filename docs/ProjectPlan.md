@@ -257,7 +257,7 @@ These are the rules the repo's `CLAUDE.md` carries. Kept here so the rationale s
 6. Python uses uv, ruff, pytest, type hints, Python 3.11. The MCP server logs to stderr only. Reason: stdout is the MCP transport.
 7. DFHack docs are cited by the `stable` URL and the version they were checked against. Do not rely on memory for `df.*` struct fields; look them up or check in-game with `:lua`.
 8. Never read, write, or commit DF save folders or `dfhack-config` beyond the mod's own state file. Never put ports, paths, or credentials in committed files; `.mcp.json` uses relative paths only.
-9. Branch per change, conventional commit messages, PR via `gh`. Do not commit to `main`.
+9. Branch per change, conventional commit messages, PR via `gh`. Do not commit to `main`. Every branch starts from `main`; stacking on another branch needs the owner's explicit permission. Reason: stacked branches make PR diffs and merge order depend on each other.
 10. When a feature lands, update the README progress section in the same PR. The README is for readers; this file is for builders.
 11. Confirm before anything that affects a running game beyond reads: pausing, running console commands, or changing settings during a test session.
 
