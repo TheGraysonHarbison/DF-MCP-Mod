@@ -20,7 +20,8 @@ Observe with `get_time`, the unit lists (`list_units`, `list_citizens`, `list_do
 `get_unit_sheet` or `get_unit_full_sheet` for its profile tabs. `set_unit_nickname` is the
 only unit tool that changes the game and needs its own permission. `list_nobles` shows the
 fort's positions and holders; `assign_noble` appoints a citizen and needs `nobles_write`.
-`get_stock_bar`, `list_stocks`, `find_items`, and `list_artifacts` cover what the fort owns.
+`get_stock_bar`, `list_stocks`, `find_items`, and `list_artifacts` cover what the fort owns;
+`get_fort_status` gives wealth, rank, and population.
 `run_console_command` only runs commands the player has allowlisted in-game. Every call pauses
 the game briefly, so batch what you can.
 """

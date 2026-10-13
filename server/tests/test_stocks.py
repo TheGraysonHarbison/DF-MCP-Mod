@@ -23,5 +23,7 @@ def test_list_and_find_send_args():
     assert last_request(holder)["args"] == {"query": "plump", "limit": 50}
     run(mcp, "list_artifacts")
     assert last_request(holder)["op"] == "stocks.artifacts"
+    run(mcp, "get_fort_status")
+    assert last_request(holder)["op"] == "stocks.status"
     with pytest.raises(Exception):  # noqa: B017
         run(mcp, "find_items", query=" ")
