@@ -67,9 +67,16 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 2 | 3. Basic info for one unit (`get_unit`) | verified in-game 2026-10-12 |
 | 2 | 4. Unit sheet by category and sub-category (`get_unit_sheet`) | all eleven tabs implemented, verified in-game 2026-10-12; appearance text still best-effort |
 | 2 | 5. Whole unit sheet in one call (`get_unit_full_sheet`) | verified in-game 2026-10-12 |
-| 2 | 6. Nickname a unit (`set_unit_nickname`, `units_write` permission) | planned |
+| 2 | 6. Nickname a unit (`set_unit_nickname`, `units_write` permission) | verified in-game 2026-10-12 |
 | 3 | Event queue, in-game chat, autonomy timer | not started |
 | 4 | Actions: petitions, quickfort, orders, military | not started |
+
+## Known bugs
+
+- Allowlisting the `claude-bridge` console command (handy for `claude-bridge reload` during development) also allows
+  `claude-bridge perm ...`, `allow ...`, and `deny ...` through the console tool, so Claude could change its own
+  permissions. Planned fix: the console op refuses the mod's own settings subcommands regardless of the allowlist.
+  Until then, only allowlist `claude-bridge` while developing.
 
 ## Running it
 

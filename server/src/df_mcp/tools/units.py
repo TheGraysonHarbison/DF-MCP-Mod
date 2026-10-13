@@ -6,7 +6,7 @@ from mcp.server import MCPServer
 
 from df_mcp.bridge import Bridge
 from df_mcp.tools import call
-from df_mcp.tools.core import READ_ONLY
+from df_mcp.tools.core import READ_ONLY, WRITE_SAFE
 
 BUCKETS = ("citizen", "domesticated", "other")
 
@@ -163,6 +163,17 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         historical figure id, squad, and flags. Ids come from the list tools or `find_unit`.
         """
         return call(bridge, "units.get", {"id": unit_id})
+
+    @mcp.tool(name="set_unit_nickname", annotations=WRITE_SAFE)
+    def set_unit_nickname(unit_id: int, nickname: str) -> dict[str, Any]:
+        """Give a unit a nickname, or clear it with an empty string.
+
+        This changes the game. It needs the `units_write` permission, which the player turns
+        on in `claude-bridge settings`; it is off by default. Returns the unit's updated name.
+        """
+        if len(nickname) > 64:
+            raise ValueError("nickname is limited to 64 characters")
+        return call(bridge, "units.set_nickname", {"id": unit_id, "nickname": nickname})
 
     @mcp.tool(name="get_unit_sheet", annotations=READ_ONLY)
     def get_unit_sheet(
