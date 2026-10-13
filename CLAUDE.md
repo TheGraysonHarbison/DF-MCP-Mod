@@ -28,3 +28,4 @@ DFHack Claude Integration Mod: a DFHack Lua mod (`mod/`) plus a Python MCP serve
 9. Branch per change (`<scope>/<topic>`), Conventional Commits with scopes `mod`, `server`, `docs`, `tools`, `repo`, PR via `gh`. Do not commit to `main`. Every branch starts from `main`; stacking a branch on another branch needs the owner's explicit permission.
 10. When a feature lands, update the README progress section in the same PR.
 11. Confirm before anything that affects a running game beyond reads during a test session.
+12. Any list that can grow large (items, thoughts, memories, orders, tiles, inventory) is capped at 25 entries by default. Every such op takes a `limit` argument that raises the cap for that call, and the response says when the cap was hit. Never return an uncapped large list.
