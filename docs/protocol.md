@@ -173,6 +173,6 @@ Result: `id`, `name` (readable name after the change), `nickname` (absent when c
 
 Args: `command` (full console line).
 
-The first word must be on the console allowlist. `lua` additionally needs `lua_eval`. Runs through `dfhack.run_command_silent`.
+The first word must be on the console allowlist. `lua` additionally needs `lua_eval`. A `claude-bridge` line only runs for the `status`, `help`, `reload`, and `test` subcommands; `perm`, `allow`, `deny`, and `enable`/`disable` style changes are refused with `NOT_ALLOWED` regardless of the allowlist, as is any line containing `;`. Runs through `dfhack.run_command_silent`.
 
 Result: `command`, `ok` (result was `CR_OK`), `result` (numeric `CR_*`), `output` (captured text).

@@ -73,10 +73,9 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 
 ## Known bugs
 
-- Allowlisting the `claude-bridge` console command (handy for `claude-bridge reload` during development) also allows
-  `claude-bridge perm ...`, `allow ...`, and `deny ...` through the console tool, so Claude could change its own
-  permissions. Planned fix: the console op refuses the mod's own settings subcommands regardless of the allowlist.
-  Until then, only allowlist `claude-bridge` while developing.
+None open. Fixed: allowlisting `claude-bridge` used to let the console tool run `claude-bridge perm`, `allow`, and
+`deny`; the console op now refuses those subcommands regardless of the allowlist (only `status`, `help`, `reload`,
+and `test` pass).
 
 ## Running it
 
