@@ -388,6 +388,12 @@ One PR per row, each updating `docs/protocol.md`, the README progress table, and
 3. `mod/units-sheet-2`: remaining categories after the struct check.
 4. `mod/units-nickname`: `units_write` namespace, settings toggle, `units.set_nickname`, `set_unit_nickname` tool.
 
+### 8.8 Addendums (2026-10-12)
+
+- **2.1 Nobility.** `nobles.list` describes every position of the site government (`plotinfo.main.fortress_entity`, falling back to `plotinfo.group_id`) with holders resolved through the historical figure's `unit_id`. `nobles.assign` follows the bookkeeping DFHack's `make-monarch` script does: swap `assignment.histfig`, erase the previous holder's `histfig_entity_link_positionst`, insert one for the appointee. Military positions are refused because their seats are tied to squads. Namespaces `nobles` (on) and `nobles_write` (off).
+- **2.2 Console guard.** `console.run` refuses `claude-bridge perm`, `allow`, and `deny`, and any `claude-bridge` line containing `;`, so the allowlist entry needed for `reload` cannot change permissions. Closes the README bug.
+- The op module list moved from the control script to `rpc.OP_MODULES` so `reload` can register a new module. Adding a module still needs one `disable`/`enable` on installs whose control script predates the move.
+
 ---
 
 ## References (checked 2026-10-12)

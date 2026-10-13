@@ -10,7 +10,7 @@ from mcp.server import MCPServer
 
 from df_mcp import __version__
 from df_mcp.bridge import Bridge
-from df_mcp.tools import console, core, time, units
+from df_mcp.tools import console, core, nobles, time, units
 
 INSTRUCTIONS = """\
 You are connected to a running Dwarf Fortress game through DFHack. Start with `ping` to confirm
@@ -18,12 +18,13 @@ the bridge is up and a map is loaded, then `get_permissions` to learn what the p
 Observe with `get_time`, the unit lists (`list_units`, `list_citizens`, `list_domesticated`,
 `list_others`), `find_unit` to turn a name into an id, `get_unit` for one unit, and
 `get_unit_sheet` or `get_unit_full_sheet` for its profile tabs. `set_unit_nickname` is the
-only unit tool that changes the game and needs its own permission.
+only unit tool that changes the game and needs its own permission. `list_nobles` shows the
+fort's positions and holders; `assign_noble` appoints a citizen and needs `nobles_write`.
 `run_console_command` only runs commands the player has allowlisted in-game. Every call pauses
 the game briefly, so batch what you can.
 """
 
-TOOL_MODULES = (core, time, units, console)
+TOOL_MODULES = (core, time, units, nobles, console)
 
 
 def build_server(bridge: Bridge) -> MCPServer:

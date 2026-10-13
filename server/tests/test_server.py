@@ -21,6 +21,8 @@ def test_server_registers_expected_tools():
         "get_unit_sheet",
         "get_unit_full_sheet",
         "set_unit_nickname",
+        "list_nobles",
+        "assign_noble",
         "run_console_command",
     }
     by_name = {t.name: t for t in tools}
@@ -31,3 +33,5 @@ def test_server_registers_expected_tools():
     assert nick.read_only_hint is False
     assert nick.destructive_hint is False
     assert nick.idempotent_hint is True
+    assert by_name["assign_noble"].annotations.read_only_hint is False
+    assert by_name["list_nobles"].annotations.read_only_hint is True

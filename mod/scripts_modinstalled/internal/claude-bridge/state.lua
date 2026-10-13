@@ -13,6 +13,8 @@ NAMESPACES = {
     {key = 'time',     label = 'Read date, time and weather',  default = true},
     {key = 'units',    label = 'Read units',                  default = true},
     {key = 'units_write', label = 'Rename units (nickname)',    default = false},
+    {key = 'nobles',   label = 'Read noble positions',        default = true},
+    {key = 'nobles_write', label = 'Assign noble positions',  default = false},
     {key = 'settings', label = 'Read these settings',         default = true},
     {key = 'console',  label = 'Run allowlisted console cmds', default = false},
     {key = 'lua_eval', label = 'Allow "lua" via console',      default = false},

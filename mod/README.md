@@ -17,7 +17,8 @@ enable claude-bridge          start the bridge (also from gui/control-panel)
 disable claude-bridge         stop it
 claude-bridge status          show enabled state, permissions, and console allowlist
 claude-bridge settings        open the settings window
-claude-bridge perm <ns> on|off   toggle a permission namespace (time, units, units_write, console, settings)
+claude-bridge perm <ns> on|off   toggle a permission namespace (time, units, units_write, nobles,
+                                 nobles_write, console, settings)
 claude-bridge allow <command> add a console command Claude may run
 claude-bridge deny <command>  remove it again
 claude-bridge test <json>     run a request through the dispatcher locally and print the reply
@@ -30,6 +31,7 @@ The enabled flag is per fort, like other DFHack enableable scripts.
 ## What Claude can see and do
 
 Only what the permissions allow. Reading units, time, and these settings is on by default.
-Renaming units (`units_write`) is off until you turn it on. Console access is deny-all until
+Renaming units (`units_write`) and assigning noble positions (`nobles_write`) are off until you
+turn them on. Console access is deny-all until
 you allowlist commands, and running `lua` through the console additionally requires the
 `lua_eval` permission.
