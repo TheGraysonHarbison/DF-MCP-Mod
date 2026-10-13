@@ -81,11 +81,12 @@ function handle(request)
 end
 
 -- DF strings are code page 437. Convert every string in a response to UTF-8 so names with
--- accented letters survive the trip to the JSON client.
+-- accented letters survive the trip to the JSON client. Control characters (newlines, tabs)
+-- are glyphs in that code page, so they are passed through untouched; plain ASCII is a no-op.
 local function to_utf8(value)
     local t = type(value)
     if t == 'string' then
-        return dfhack.df2utf(value)
+        return (value:gsub('[^%c]+', dfhack.df2utf))
     elseif t == 'table' then
         local out = {}
         for k, v in pairs(value) do
