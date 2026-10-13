@@ -80,6 +80,22 @@ function handle(request)
     return {ok = true, result = result}
 end
 
+-- DF strings are code page 437. Convert every string in a response to UTF-8 so names with
+-- accented letters survive the trip to the JSON client.
+local function to_utf8(value)
+    local t = type(value)
+    if t == 'string' then
+        return dfhack.df2utf(value)
+    elseif t == 'table' then
+        local out = {}
+        for k, v in pairs(value) do
+            out[k] = to_utf8(v)
+        end
+        return out
+    end
+    return value
+end
+
 function dispatch(request_json)
     local ok, request = pcall(json.decode, request_json)
     local response
@@ -91,7 +107,7 @@ function dispatch(request_json)
             response.id = request.id
         end
     end
-    local encoded_ok, encoded = pcall(json.encode, response)
+    local encoded_ok, encoded = pcall(function() return json.encode(to_utf8(response)) end)
     if not encoded_ok then
         return json.encode(fail(ERR_INTERNAL, 'could not encode response: ' .. tostring(encoded)))
     end

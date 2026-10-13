@@ -114,9 +114,10 @@ local function owner_name(unit)
     return safe(U.getReadableName, owner) or 'None'
 end
 
+-- getPosition returns three values, so it cannot go through safe().
 local function position(unit)
-    local x, y, z = safe(U.getPosition, unit)
-    if x == nil then return nil end
+    local ok, x, y, z = pcall(U.getPosition, unit)
+    if not ok or x == nil then return nil end
     return {x = x, y = y, z = z}
 end
 
