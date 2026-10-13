@@ -196,8 +196,10 @@ local function workshop(args)
         return rpc.error_result(rpc.ERR_INTERNAL, 'DFHack has no material filters for this type')
     end
     local requirements, shortage = {}, nil
+    local restricted = filter_args.material and safe(function() return filter_args.material:toString() end)
     for _, filter in ipairs(filters) do
         local need = describe_filter(filter)
+        if restricted and need.material == 'any' then need.material = restricted end
         need.available = count_suitable(filter)
         table.insert(requirements, need)
         if need.available ~= nil and need.available < (need.quantity or 1) then
