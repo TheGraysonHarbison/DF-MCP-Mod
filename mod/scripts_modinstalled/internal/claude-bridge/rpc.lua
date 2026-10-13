@@ -93,6 +93,9 @@ local function to_utf8(value)
             out[k] = to_utf8(v)
         end
         return out
+    elseif t == 'userdata' then
+        -- A handler leaked a DF reference. Describe it rather than failing the whole call.
+        return tostring(value)
     end
     return value
 end
