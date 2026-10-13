@@ -177,7 +177,7 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
 
     @mcp.tool(name="get_unit_sheet", annotations=READ_ONLY)
     def get_unit_sheet(
-        unit_id: int, category: str, subcategory: str | None = None, limit: int = 50
+        unit_id: int, category: str, subcategory: str | None = None, limit: int = 25
     ) -> dict[str, Any]:
         """Read one tab of a unit's in-game profile sheet.
 
@@ -208,7 +208,7 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         )
 
     @mcp.tool(name="get_unit_full_sheet", annotations=READ_ONLY)
-    def get_unit_full_sheet(unit_id: int, limit: int = 50) -> dict[str, Any]:
+    def get_unit_full_sheet(unit_id: int, limit: int = 25) -> dict[str, Any]:
         """Read a unit's whole profile sheet, every tab and sub-tab, in one call.
 
         Large for a veteran dwarf. Every list is cut at `limit` entries; `truncated` names

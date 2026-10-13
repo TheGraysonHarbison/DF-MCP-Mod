@@ -21,7 +21,7 @@ CATEGORIES = {
     {name = 'labor', subs = {'work_details', 'workshops', 'locations', 'work_animals'}},
 }
 
-DEFAULT_LIMIT = 50
+DEFAULT_LIMIT = 25
 
 local function safe(fn, ...)
     local ok, value = pcall(fn, ...)

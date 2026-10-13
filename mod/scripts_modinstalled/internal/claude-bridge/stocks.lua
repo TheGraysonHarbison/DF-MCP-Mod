@@ -22,7 +22,7 @@ PRECISION_STEP = {
     nearest_10000 = 10000, all_accurate = 0,
 }
 
-DEFAULT_LIMIT = 50
+DEFAULT_LIMIT = 25
 
 local function safe(fn, ...)
     local ok, value = pcall(fn, ...)

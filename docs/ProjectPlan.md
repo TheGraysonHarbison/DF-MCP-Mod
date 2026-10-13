@@ -261,6 +261,7 @@ These are the rules the repo's `CLAUDE.md` carries. Kept here so the rationale s
 9. Branch per change, conventional commit messages, PR via `gh`. Do not commit to `main`. Every branch starts from `main`; stacking on another branch needs the owner's explicit permission. Reason: stacked branches make PR diffs and merge order depend on each other.
 10. When a feature lands, update the README progress section in the same PR. The README is for readers; this file is for builders.
 11. Confirm before anything that affects a running game beyond reads: pausing, running console commands, or changing settings during a test session.
+12. Any list that can grow large is capped at 25 entries by default, with a per-call `limit` to raise it and a `truncated` marker in the response. Reason: one call pauses the game and lands in Claude's context; an uncapped inventory or memory list can be thousands of rows.
 
 ---
 
@@ -441,6 +442,55 @@ Bag handling: a `BOX` made of cloth, leather, or silk is listed under `bag`, as 
 ### 9.4 Delivery
 
 One branch, `mod/stocks`, in three commits matching 3.0, 3.1, and 3.2, each verified live before the next. 3.1's bookkeeper view is verified by appointing a bookkeeper at a low precision and comparing the op to the game's Stocks screen.
+
+---
+
+## 10. Phase 4 addendum: logistics and world (planned 2026-10-12)
+
+Decisions agreed on 2026-10-12. DFHack already provides the hard parts of this phase: per-tile walkability groups, a building footprint checker, a one-call building placer that uses the game's own material filters, and a stockpile preset library.
+
+### 10.1 What DFHack gives us (stable Lua API, checked 2026-10-12)
+
+| Need | API |
+|---|---|
+| Work orders | `df.global.world.manager_orders.all` (vector of `manager_order`) and `manager_order_next_id`. Fields: `job_type`, `item_type`, `item_subtype`, `reaction_name`, `mat_type`, `mat_index`, `material_category`, `amount_left`, `amount_total` (0 is unlimited), `status` bitfield `{validated, active}`, `frequency` (`OneTime`, `Daily`, `Monthly`, `Seasonally`, `Yearly`), `workshop_id`, `max_workshops`, `item_conditions`, `order_conditions`. DFHack's own `workorder` script creates orders by allocating the id from the counter, filling these fields, and inserting into the vector; we do the same. |
+| Job names | `df.job_type.attrs[t].caption` and `.item`; reactions in `world.raws.reactions.reactions` with `code` and `name`. |
+| Workshops | `world.buildings.other.WORKSHOP_ANY` and `FURNACE_ANY`; `contained_items` (item, use_mode), `jobs`, `profile`, `name`, bounds and `z`. A strange mood claim is a job in `jobs` whose type is one of the `StrangeMood*` job types. |
+| Tiles | `dfhack.maps.getTileSize()`, `isValidTilePos`, `getTileType(pos)` with `df.tiletype.attrs[t].shape` and `.material`, `getTileFlags(pos)` (designation: `hidden`, `outside`, `subterranean`, `flow_size`; occupancy: `building`, `unit`, `item`), `getWalkableGroup(pos)` (0 means not walkable; same group means connected), `getPlantAtTile`. |
+| Footprints | `dfhack.buildings.checkFreeTiles(pos, size)` and `getCorrectSize`. |
+| Placing | `dfhack.buildings.constructBuilding{type, subtype, pos, material}`: with no explicit items or filters it calls `getFiltersByType` for the game's default job item filters, queues the construction job, and returns the building or `nil, error`. Dwarves then fetch the closest matching material, which is the "use closest material" behaviour. |
+| Stockpiles | `world.buildings.other.STOCKPILE`, `dfhack.buildings.getStockpileContents(sp)`, `constructBuilding{type=Stockpile, abstract=true, pos, width, height, fields={settings=...}}`, and `require('plugins.stockpiles').import_settings(name, {id=, mode=})` with the bundled `library/` presets. |
+| Wagon | The embark wagon is a `building_wagonst` in `world.buildings.all` until deconstructed. |
+
+### 10.2 Decisions
+
+| Question | Decision |
+|---|---|
+| Map reading | Three reads: `get_tile(x,y,z)` for one tile; `get_area_map(x,y,z,w,h)` returning rows of one character per tile (legend in the response), capped at 64 by 64 per call; `find_build_space(w,h,z,near)` scanning walkable floor for a clear rectangle. Plus `get_map_bounds()` and `get_wagon()`. |
+| Surface level | The wagon's z is the starting surface. Once the wagon is gone, the surface at a column is the highest tile whose shape is floor or ramp and whose designation is `outside`. |
+| Placement with no materials | Count suitable items for the default filters first; if none, refuse with `no_materials` and place nothing. Invalid footprint refuses with `invalid_space` and the first blocking tile. Only blueprints are placed; nothing is completed instantly. |
+| Stockpile config | Top-level category toggles directly on `settings.flags`, plus an optional DFHack preset name applied through the stockpiles plugin. Painting takes two corners and makes the rectangle. |
+| Order edits | Create (job, optional item subtype, material or material category, reaction, amount, frequency), edit amount, frequency, max workshops, or workshop restriction; delete. Conditions are read-only. The `status` field is never written: only the manager validates an order. |
+| List caps | 25 by default everywhere in this phase (CLAUDE.md rule 12), raised per call with `limit`. Workshop inventories included. |
+| Namespaces | `orders` (on) / `orders_write` (off), `workshops` (on) / `build_write` (off), `map` (on), `stockpiles` (on) / `stockpiles_write` (off). Settings groups gain `Logistics` (orders, workshops, build, stockpiles) and `World` (map). |
+
+### 10.3 Ops by item
+
+| Item | Ops | Tools |
+|---|---|---|
+| 4.0 | `orders.list`, `orders.get`, `orders.jobs` (search job types and reactions by name), `orders.create`, `orders.edit`, `orders.delete` | `list_work_orders`, `get_work_order`, `find_job_types`, `create_work_order`, `edit_work_order`, `delete_work_order` |
+| 4.1 | `workshops.list` (with `type` filter), `workshops.get` (location, mood claim, inventory capped, jobs, profile) | `list_workshops`, `get_workshop` |
+| 4.2 | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space` | `get_map_bounds`, `get_wagon`, `get_tile`, `get_area_map`, `find_build_space` |
+| 4.3 | `build.workshop` (type, position, material category) | `place_workshop` |
+| 4.4 | `stockpiles.list` (with category filter), `stockpiles.get` (bounds, settings, contents capped) | `list_stockpiles`, `get_stockpile` |
+| 4.5 | `stockpiles.create` (two corners, name, categories, preset), `stockpiles.configure`, `stockpiles.rename`, `stockpiles.delete` | `create_stockpile`, `configure_stockpile`, `rename_stockpile`, `delete_stockpile` |
+
+Order rows: `id`, `job` (token and caption), `item`, `material`, `reaction`, `amount` `{left, total, unlimited}`, `frequency`, `status` `{validated, active}`, `approved` (same as validated, the manager's doing), `workshop_id`, `max_workshops`, `conditions` `{items: [...], orders: [...]}` as readable text, `conditions_met` where it can be computed from the conditions alone.
+
+### 10.4 Delivery
+
+One branch per item from `main`, each verified live: `mod/work-orders`, `mod/workshops`, `mod/map`, `mod/build-workshop`, `mod/stockpiles`, `mod/stockpiles-paint`.
+
 
 ---
 
