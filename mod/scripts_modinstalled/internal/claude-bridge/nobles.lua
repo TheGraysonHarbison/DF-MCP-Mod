@@ -76,12 +76,27 @@ local function slots_of(entity, position)
     return out
 end
 
+local function has_flag(position, name)
+    return safe(function() return position.flags[df.entity_position_flags[name]] end) == true
+end
+
 local function is_military(position, slots)
-    if safe(function() return position.squad_size end) or 0 > 0 then return true end
+    if (safe(function() return position.squad_size end) or 0) > 0 then return true end
+    if has_flag(position, 'MILITARY_SCREEN_ONLY') then return true end
     for _, slot in ipairs(slots) do
-        if safe(function() return slot.assignment.squad_id end) or -1 >= 0 then return true end
+        if (safe(function() return slot.assignment.squad_id end) or -1) >= 0 then return true end
     end
     return false
+end
+
+-- The game marks the positions it currently offers on the Nobles screen as ACTIVE; the rest
+-- are locked behind population or market requirements.
+local function is_available(position)
+    return has_flag(position, 'ACTIVE')
+end
+
+local function is_elected(position)
+    return has_flag(position, 'ELECTED')
 end
 
 local function position_codes(entity)
@@ -119,6 +134,10 @@ function describe_position(entity, position)
         slots = slot_rows,
         vacant = vacant,
         military = is_military(position, slots),
+        available = is_available(position),
+        elected = is_elected(position),
+        appointable = is_available(position) and not is_military(position, slots)
+            and not is_elected(position) and #slots > 0,
         land_holder = safe(function() return position.land_holder end),
         flags = set_names(position.flags, df.entity_position_flags),
         responsibilities = set_names(position.responsibilities, df.entity_position_responsibility),
@@ -226,6 +245,15 @@ local function assign(args)
     if is_military(position, slots) then
         return rpc.error_result(rpc.ERR_BAD_REQUEST,
             ('%s is a military position; it is assigned through squads, not here'):format(position.code))
+    end
+    if is_elected(position) then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('%s is elected by the citizens and cannot be appointed'):format(position.code))
+    end
+    if not is_available(position) then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('%s is not available to this fort yet (population or market requirement not met)')
+                :format(position.code))
     end
 
     local unit, fig = nil, nil

@@ -15,8 +15,9 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         """List the fort's noble and administrative positions and who holds them.
 
         Each position has `code` (use it with `assign_noble`), `name`, `precedence`,
-        `holders` (unit ids and names), `slots`, `vacant`, `military` (assigned through
-        squads, not here), `responsibilities`, and the rooms and furniture it requires.
+        `holders` (unit ids and names), `slots`, `vacant`, `appointable` (true only for
+        positions the fort has unlocked that are neither military nor elected),
+        `responsibilities`, and the rooms and furniture it requires.
         """
         return call(bridge, "nobles.list")
 
@@ -30,9 +31,10 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         CHIEF_MEDICAL_DWARF. `unit_id` is the citizen to appoint; omit it to leave the
         position empty. `slot` picks one of several seats when the position has more than
         one; by default the unit's current seat, else the first vacant, else the first.
-        Military positions are refused. This changes the game and needs the
-        `nobles_write` permission, off by default. Returns `changed`, `previous` holder,
-        and the updated position.
+        Only positions with `appointable: true` in `list_nobles` are accepted: military
+        and elected positions and ones the fort has not unlocked yet are refused. This changes
+        the game and needs the `nobles_write` permission, off by default. Returns `changed`,
+        `previous` holder, and the updated position.
         """
         if not position or not position.strip():
             raise ValueError("position must be a non-empty code or id")
