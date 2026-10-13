@@ -28,6 +28,12 @@ def test_server_registers_expected_tools():
         "find_items",
         "list_artifacts",
         "get_fort_status",
+        "list_work_orders",
+        "get_work_order",
+        "find_job_types",
+        "create_work_order",
+        "edit_work_order",
+        "delete_work_order",
         "run_console_command",
     }
     by_name = {t.name: t for t in tools}
@@ -40,3 +46,5 @@ def test_server_registers_expected_tools():
     assert nick.idempotent_hint is True
     assert by_name["assign_noble"].annotations.read_only_hint is False
     assert by_name["list_nobles"].annotations.read_only_hint is True
+    assert by_name["delete_work_order"].annotations.destructive_hint is True
+    assert by_name["create_work_order"].annotations.destructive_hint is False

@@ -55,6 +55,8 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `nobles_write` | off | `nobles.assign` |
 | `stocks` | on | `stocks.bar`, `stocks.list`, `stocks.find`, `stocks.artifacts`, `stocks.status` |
 | `stocks_true` | on | no ops; a toggle. Off puts the stocks ops in bookkeeper view. |
+| `orders` | on | `orders.list`, `orders.get`, `orders.jobs` |
+| `orders_write` | off | `orders.create`, `orders.edit`, `orders.delete` |
 | `console` | off | `console.run` (plus a per-command allowlist) |
 | `lua_eval` | off | no ops; gates `lua` through `console.run` |
 
@@ -119,7 +121,7 @@ Field availability is defensive: anything DFHack cannot provide for a unit is om
 
 ### `units.sheet`
 
-Args: `id` (unit id), `category` (string), `subcategory` (string or null), `limit` (positive int, default 50). Needs a map.
+Args: `id` (unit id), `category` (string), `subcategory` (string or null), `limit` (positive int, default 25). Needs a map.
 
 Categories and sub-categories follow the in-game profile tabs:
 
@@ -161,7 +163,7 @@ Section contents, briefly (every list is a `{entries, total, truncated}` object)
 
 ### `units.full_sheet`
 
-Args: `id`, `limit` (positive int, default 50). Needs a map.
+Args: `id`, `limit` (positive int, default 25). Needs a map.
 
 Result: `id`, `name`, `limit`, `sheet` (object keyed by category, each shaped as the `units.sheet` `data` with no sub-category filter), `truncated`, `best_effort`. A category whose builder raises is returned as `{best_effort: true, error}` rather than failing the call.
 
@@ -199,7 +201,7 @@ Result: `mode` (`true` or `bookkeeper`), `bookkeeper` `{assigned, bookkeeper, pr
 
 ### `stocks.list`
 
-Args: `category` (optional item type token such as `weapon`, `helm`, `bag`, or the game caption), `query` (optional substring matched against item kind, material, and caption), `limit` (rows per category, default 50). Needs a map.
+Args: `category` (optional item type token such as `weapon`, `helm`, `bag`, or the game caption), `query` (optional substring matched against item kind, material, and caption), `limit` (rows per category, default 25). Needs a map.
 
 Walks `world.items.other.IN_PLAY`, skipping items flagged `trader`, `hostile`, `garbage_collect`, `removed`, `murder`, or `construction`. Items flagged `forbid`, `dump`, `melt`, `in_building`, or `in_job` are counted but reported as unavailable. A `BOX` made of leather, silk, plant thread, or yarn is listed as `bag`. Items whose material is a creature (fish, raw fish, eggs, live vermin) report the creature's caste name as `material`.
 
@@ -209,7 +211,7 @@ Result: `mode`, `count` (categories), `truncated` (category keys that hit `limit
 
 ### `stocks.find`
 
-Args: `query` (non-empty string), `limit` (default 50). Needs a map.
+Args: `query` (non-empty string), `limit` (default 25). Needs a map.
 
 Result: `query`, `total`, `count`, `truncated`, `rows` (as `stocks.list` rows plus `category` and `category_name`), highest quantity first. Refused with `NOT_ALLOWED` in bookkeeper view below full accuracy.
 
@@ -226,6 +228,48 @@ Result: `count`, `elsewhere`, `artifacts` `{id, name, name_english, item_id, des
 Args: none. Needs a map. Not affected by `stocks_true`.
 
 Result: `site` `{id, name, name_english}`, `civilization` `{id, name}`, `government` `{id, name}` (the site government), `rank` `{index, name, next {name, population, created_wealth, exported_wealth}, thresholds_note}` (0 outpost to 5 metropolis; `next` absent at metropolis; thresholds are the wiki defaults, the next rank needs the population or either wealth figure), `progress` `{population, trade, production}` (the game's three ratings), `wealth` `{total, weapons, armor, furniture, other, architecture, displayed, held, imported, exported, offered}` (`total` is created wealth), `population` `{citizens, recorded, potential_soldiers, trained_animals, other_animals, carnivores, omnivores, migrant_waves}` (`citizens` is a live count, `recorded` the game's last tally), `counts` `{num_artifacts, total_deaths, total_executions, total_insanities, invaders_repelled, excavated_tiles, combat_aptitude, discovered_*_features}`.
+
+### Work orders
+
+Order row: `id`, `job` (token), `job_name` (caption), `item_type`, `item_subtype` `{index, id, name}`, `material`, `material_category` (flag names), `reaction` `{code, name}`, `amount` `{left, total, unlimited}` (`total` 0 is unlimited), `frequency` (`OneTime`, `Daily`, `Monthly`, `Seasonally`, `Yearly`), `status` `{validated, active}`, `approved` (same as `validated`: the manager's decision, never written by the bridge), `workshop_id` (when pinned), `max_workshops` (0 unlimited), `conditions` `{items: [{compare, value, item_type, item_subtype, material, flags, text}], orders: [{order_id, condition, text}]}`, `next_check` `{year, year_tick}` for repeating orders.
+
+### `orders.list`
+
+Args: `query` (optional substring over job, item, material, reaction names), `approved` (optional bool), `limit` (default 25), `offset` (0). Needs a map.
+
+Result: `total`, `count`, `offset`, `limit`, `truncated`, `orders`.
+
+### `orders.get`
+
+Args: `id`. Needs a map. Unknown id is `NOT_FOUND`.
+
+### `orders.jobs`
+
+Args: `query` (non-empty), `limit` (default 25, applied to each list). Needs a world.
+
+Searches orderable job types (manufacture and similar classes, never designations or strange moods) by token or caption, and custom reactions by code or name.
+
+Result: `query`, `jobs` `[{job, caption, class, item, possible_items, skill}]`, `jobs_total`, `reactions` `[{reaction, name, buildings}]`, `reactions_total`, `truncated`.
+
+### `orders.create`
+
+Args: exactly one of `job` (token or caption) or `reaction` (code or name, implies the `CustomReaction` job); `amount` (whole number, default 1, 0 unlimited); `item_type` (token, defaults to the job's item); `item_subtype` (raw id such as `ITEM_WEAPON_PICK` or name such as `pick`, needs `item_type`); `material` (a `dfhack.matinfo.find` token); `material_category` (string or array of `job_material_category` flag names); `frequency` (default `OneTime`); `max_workshops` (default 0); `workshop_id`. Needs a map and `orders_write`.
+
+The order is appended to `world.manager_orders.all` with the next id, the way DFHack's `workorder` script does it. `status` is left clear: the manager validates and activates it.
+
+Result: `created`, `order` (row).
+
+### `orders.edit`
+
+Args: `id`, and at least one of `amount` (keeps completed progress: left = new total minus done), `frequency`, `max_workshops`, `workshop_id` (-1 clears). Needs a map and `orders_write`.
+
+Result: `changed` (field names), `order`.
+
+### `orders.delete`
+
+Args: `id`. Needs a map and `orders_write`.
+
+Result: `deleted`, `order` (as it was).
 
 ### `console.run`
 

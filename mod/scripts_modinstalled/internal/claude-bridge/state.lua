@@ -9,7 +9,7 @@ MOD_VERSION = '0.2.0'
 PROTOCOL_VERSION = 2
 
 -- Settings groups, in display order.
-GROUPS = {'General', 'Units', 'Items', 'Commands'}
+GROUPS = {'General', 'Units', 'Items', 'Logistics', 'Commands'}
 
 -- Permission namespaces and plain toggles. Order within a group is the display order in the
 -- settings window; `hotkey` is the toggle's key there. Entries with `toggle = true` are not
@@ -31,6 +31,10 @@ NAMESPACES = {
      label = 'Read stocks and artifacts'},
     {key = 'stocks_true', group = 'Items', hotkey = 'CUSTOM_R', default = true, toggle = true,
      label = 'True stock counts (off: bookkeeper view)'},
+    {key = 'orders',   group = 'Logistics', hotkey = 'CUSTOM_O', default = true,
+     label = 'Read work orders'},
+    {key = 'orders_write', group = 'Logistics', hotkey = 'CUSTOM_W', default = false,
+     label = 'Create, edit, delete work orders'},
     {key = 'console',  group = 'Commands', hotkey = 'CUSTOM_C', default = false,
      label = 'Run allowlisted console cmds'},
     {key = 'lua_eval', group = 'Commands', hotkey = 'CUSTOM_L', default = false,

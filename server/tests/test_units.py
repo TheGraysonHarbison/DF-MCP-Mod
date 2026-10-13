@@ -103,7 +103,7 @@ def test_sheet_tools_send_category_and_limit():
     run(mcp, "get_unit_sheet", unit_id=7, category="skills", subcategory="combat")
     request = last_request(holder)
     assert request["op"] == "units.sheet"
-    assert request["args"] == {"id": 7, "category": "skills", "subcategory": "combat", "limit": 50}
+    assert request["args"] == {"id": 7, "category": "skills", "subcategory": "combat", "limit": 25}
     run(mcp, "get_unit_full_sheet", unit_id=7, limit=10)
     request = last_request(holder)
     assert request["op"] == "units.full_sheet"

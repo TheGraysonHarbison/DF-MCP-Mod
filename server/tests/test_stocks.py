@@ -20,7 +20,7 @@ def test_list_and_find_send_args():
     assert last_request(holder)["args"] == {"category": "weapon", "query": "copper", "limit": 5}
     run(mcp, "find_items", query="plump")
     assert last_request(holder)["op"] == "stocks.find"
-    assert last_request(holder)["args"] == {"query": "plump", "limit": 50}
+    assert last_request(holder)["args"] == {"query": "plump", "limit": 25}
     run(mcp, "list_artifacts")
     assert last_request(holder)["op"] == "stocks.artifacts"
     run(mcp, "get_fort_status")

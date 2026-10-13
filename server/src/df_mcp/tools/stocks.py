@@ -28,7 +28,7 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
 
     @mcp.tool(name="list_stocks", annotations=READ_ONLY)
     def list_stocks(
-        category: str | None = None, query: str | None = None, limit: int = 50
+        category: str | None = None, query: str | None = None, limit: int = 25
     ) -> dict[str, Any]:
         """List every stored item in the fort the way the Stocks screen does.
 
@@ -44,7 +44,7 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         return call(bridge, "stocks.list", {"category": category, "query": query, "limit": limit})
 
     @mcp.tool(name="find_items", annotations=READ_ONLY)
-    def find_items(query: str, limit: int = 50) -> dict[str, Any]:
+    def find_items(query: str, limit: int = 25) -> dict[str, Any]:
         """Search every stored item by name or material and get matching rows across all
         categories, highest quantity first.
         """
