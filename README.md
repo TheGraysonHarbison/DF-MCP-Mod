@@ -49,6 +49,12 @@ Quickfort Command For DFHack: https://docs.dfhack.org/en/stable/docs/tools/quick
 6. A method to nickname a unit. This is the first action that changes the game and sits behind its own permission
    toggle, off by default.
 
+**Phase 2 addendums:**
+
+- 2.1 See the fort's noble and administrative positions with their holders, and appoint a citizen to one (behind its
+  own permission, off by default).
+- 2.2 The `claude-bridge` console allowlist entry can no longer be used to change the mod's own settings.
+
 **MORE TO BE ADDED**
 
 ## Progress
@@ -68,6 +74,8 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 2 | 4. Unit sheet by category and sub-category (`get_unit_sheet`) | all eleven tabs implemented, verified in-game 2026-10-12; appearance text still best-effort |
 | 2 | 5. Whole unit sheet in one call (`get_unit_full_sheet`) | verified in-game 2026-10-12 |
 | 2 | 6. Nickname a unit (`set_unit_nickname`, `units_write` permission) | verified in-game 2026-10-12 |
+| 2.1 | Noble positions: list and assign (`list_nobles`, `assign_noble`, `nobles_write` permission) | verified in-game 2026-10-12 |
+| 2.2 | Console op refuses `claude-bridge perm/allow/deny` | verified in-game 2026-10-12 |
 | 3 | Event queue, in-game chat, autonomy timer | not started |
 | 4 | Actions: petitions, quickfort, orders, military | not started |
 

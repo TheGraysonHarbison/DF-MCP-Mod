@@ -29,8 +29,6 @@ local RPC_MODULE_NAME = 'rpc.claude_bridge'
 local state = reqscript('internal/claude-bridge/state')
 local rpc = reqscript('internal/claude-bridge/rpc')
 
--- Op modules, loaded fresh on every enable and reload so edited files are picked up.
-local OP_MODULES = {'core', 'time', 'units', 'sheet', 'console'}
 
 enabled = enabled or false
 
@@ -62,7 +60,7 @@ local function register_ops()
     state = reqscript('internal/claude-bridge/state')
     rpc = reqscript('internal/claude-bridge/rpc')
     rpc.reset()
-    for _, name in ipairs(OP_MODULES) do
+    for _, name in ipairs(rpc.OP_MODULES) do
         rpc.register_many(reqscript('internal/claude-bridge/' .. name).ops())
     end
 end

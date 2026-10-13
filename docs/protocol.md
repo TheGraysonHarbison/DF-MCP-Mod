@@ -51,6 +51,8 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `time` | on | `time.now` |
 | `units` | on | `units.list`, `units.find`, `units.get`, `units.sheet`, `units.full_sheet` |
 | `units_write` | off | `units.set_nickname` |
+| `nobles` | on | `nobles.list` |
+| `nobles_write` | off | `nobles.assign` |
 | `console` | off | `console.run` (plus a per-command allowlist) |
 | `lua_eval` | off | no ops; gates `lua` through `console.run` |
 
@@ -168,6 +170,22 @@ Args: `id` (unit id), `nickname` (string, up to 64 characters after trimming; em
 The nickname is converted from UTF-8 to code page 437 before it is stored; characters that code page lacks (for example capital Ó) become `?`. Unknown id is `NOT_FOUND`.
 
 Result: `id`, `name` (readable name after the change), `nickname` (absent when cleared).
+
+### `nobles.list`
+
+Args: none. Needs a map.
+
+Result: `entity` `{id, name}` (the site government), `count`, `positions` sorted by precedence. Each position: `id`, `code` (the token used by `nobles.assign`, e.g. `MANAGER`), `name` (gendered for the first holder), `precedence`, `number` (seats), `holders` (array of `{id, name, hist_figure_id, on_map}`; `id` absent when the holder is not a unit on this map), `slots` (array of `{slot, assignment_id, holder, squad_id}`), `vacant`, `military`, `available` (the game currently offers it on the Nobles screen), `elected`, `appointable` (available, not military, not elected, has a seat), `land_holder`, `flags`, `responsibilities`, `required` `{office, bedroom, dining, tomb, boxes, cabinets, racks, stands}`, `mandate_max`, `demand_max`, `replaced_by`.
+
+### `nobles.assign`
+
+Args: `position` (code or numeric id), `id` (unit id, or null to vacate), `slot` (1-based seat, optional). Needs a map and the `nobles_write` permission.
+
+Refused with `BAD_REQUEST` when the position is military (`squad_size` above zero, `MILITARY_SCREEN_ONLY`, or a seat tied to a squad), elected (`ELECTED` flag, e.g. mayor), not yet available (no `ACTIVE` flag), when the unit is not a living citizen, or when `slot` is out of range. Unknown position or unit is `NOT_FOUND`. Appointing a unit that already holds the seat, or vacating an empty seat, is a no-op with `changed: false`.
+
+The change mirrors what DFHack's `make-monarch` does: the assignment's `histfig` is swapped, the previous holder's position link is removed from their historical figure, and a new position link is added to the appointee. `histfig2` records the previous holder. No former-position record is written for the previous holder.
+
+Result: `changed`, `previous` (holder object or absent), `position` (as in `nobles.list`, after the change).
 
 ### `console.run`
 

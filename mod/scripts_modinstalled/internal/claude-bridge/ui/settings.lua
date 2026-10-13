@@ -5,12 +5,13 @@ local gui = require('gui')
 local widgets = require('gui.widgets')
 local state = reqscript('internal/claude-bridge/state')
 
-local PERM_HOTKEYS = {'CUSTOM_T', 'CUSTOM_U', 'CUSTOM_N', 'CUSTOM_S', 'CUSTOM_C', 'CUSTOM_L'}
+local PERM_HOTKEYS = {'CUSTOM_T', 'CUSTOM_U', 'CUSTOM_N', 'CUSTOM_B', 'CUSTOM_M', 'CUSTOM_S',
+                      'CUSTOM_C', 'CUSTOM_L'}
 
 SettingsWindow = defclass(SettingsWindow, widgets.Window)
 SettingsWindow.ATTRS{
     frame_title = 'Claude Bridge settings',
-    frame = {w = 58, h = 24},
+    frame = {w = 58, h = 26},
     resizable = true,
     resize_min = {w = 44, h = 18},
 }
