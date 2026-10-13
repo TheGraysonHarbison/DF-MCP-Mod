@@ -57,6 +57,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `stocks_true` | on | no ops; a toggle. Off puts the stocks ops in bookkeeper view. |
 | `orders` | on | `orders.list`, `orders.get`, `orders.jobs` |
 | `orders_write` | off | `orders.create`, `orders.edit`, `orders.delete` |
+| `workshops` | on | `workshops.list`, `workshops.get` |
 | `console` | off | `console.run` (plus a per-command allowlist) |
 | `lua_eval` | off | no ops; gates `lua` through `console.run` |
 
@@ -270,6 +271,22 @@ Result: `changed` (field names), `order`.
 Args: `id`. Needs a map and `orders_write`.
 
 Result: `deleted`, `order` (as it was).
+
+### `workshops.list`
+
+Args: `type` (optional: a `workshop_type` or `furnace_type` token such as `Kitchen` or `Smelter`, a custom building code or name, or `workshop`/`furnace`), `limit` (default 25), `offset` (0). Needs a map.
+
+Walks `world.buildings.other.WORKSHOP_ANY` and `FURNACE_ANY`.
+
+Row: `id`, `kind` (`workshop` or `furnace`), `type`, `name`, `custom_name`, `pos` `{x,y,z}` (centre), `bounds` `{x1,y1,x2,y2,z}`, `built` (build stage complete), `jobs` (count), `strange_mood` (a job of the strange mood class is queued there), `items` (count).
+
+Result: `total`, `count`, `offset`, `limit`, `truncated`, `workshops` (sorted by type then id), `counts_by_type` (whole map), and a `note` listing the types present and all known types when a filter matched nothing.
+
+### `workshops.get`
+
+Args: `id` (building id), `limit` (default 25). Needs a map. A building that is not a workshop or furnace is `BAD_REQUEST`.
+
+Result: the row plus `jobs` `[{id, name, job, order_id, flags, worker {id, name}, strange_mood}]`, `inventory` `{entries, total, truncated}` of items in the workshop (`{id, description, quantity, flags}`), `materials` (the same shape, the items it was built from), `profile` `{permitted_workers, min_level, max_level, flags}`, `truncated` (section names that hit `limit`).
 
 ### `console.run`
 

@@ -34,6 +34,8 @@ def test_server_registers_expected_tools():
         "create_work_order",
         "edit_work_order",
         "delete_work_order",
+        "list_workshops",
+        "get_workshop",
         "run_console_command",
     }
     by_name = {t.name: t for t in tools}
