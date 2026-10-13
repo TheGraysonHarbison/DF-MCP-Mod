@@ -54,6 +54,15 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
             raise ValueError("limit must be at least 1")
         return call(bridge, "stocks.find", {"query": query, "limit": limit})
 
+    @mcp.tool(name="get_fort_status", annotations=READ_ONLY)
+    def get_fort_status() -> dict[str, Any]:
+        """Read the fort's overall status: site and civilization names, rank (outpost to
+        metropolis) with the thresholds for the next rank, progress ratings, the wealth
+        breakdown (created, imported, exported, ...), population and animal counts, and
+        tallies such as artifacts, deaths, invaders repelled, and discovered features.
+        """
+        return call(bridge, "stocks.status")
+
     @mcp.tool(name="list_artifacts", annotations=READ_ONLY)
     def list_artifacts() -> dict[str, Any]:
         """List the world's artifacts known to this fort with their item, material, holder,

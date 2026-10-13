@@ -390,8 +390,88 @@ local function artifacts(args)
     return {count = #out, elsewhere = elsewhere, artifacts = out}
 end
 
+----------------------------------------------------------------------------------------------
+-- fort status (3.2)
+
+RANK_NAMES = {[0] = 'outpost', 'hamlet', 'village', 'town', 'city', 'metropolis'}
+
+-- Default thresholds from the wiki: the next rank needs the population OR either wealth figure.
+RANK_THRESHOLDS = {
+    {name = 'hamlet', population = 20, created_wealth = 5000, exported_wealth = 500},
+    {name = 'village', population = 50, created_wealth = 25000, exported_wealth = 2500},
+    {name = 'town', population = 80, created_wealth = 100000, exported_wealth = 10000},
+    {name = 'city', population = 110, created_wealth = 200000, exported_wealth = 20000},
+    {name = 'metropolis', population = 140, created_wealth = 300000, exported_wealth = 30000},
+}
+
+local function entity_name(id)
+    return safe(function()
+        local entity = df.historical_entity.find(id)
+        return entity and translate(entity.name, true) or nil
+    end)
+end
+
+local function copy_numbers(struct, fields)
+    local out = {}
+    for _, field in ipairs(fields) do
+        out[field] = safe(function() return struct[field] end)
+    end
+    return out
+end
+
+local function status(args)
+    local pi = df.global.plotinfo
+    local tasks = pi.tasks
+    local site = safe(dfhack.world.getCurrentSite)
+    local rank = pi.fortress_rank
+    local next_rank = RANK_THRESHOLDS[rank + 1]
+    local citizens = safe(function() return #dfhack.units.getCitizens(false, true) end)
+    return {
+        site = site and {
+            id = site.id,
+            name = translate(site.name, false),
+            name_english = translate(site.name, true),
+        } or nil,
+        civilization = {id = pi.civ_id, name = entity_name(pi.civ_id)},
+        government = {id = pi.group_id, name = entity_name(pi.group_id)},
+        rank = {
+            index = rank,
+            name = RANK_NAMES[rank] or tostring(rank),
+            next = next_rank,
+            thresholds_note = 'defaults; custom difficulty settings change them',
+        },
+        progress = {
+            population = pi.progress_population,
+            trade = pi.progress_trade,
+            production = pi.progress_production,
+        },
+        wealth = copy_numbers(tasks.wealth, {
+            'total', 'weapons', 'armor', 'furniture', 'other', 'architecture', 'displayed',
+            'held', 'imported', 'exported', 'offered',
+        }),
+        population = {
+            citizens = citizens,
+            recorded = tasks.population,
+            potential_soldiers = tasks.potential_soldiers,
+            trained_animals = tasks.trained_animals,
+            other_animals = tasks.other_animals,
+            carnivores = tasks.carnivores,
+            omnivores = tasks.omnivores,
+            migrant_waves = tasks.migrant_wave_idx,
+        },
+        counts = copy_numbers(tasks, {
+            'num_artifacts', 'total_deaths', 'total_executions', 'total_insanities',
+            'invaders_repelled', 'excavated_tiles', 'combat_aptitude',
+            'discovered_water_features', 'discovered_subterranean_features',
+            'discovered_chasm_features', 'discovered_magma_features',
+            'discovered_underworld_features',
+        }),
+    }
+end
+
 function ops()
     return {
+        ['stocks.status'] = {namespace = 'stocks', handler = status, needs_map = true},
         ['stocks.bar'] = {namespace = 'stocks', handler = bar, needs_map = true},
         ['stocks.list'] = {namespace = 'stocks', handler = list, needs_map = true},
         ['stocks.find'] = {namespace = 'stocks', handler = find, needs_map = true},

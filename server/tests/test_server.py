@@ -27,6 +27,7 @@ def test_server_registers_expected_tools():
         "list_stocks",
         "find_items",
         "list_artifacts",
+        "get_fort_status",
         "run_console_command",
     }
     by_name = {t.name: t for t in tools}
