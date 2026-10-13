@@ -1,0 +1,45 @@
+from __future__ import annotations
+
+from typing import Any
+
+from mcp.server import MCPServer
+
+from df_mcp.bridge import Bridge
+from df_mcp.tools import call
+from df_mcp.tools.core import WRITE_SAFE
+from df_mcp.tools.orders import DELETE
+
+
+def register(mcp: MCPServer, bridge: Bridge) -> None:
+    @mcp.tool(name="place_workshop", annotations=WRITE_SAFE)
+    def place_workshop(
+        type: str, x: int, y: int, z: int, material: str | None = None
+    ) -> dict[str, Any]:
+        """Place a workshop or furnace blueprint for the dwarves to build. Needs `build_write`.
+
+        `type` is a workshop or furnace name such as Masons, Carpenters, Kitchen, Still,
+        Smelter, or a custom building code. (x, y, z) is the top-left corner of the
+        footprint; use `find_build_space` and pass its `origin`. The game's default material
+        filters are used, so dwarves fetch the closest suitable material; `material` (a token
+        like INORGANIC:GRANITE) restricts it. Returns `status`: `placed` with the new
+        building, `invalid_space` with the blocking tile, or `no_materials` with what is
+        missing. Only a blueprint is placed; nothing is built instantly.
+        """
+        if not type or not type.strip():
+            raise ValueError("type must be a workshop or furnace name")
+        return call(
+            bridge,
+            "build.workshop",
+            {"type": type.strip(), "x": x, "y": y, "z": z, "material": material},
+        )
+
+    @mcp.tool(name="remove_building", annotations=DELETE)
+    def remove_building(building_id: int) -> dict[str, Any]:
+        """Ask for a workshop or furnace to be removed. Needs `build_write`.
+
+        A finished building gets a deconstruction job, so a dwarf takes it apart and its
+        materials drop on the ground (`status: removal_queued`). An unfinished blueprint is
+        cancelled immediately (`blueprint_cancelled`). A building claimed by a strange mood
+        is refused. Ids come from `list_workshops`.
+        """
+        return call(bridge, "build.remove", {"id": building_id})
