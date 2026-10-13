@@ -397,6 +397,53 @@ One PR per row, each updating `docs/protocol.md`, the README progress table, and
 
 ---
 
+## 9. Phase 3 addendum: stocks and pops (planned 2026-10-12)
+
+Decisions agreed on 2026-10-12 after a live probe of the fort's `plotinfo` record. Everything here reads; the only new write is the settings toggle, which the player owns.
+
+### 9.1 What the game keeps
+
+| Need | Source (checked live, DFHack 53.16-r2) | Notes |
+|---|---|---|
+| Top-bar counts | `df.global.plotinfo.tasks.food` fields `total`, `drink`, `seeds`, `meat`, `fish`, `plant`, `other` | Exact even with no bookkeeper: on the test fort every value matched a live count of the item vectors. `total` is meat + fish + plant + other (not drink or seeds). |
+| Bookkeeper | `plotinfo.nobles.bookkeeper_precision` (achieved level), `bookkeeper_settings` (goal, `record_precision_level_type`: `NONE`, `nearest_10`, `nearest_100`, `nearest_1000`, `nearest_10000`, `all_accurate`), `bookkeeper_cooldown` | With nobody appointed the fort reads achieved 0, goal `all_accurate`. |
+| Bookkeeper's stock records | `plotinfo.tasks.item_counts` (per `item_type`) and `unit_counts` (per profession) | All zero on the test fort: these are what the bookkeeper writes, so they are the honest "what the player's Stocks screen knows" source. |
+| Live items | `df.global.world.items.other.IN_PLAY`, `item:getType()`, `item:getStackSize()`, `dfhack.matinfo.decode(item):toString()`, `dfhack.items.getReadableDescription`, `df.item_type.attrs[t].caption` (the game's own category captions such as "headwear", "raw fish") | DFHack's old stocks plugin excluded `hostile`, `trader`, `in_building`, `garbage_collect`, `removed`, `dead_dwarf`, `murder`, `construction`; the Stocks screen counts built, forbidden, dump and melt items but shows them as unavailable. |
+| Artifacts | `df.global.world.artifacts.all` | Name, item, holder or position. |
+| Wealth | `plotinfo.tasks.wealth` fields `total`, `weapons`, `armor`, `furniture`, `other`, `architecture`, `displayed`, `held`, `imported`, `exported`, `offered` | `total` is created wealth; imported is separate. |
+| Fort status | `plotinfo.fortress_rank` (0 outpost, 1 hamlet, 2 village, 3 town, 4 city, 5 metropolis), `progress_population`, `progress_trade`, `progress_production`, `tasks.population`, `potential_soldiers`, `trained_animals`, `other_animals`, `carnivores`, `omnivores`, `num_artifacts`, `total_deaths`, `invaders_repelled`, `excavated_tiles`, `discovered_*_features`, `happiness_number` | Rank thresholds from the wiki (defaults): hamlet 20 pop or 5,000 created or 500 exported; village 50 / 25,000 / 2,500; town 80 / 100,000 / 10,000; city 110 / 200,000 / 20,000; metropolis 140 / 300,000 / 30,000. |
+
+### 9.2 Decisions
+
+| Question | Decision |
+|---|---|
+| "~" rule | The stored counts are exact, so the estimate marker is a display rule. When the achieved precision is below `all_accurate`, round to the step the level names (`nearest_10` to 10, and so on; `NONE` behaves as nearest 10, which matches the top bar on the test fort showing a rounded value for 15) and prefix `~`. Verify the exact step once a bookkeeper is appointed. |
+| Stocks shape | Category, then rows of item kind plus material: `{"weapons": {"name": "weapon", "total": 8, "rows": [{"item": "short sword", "material": "copper", "count": 3, "unavailable": 0}]}}`. Empty categories are omitted entirely. |
+| 3.1 default | The setting is on: Claude reads true counts. Off puts Claude in bookkeeper view. |
+| Bookkeeper view | Top bar: rounded per the rule above. Stocks: category totals from `tasks.item_counts` rounded the same way, with no rows unless the achieved precision is `all_accurate`, in which case it equals true view. On a fort with no bookkeeper this is all zeros, which is what the player sees. |
+| 3.2 scope | Fort status: site and civilization names, rank with the thresholds for the next rank, the three progress ratings, the wealth breakdown, population and animal counts, artifacts, deaths, invaders repelled, excavated tiles, discovered features. Civ relations are not included. |
+| Settings groups | Every namespace gets a `group`: General (time, settings), Units (units, units_write, nobles, nobles_write), Items (stocks, stocks_true), Commands (console, lua_eval). The settings window draws a header per group. |
+
+### 9.3 Ops and tools
+
+Namespace `stocks` (read, default on). Setting `stocks_true` (default on) is not an op namespace; the dispatcher does not check it, the stocks handlers do.
+
+| Op | Args | Result | Tool |
+|---|---|---|---|
+| `stocks.bar` | `category` (optional: `food`, `drink`, `seed`, `meat`, `fish`, `plant`, `other`) | `mode` (`true` or `bookkeeper`), `bookkeeper` `{assigned, precision, goal, cooldown}`, `counts` keyed by category: `{value, display, estimated}`; with `category`, just that entry | `get_stock_bar(category=None)` |
+| `stocks.list` | `category` (optional item type token or caption), `query` (optional substring on item or material), `limit` rows per category (default 50) | `mode`, `categories` keyed by token with `name`, `total`, `unavailable`, `rows` `{item, material, count, unavailable}`, `truncated`; empty categories omitted | `list_stocks(category=None, query=None, limit=50)` |
+| `stocks.find` | `query`, `limit` (default 50) | Rows across every category with `category` added | `find_items(query, limit=50)` |
+| `stocks.artifacts` | none | `artifacts` `{id, name, item, material, holder, pos}` | `list_artifacts()` |
+| `stocks.status` | none | `site`, `civilization`, `rank` `{index, name, next: {name, population, created_wealth, exported_wealth}}`, `progress`, `wealth`, `population`, `counts` | `get_fort_status()` |
+
+Bag handling: a `BOX` made of cloth, leather, or silk is listed under `bag`, as the game does. Rows sort by count descending.
+
+### 9.4 Delivery
+
+One branch, `mod/stocks`, in three commits matching 3.0, 3.1, and 3.2, each verified live before the next. 3.1's bookkeeper view is verified by appointing a bookkeeper at a low precision and comparing the op to the game's Stocks screen.
+
+---
+
 ## References (checked 2026-10-12)
 
 - DFHack releases: https://github.com/DFHack/dfhack/releases (latest 53.16-r2)
