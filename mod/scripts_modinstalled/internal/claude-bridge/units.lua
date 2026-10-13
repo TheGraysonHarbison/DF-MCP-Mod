@@ -1,4 +1,4 @@
--- Unit listing, search, and basic info. Read-only. Design: docs/ProjectPlan.md section 8.
+-- Unit listing, search, basic info, and nicknames. Design: docs/ProjectPlan.md section 8.
 --@ module = true
 
 local rpc = reqscript('internal/claude-bridge/rpc')
@@ -329,10 +329,43 @@ local function get(args)
     return detail(unit)
 end
 
+-- The one write in this module. Gated by its own namespace, off by default.
+local function set_nickname(args)
+    local id = tonumber(args.id)
+    if not id then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"id" must be a unit id')
+    end
+    local nick = args.nickname
+    if nick == nil then nick = '' end
+    if type(nick) ~= 'string' then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"nickname" must be a string')
+    end
+    nick = nick:match('^%s*(.-)%s*$')
+    if #nick > 64 then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"nickname" is limited to 64 characters')
+    end
+    local unit = df.unit.find(id)
+    if not unit then
+        return rpc.error_result(rpc.ERR_NOT_FOUND, 'no unit with id ' .. id)
+    end
+    -- The client sends UTF-8; DF stores code page 437.
+    local ok, err = pcall(U.setNickname, unit, dfhack.utf2df(nick))
+    if not ok then
+        return rpc.error_result(rpc.ERR_INTERNAL, 'setNickname failed: ' .. tostring(err))
+    end
+    return {
+        id = unit.id,
+        name = safe(U.getReadableName, unit),
+        nickname = nickname(unit),
+    }
+end
+
 function ops()
     return {
         ['units.list'] = {namespace = 'units', handler = list, needs_map = true},
         ['units.find'] = {namespace = 'units', handler = find, needs_map = true},
         ['units.get'] = {namespace = 'units', handler = get, needs_map = true},
+        ['units.set_nickname'] = {namespace = 'units_write', handler = set_nickname,
+                                  needs_map = true},
     }
 end

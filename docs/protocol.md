@@ -50,6 +50,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `settings` | on | `settings.get` |
 | `time` | on | `time.now` |
 | `units` | on | `units.list`, `units.find`, `units.get`, `units.sheet`, `units.full_sheet` |
+| `units_write` | off | `units.set_nickname` |
 | `console` | off | `console.run` (plus a per-command allowlist) |
 | `lua_eval` | off | no ops; gates `lua` through `console.run` |
 
@@ -159,6 +160,14 @@ Section contents, briefly (every list is a `{entries, total, truncated}` object)
 Args: `id`, `limit` (positive int, default 50). Needs a map.
 
 Result: `id`, `name`, `limit`, `sheet` (object keyed by category, each shaped as the `units.sheet` `data` with no sub-category filter), `truncated`, `best_effort`. A category whose builder raises is returned as `{best_effort: true, error}` rather than failing the call.
+
+### `units.set_nickname`
+
+Args: `id` (unit id), `nickname` (string, up to 64 characters after trimming; empty clears). Needs a map and the `units_write` permission.
+
+The nickname is converted from UTF-8 to code page 437 before it is stored; characters that code page lacks (for example capital Ó) become `?`. Unknown id is `NOT_FOUND`.
+
+Result: `id`, `name` (readable name after the change), `nickname` (absent when cleared).
 
 ### `console.run`
 

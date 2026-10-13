@@ -5,7 +5,7 @@ local gui = require('gui')
 local widgets = require('gui.widgets')
 local state = reqscript('internal/claude-bridge/state')
 
-local PERM_HOTKEYS = {'CUSTOM_T', 'CUSTOM_U', 'CUSTOM_S', 'CUSTOM_C', 'CUSTOM_L'}
+local PERM_HOTKEYS = {'CUSTOM_T', 'CUSTOM_U', 'CUSTOM_N', 'CUSTOM_S', 'CUSTOM_C', 'CUSTOM_L'}
 
 SettingsWindow = defclass(SettingsWindow, widgets.Window)
 SettingsWindow.ATTRS{

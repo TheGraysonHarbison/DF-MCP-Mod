@@ -121,3 +121,13 @@ def test_sheet_tool_rejects_bad_category_and_subcategory():
         with pytest.raises(Exception):  # noqa: B017
             run(mcp, "get_unit_sheet", unit_id=7, **kwargs)
     assert "client" not in holder
+
+
+def test_set_nickname_sends_id_and_nickname():
+    mcp, holder = make()
+    run(mcp, "set_unit_nickname", unit_id=310, nickname="Digger")
+    request = last_request(holder)
+    assert request["op"] == "units.set_nickname"
+    assert request["args"] == {"id": 310, "nickname": "Digger"}
+    with pytest.raises(Exception):  # noqa: B017
+        run(mcp, "set_unit_nickname", unit_id=310, nickname="x" * 65)

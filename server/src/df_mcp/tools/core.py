@@ -9,6 +9,10 @@ from df_mcp.bridge import Bridge
 from df_mcp.tools import call
 
 READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=False)
+# Changes game state but is reversible and repeatable (renaming, toggling).
+WRITE_SAFE = ToolAnnotations(
+    read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=False
+)
 
 
 def register(mcp: MCPServer, bridge: Bridge) -> None:
