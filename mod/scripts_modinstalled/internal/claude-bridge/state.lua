@@ -9,7 +9,7 @@ MOD_VERSION = '0.2.0'
 PROTOCOL_VERSION = 2
 
 -- Settings groups, in display order.
-GROUPS = {'General', 'Units', 'Items', 'Logistics', 'Commands'}
+GROUPS = {'General', 'Units', 'Items', 'Logistics', 'World', 'Commands'}
 
 -- Permission namespaces and plain toggles. Order within a group is the display order in the
 -- settings window; `hotkey` is the toggle's key there. Entries with `toggle = true` are not
@@ -37,6 +37,8 @@ NAMESPACES = {
      label = 'Create, edit, delete work orders'},
     {key = 'workshops', group = 'Logistics', hotkey = 'CUSTOM_K', default = true,
      label = 'Read workshops'},
+    {key = 'map',      group = 'World',    hotkey = 'CUSTOM_P', default = true,
+     label = 'Read map tiles'},
     {key = 'console',  group = 'Commands', hotkey = 'CUSTOM_C', default = false,
      label = 'Run allowlisted console cmds'},
     {key = 'lua_eval', group = 'Commands', hotkey = 'CUSTOM_L', default = false,

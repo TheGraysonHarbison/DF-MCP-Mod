@@ -101,7 +101,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 3.2 | Settlement wealth and status (`get_fort_status`) | verified in-game 2026-10-12 |
 | 4 | Work orders: read, search job types, create, edit, delete (`list_work_orders`, `find_job_types`, `create_work_order`, `edit_work_order`, `delete_work_order`, `orders_write` permission) | verified in-game 2026-10-12 |
 | 4.1 | Workshops: list, filter by type, inspect jobs and contents (`list_workshops`, `get_workshop`) | verified in-game 2026-10-12 |
-| 4.2 | Read map tiles at a position | not started |
+| 4.2 | Map: bounds, wagon, tile read, text area map, free-space finder (`get_map_bounds`, `get_wagon`, `get_tile`, `get_area_map`, `find_build_space`) | verified in-game 2026-10-12 |
 | 4.3 | Build workshops | not started |
 | 4.4 | Stockpiles: list, settings, contents | not started |
 | 4.5 | Paint stockpiles | not started |
