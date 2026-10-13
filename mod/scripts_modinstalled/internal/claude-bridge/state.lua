@@ -37,6 +37,8 @@ NAMESPACES = {
      label = 'Create, edit, delete work orders'},
     {key = 'workshops', group = 'Logistics', hotkey = 'CUSTOM_K', default = true,
      label = 'Read workshops'},
+    {key = 'build_write', group = 'Logistics', hotkey = 'CUSTOM_D', default = false,
+     label = 'Place workshop blueprints'},
     {key = 'map',      group = 'World',    hotkey = 'CUSTOM_P', default = true,
      label = 'Read map tiles'},
     {key = 'console',  group = 'Commands', hotkey = 'CUSTOM_C', default = false,
