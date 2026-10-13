@@ -633,32 +633,541 @@ local function overview(unit, ctx)
 end
 
 ----------------------------------------------------------------------------------------------
--- builders: category -> function(unit, ctx) or {sub -> function(unit, ctx)}
+-- historical figure, relations, groups
 
-local NEXT_PR = 'planned for the next PR after the in-game struct check'
+local function histfig_of(unit)
+    return safe(function()
+        if unit.hist_figure_id < 0 then return nil end
+        return df.historical_figure.find(unit.hist_figure_id)
+    end)
+end
+
+local function histfig_name(id)
+    return safe(function()
+        local hf = df.historical_figure.find(id)
+        if not hf then return nil end
+        local native = translate(hf.name, false)
+        local surname = safe(function()
+            return dfhack.translation.translateName(hf.name, true, true)
+        end)
+        if native and surname and surname ~= '' then
+            return ('%s "%s"'):format(native, surname)
+        end
+        return native or translate(hf.name, true)
+    end)
+end
+
+local function histfig_unit_id(id)
+    local unit_id = safe(function() return df.historical_figure.find(id).unit_id end)
+    if unit_id and unit_id >= 0 then return unit_id end
+    return nil
+end
+
+-- Type name of a polymorphic link object: the getType enum when available, else the class.
+local function link_type(link, enum)
+    local name = safe(function() return enum[link:getType()] end)
+    if type(name) == 'string' then return name end
+    local class = tostring(safe(function() return link._type end))
+    return class:match('link_(%w+)st') or class
+end
+
+local function pets_of(unit)
+    local out = {}
+    pcall(function()
+        for _, other in ipairs(df.global.world.units.active) do
+            local owner = safe(function() return other.relationship_ids.PetOwner end)
+            if owner == unit.id then
+                local training = 'none'
+                if safe(U.isWar, other) then training = 'war'
+                elseif safe(U.isHunter, other) then training = 'hunting' end
+                table.insert(out, {
+                    id = other.id,
+                    name = safe(U.getReadableName, other),
+                    creature = safe(U.getRaceReadableName, other),
+                    training = training,
+                    dead = safe(U.isDead, other) and true or false,
+                })
+            end
+        end
+    end)
+    return out
+end
+
+local function relations(unit, ctx)
+    local family, deities, others = {}, {}, {}
+    local hf = histfig_of(unit)
+    if hf then
+        pcall(function()
+            for _, link in ipairs(hf.histfig_links) do
+                local kind = link_type(link, df.histfig_hf_link_type)
+                local entry = {
+                    relation = kind,
+                    hist_figure_id = link.target_hf,
+                    name = histfig_name(link.target_hf),
+                    id = histfig_unit_id(link.target_hf),
+                    strength = link.link_strength,
+                }
+                if kind == 'DEITY' then
+                    table.insert(deities, entry)
+                else
+                    table.insert(family, entry)
+                end
+            end
+        end)
+        -- Non-kin relationships. DF keeps raw feeling scores per known figure and derives
+        -- labels like "friend" from them in the UI; the scores are exposed as they are.
+        pcall(function()
+            for _, entry in ipairs(hf.info.relationships.hf_visual) do
+                local attitudes = {}
+                pcall(function()
+                    for _, a in ipairs(entry.attitude) do
+                        table.insert(attitudes, enum_name(df.reputation_type, a))
+                    end
+                end)
+                table.insert(others, {
+                    hist_figure_id = entry.histfig_id,
+                    name = histfig_name(entry.histfig_id),
+                    id = histfig_unit_id(entry.histfig_id),
+                    meet_count = safe(function() return entry.meet_count end),
+                    first_year = safe(function() return entry.first_year end),
+                    last_meet_year = safe(function() return entry.last_meet_year end),
+                    feelings = safe(function()
+                        local core = entry.core
+                        return {love = core.love, trust = core.trust, loyalty = core.loyalty,
+                                fear = core.fear, respect = core.respect}
+                    end),
+                    attitudes = attitudes,
+                    flags = true_flags(safe(function() return entry.flags end)),
+                })
+            end
+        end)
+        table.sort(others, function(a, b)
+            return (a.meet_count or 0) > (b.meet_count or 0)
+        end)
+    end
+    return {
+        kin = kin(unit),
+        family = capped(ctx, 'relations.family', family),
+        deities = capped(ctx, 'relations.deities', deities),
+        pets = capped(ctx, 'relations.pets', pets_of(unit)),
+        others = capped(ctx, 'relations.others', others),
+    }
+end
+
+local function groups(unit, ctx)
+    local out = {}
+    local hf = histfig_of(unit)
+    if hf then
+        pcall(function()
+            for _, link in ipairs(hf.entity_links) do
+                local entity = df.historical_entity.find(link.entity_id)
+                local entry = {
+                    link = link_type(link, df.histfig_entity_link_type),
+                    entity_id = link.entity_id,
+                    entity = entity and translate(entity.name, true) or nil,
+                    entity_type = entity and enum_name(df.historical_entity_type, entity.type) or nil,
+                    strength = link.link_strength,
+                }
+                pcall(function() entry.start_year = link.start_year end)
+                pcall(function() entry.end_year = link.end_year end)
+                pcall(function() entry.assignment_id = link.assignment_id end)
+                pcall(function() entry.squad_id = link.squad_id end)
+                pcall(function() entry.occupation_id = link.occupation_id end)
+                table.insert(out, entry)
+            end
+        end)
+    end
+    return {
+        memberships = capped(ctx, 'groups.memberships', out),
+        positions = noble_positions(unit),
+    }
+end
+
+----------------------------------------------------------------------------------------------
+-- military
+
+local function squad_of(unit)
+    return safe(function()
+        local id = unit.military.squad_id
+        if id < 0 then return nil end
+        return df.squad.find(id)
+    end)
+end
+
+local function squads(unit, ctx)
+    local squad = squad_of(unit)
+    if not squad then return {} end
+    local orders = {}
+    pcall(function()
+        for _, order in ipairs(squad.orders) do
+            table.insert(orders, safe(function() return order:getDescription() end)
+                or tostring(safe(function() return order._type end)))
+        end
+    end)
+    local position = unit.military.squad_position
+    return {
+        squad = {
+            id = squad.id,
+            name = safe(dfhack.military.getSquadName, squad.id),
+            alias = safe(function() return squad.alias ~= '' and squad.alias or nil end),
+            position = position,
+            leader = position == 0,
+            entity_id = squad.entity_id,
+            orders = orders,
+        },
+    }
+end
+
+local function uniform(unit, ctx)
+    local squad = squad_of(unit)
+    if not squad then return capped(ctx, 'military.uniform', {}) end
+    local out = {}
+    pcall(function()
+        local pos = squad.positions[unit.military.squad_position]
+        local specs = pos.equipment.uniform
+        for cat = 0, df.uniform_category._last_item do
+            for _, spec in ipairs(specs[cat]) do
+                local entry = {
+                    category = enum_name(df.uniform_category, cat),
+                    item_type = enum_name(df.item_type, spec.item_type),
+                    item = safe(function()
+                        local def = dfhack.items.getSubtypeDef(spec.item_type, spec.item_subtype)
+                        return def and def.name or nil
+                    end),
+                    material = safe(function()
+                        if spec.mattype < 0 then return nil end
+                        return dfhack.matinfo.decode(spec.mattype, spec.matindex):toString()
+                    end),
+                    material_class = safe(function()
+                        return enum_name(df.entity_material_category, spec.material_class)
+                    end),
+                    indiv_choice = true_flags(spec.indiv_choice),
+                }
+                pcall(function()
+                    local assigned = {}
+                    for _, item_id in ipairs(spec.assigned) do
+                        local item = df.item.find(item_id)
+                        table.insert(assigned, {id = item_id,
+                            description = item and item_description(item) or nil})
+                    end
+                    entry.assigned = assigned
+                end)
+                table.insert(out, entry)
+            end
+        end
+    end)
+    return capped(ctx, 'military.uniform', out)
+end
+
+local function kills(unit, ctx)
+    local notable, other = {}, {}
+    local hf = histfig_of(unit)
+    if hf then
+        pcall(function()
+            local k = hf.info.kills
+            for _, event_id in ipairs(k.events) do
+                local event = df.history_event.find(event_id)
+                local entry = {event_id = event_id}
+                pcall(function() entry.year = event.year end)
+                pcall(function()
+                    entry.victim_hist_figure_id = event.victim_hf
+                    entry.victim = histfig_name(event.victim_hf)
+                end)
+                pcall(function()
+                    entry.cause = enum_name(df.death_type, event.death_cause)
+                end)
+                table.insert(notable, entry)
+            end
+            for i = 0, #k.killed_race - 1 do
+                local race = k.killed_race[i]
+                table.insert(other, {
+                    creature = safe(function()
+                        return df.global.world.raws.creatures.all[race].name[0]
+                    end),
+                    race = safe(function()
+                        return df.global.world.raws.creatures.all[race].creature_id
+                    end),
+                    count = safe(function() return k.killed_count[i] end),
+                    undead = safe(function() return k.killed_undead[i] end) and true or false,
+                })
+            end
+        end)
+    end
+    return {
+        count = safe(U.getKillCount, unit),
+        notable = capped(ctx, 'military.kills.notable', notable),
+        other = capped(ctx, 'military.kills.other', other),
+    }
+end
+
+----------------------------------------------------------------------------------------------
+-- memories
+
+local function memory_entry(m)
+    return {
+        emotion = enum_name(df.emotion_type, m.type),
+        thought = enum_name(df.unit_thought_type, m.thought),
+        caption = safe(function() return df.unit_thought_type.attrs[m.thought].caption end),
+        subthought = m.subthought,
+        strength = m.strength,
+        relative_strength = safe(function() return m.relative_strength end),
+        severity = m.severity,
+        year = m.year,
+        year_tick = m.year_tick,
+        created_year = safe(function() return m.created_year end),
+        created_tick = safe(function() return m.created_tick end),
+        flags = true_flags(m.flags),
+    }
+end
+
+local function memory_slots(array)
+    local out = {}
+    pcall(function()
+        for i = 0, #array - 1 do
+            local m = array[i]
+            if m.thought >= 0 or m.type >= 0 then
+                table.insert(out, memory_entry(m))
+            end
+        end
+    end)
+    return out
+end
+
+local function memories(unit, ctx)
+    local soul = soul_of(unit)
+    local mem = soul and safe(function() return soul.personality.memories end)
+    if not mem then
+        return {
+            short_term = capped(ctx, 'thoughts.memories.short_term', {}),
+            long_term = capped(ctx, 'thoughts.memories.long_term', {}),
+            core = capped(ctx, 'thoughts.memories.core', {}),
+        }
+    end
+    local core = {}
+    pcall(function()
+        for _, c in ipairs(mem.core_memories) do
+            local entry = {memory = memory_entry(c.memory)}
+            pcall(function()
+                if c.changed_facet >= 0 then
+                    entry.changed_facet = enum_name(df.personality_facet_type, c.changed_facet)
+                    entry.facet_old, entry.facet_new = c.facet_old, c.facet_new
+                end
+            end)
+            pcall(function()
+                if c.changed_value >= 0 then
+                    entry.changed_value = enum_name(df.value_type, c.changed_value)
+                    entry.value_old, entry.value_new = c.value_old, c.value_new
+                end
+            end)
+            table.insert(core, entry)
+        end
+    end)
+    return {
+        short_term = capped(ctx, 'thoughts.memories.short_term', memory_slots(mem.shortterm)),
+        long_term = capped(ctx, 'thoughts.memories.long_term', memory_slots(mem.longterm)),
+        core = capped(ctx, 'thoughts.memories.core', core),
+    }
+end
+
+----------------------------------------------------------------------------------------------
+-- health treatment and history
+
+local function treatment(unit, ctx)
+    local health = safe(function() return unit.health end)
+    if not health then
+        return {flags = {}, body_parts = capped(ctx, 'health.treatment.body_parts', {}),
+                note = 'no health record; the unit has never needed care'}
+    end
+    local body_parts = {}
+    pcall(function()
+        for i = 0, #health.body_part_flags - 1 do
+            local flags = true_flags(health.body_part_flags[i])
+            if flags and #flags > 0 then
+                table.insert(body_parts, {
+                    body_part = body_part_name(unit, i),
+                    body_part_id = i,
+                    flags = flags,
+                })
+            end
+        end
+    end)
+    local countdowns = {}
+    for _, field in ipairs({'try_for_cast_cntdn', 'immobilize_cntdn', 'dressing_cntdn',
+                            'suture_cntdn', 'crutch_cntdn'}) do
+        local value = safe(function() return health[field] end)
+        if value and value > 0 then countdowns[field:gsub('_cntdn$', '')] = value end
+    end
+    return {
+        flags = true_flags(health.flags) or {},
+        body_parts = capped(ctx, 'health.treatment.body_parts', body_parts),
+        countdowns = countdowns,
+    }
+end
+
+local function history(unit, ctx)
+    local health = safe(function() return unit.health end)
+    local ops, diagnoses = {}, {}
+    if health then
+        pcall(function()
+            for _, e in ipairs(health.op_history) do
+                table.insert(ops, {
+                    job = enum_name(df.job_type, e.job_type),
+                    year = e.year,
+                    year_time = safe(function() return e.year_time end),
+                    doctor_id = safe(function() return e.doctor_id end),
+                    doctor = safe(function() return unit_name(e.doctor_id) end),
+                })
+            end
+        end)
+        pcall(function()
+            for _, d in ipairs(health.syndrome_diagnosis) do
+                table.insert(diagnoses, {
+                    syndrome_index = d.syndrome_ind,
+                    year = d.year,
+                    season_count = safe(function() return d.season_count end),
+                    worker_id = safe(function() return d.worker_unid end),
+                })
+            end
+        end)
+    end
+    return {
+        operations = capped(ctx, 'health.history.operations', ops),
+        diagnoses = capped(ctx, 'health.history.diagnoses', diagnoses),
+    }
+end
+
+----------------------------------------------------------------------------------------------
+-- labor
+
+local function enabled_labors(unit)
+    local out = {}
+    pcall(function()
+        for i = 0, df.unit_labor._last_item do
+            if unit.status.labors[i] then
+                table.insert(out, df.unit_labor[i] or tostring(i))
+            end
+        end
+    end)
+    return out
+end
+
+local function work_details(unit, ctx)
+    local out = {}
+    pcall(function()
+        for _, wd in ipairs(df.global.plotinfo.labor_info.work_details) do
+            local assigned = false
+            for _, id in ipairs(wd.assigned_units) do
+                if id == unit.id then assigned = true end
+            end
+            if assigned then
+                local labors = {}
+                pcall(function()
+                    for i = 0, df.unit_labor._last_item do
+                        if wd.allowed_labors[i] then
+                            table.insert(labors, df.unit_labor[i] or tostring(i))
+                        end
+                    end
+                end)
+                table.insert(out, {
+                    name = wd.name,
+                    icon = enum_name(df.work_detail_icon_type, wd.icon),
+                    mode = safe(function() return enum_name(df.work_detail_mode, wd.flags.mode) end),
+                    labors = labors,
+                })
+            end
+        end
+    end)
+    return {
+        details = capped(ctx, 'labor.work_details.details', out),
+        enabled_labors = capped(ctx, 'labor.work_details.enabled_labors', enabled_labors(unit)),
+    }
+end
+
+local function workshops(unit, ctx)
+    local out = {}
+    pcall(function()
+        local other = df.global.world.buildings.other
+        for _, key in ipairs({'WORKSHOP_ANY', 'FURNACE_ANY'}) do
+            for _, b in ipairs(other[key]) do
+                local workers = safe(function() return b.profile.permitted_workers end)
+                if workers then
+                    for _, w in ipairs(workers) do
+                        if w == unit.id then
+                            table.insert(out, {
+                                id = b.id,
+                                type = enum_name(df.building_type, b:getType()),
+                                subtype = safe(function()
+                                    local enum = key == 'WORKSHOP_ANY' and df.workshop_type
+                                        or df.furnace_type
+                                    return enum_name(enum, b.type)
+                                end),
+                                name = safe(function() return b.name ~= '' and b.name or nil end),
+                                pos = {x = b.centerx, y = b.centery, z = b.z},
+                            })
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    return capped(ctx, 'labor.workshops', out)
+end
+
+local function location_name(site_id, location_id)
+    return safe(function()
+        local site = df.world_site.find(site_id)
+        for _, ab in ipairs(site.buildings) do
+            if ab.id == location_id then
+                return translate(ab.name, true) or enum_name(df.abstract_building_type, ab:getType())
+            end
+        end
+        return nil
+    end)
+end
+
+local function locations(unit, ctx)
+    local out = {}
+    pcall(function()
+        for _, occ in ipairs(df.global.world.occupations.all) do
+            if occ.unit_id == unit.id then
+                table.insert(out, {
+                    id = occ.id,
+                    occupation = enum_name(df.occupation_type, occ.type),
+                    location_id = occ.location_id,
+                    site_id = occ.site_id,
+                    location = location_name(occ.site_id, occ.location_id),
+                })
+            end
+        end
+    end)
+    return capped(ctx, 'labor.locations', out)
+end
+
+local function work_animals(unit, ctx)
+    local out = {}
+    for _, pet in ipairs(pets_of(unit)) do
+        if pet.training ~= 'none' then table.insert(out, pet) end
+    end
+    return capped(ctx, 'labor.work_animals', out)
+end
+
+----------------------------------------------------------------------------------------------
+-- builders: category -> function(unit, ctx) or {sub -> function(unit, ctx)}
 
 local builders = {
     overview = overview,
-    relations = function(unit, ctx)
-        return {kin = kin(unit), others = stub(ctx, 'relations.others', NEXT_PR)}
-    end,
-    groups = function(unit, ctx) return stub(ctx, 'groups', NEXT_PR) end,
+    relations = relations,
+    groups = groups,
     military = {
-        squads = function(unit, ctx)
-            local squad = units.detail(unit).squad
-            return {squad = squad}
-        end,
-        uniform = function(unit, ctx) return stub(ctx, 'military.uniform', NEXT_PR) end,
-        kills = function(unit, ctx)
-            return {count = safe(U.getKillCount, unit),
-                    list = stub(ctx, 'military.kills.list', NEXT_PR)}
-        end,
+        squads = squads,
+        uniform = uniform,
+        kills = kills,
     },
     thoughts = {
         recent = function(unit, ctx)
             return capped(ctx, 'thoughts.recent', recent_thoughts(unit))
         end,
-        memories = function(unit, ctx) return stub(ctx, 'thoughts.memories', NEXT_PR) end,
+        memories = memories,
     },
     personality = {
         traits = function(unit, ctx)
@@ -687,8 +1196,8 @@ local builders = {
     health = {
         status = function(unit, ctx) return health_status(unit) end,
         wounds = function(unit, ctx) return capped(ctx, 'health.wounds', wounds(unit)) end,
-        treatment = function(unit, ctx) return stub(ctx, 'health.treatment', NEXT_PR) end,
-        history = function(unit, ctx) return stub(ctx, 'health.history', NEXT_PR) end,
+        treatment = treatment,
+        history = history,
         description = function(unit, ctx)
             local out = description(unit)
             table.insert(ctx.best_effort, 'health.description.appearance')
@@ -714,10 +1223,10 @@ local builders = {
     },
     rooms = function(unit, ctx) return capped(ctx, 'rooms', rooms(unit)) end,
     labor = {
-        work_details = function(unit, ctx) return stub(ctx, 'labor.work_details', NEXT_PR) end,
-        workshops = function(unit, ctx) return stub(ctx, 'labor.workshops', NEXT_PR) end,
-        locations = function(unit, ctx) return stub(ctx, 'labor.locations', NEXT_PR) end,
-        work_animals = function(unit, ctx) return stub(ctx, 'labor.work_animals', NEXT_PR) end,
+        work_details = work_details,
+        workshops = workshops,
+        locations = locations,
+        work_animals = work_animals,
     },
 }
 

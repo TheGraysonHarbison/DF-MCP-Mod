@@ -269,7 +269,7 @@ These are the rules the repo's `CLAUDE.md` carries. Kept here so the rationale s
 - The `package.loaded` route for `RunLua` is confirmed working in-game (2026-10-12).
 - `gh` is not installed on the dev machine; PRs are opened from the GitHub compare URL until it is.
 - Decide whether `.mcp.json` is committed or templated as `.mcp.json.example` once the uv entry point exists.
-- Unit detail fields need the in-game struct check in section 8.6 before Phase 2 ops are documented in `docs/protocol.md`.
+- The section 8.6 struct check was done by iteration against the live game on 2026-10-12 instead of `:lua`; findings are in `docs/protocol.md` under `units.sheet`. Still unverified because the test fort had none: squad uniforms and orders, kills, wounds and treatment, memories, occupations, workshop assignments, work animals.
 
 ---
 
