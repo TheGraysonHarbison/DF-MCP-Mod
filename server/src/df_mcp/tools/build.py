@@ -7,6 +7,7 @@ from mcp.server import MCPServer
 from df_mcp.bridge import Bridge
 from df_mcp.tools import call
 from df_mcp.tools.core import WRITE_SAFE
+from df_mcp.tools.orders import DELETE
 
 
 def register(mcp: MCPServer, bridge: Bridge) -> None:
@@ -31,3 +32,14 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
             "build.workshop",
             {"type": type.strip(), "x": x, "y": y, "z": z, "material": material},
         )
+
+    @mcp.tool(name="remove_building", annotations=DELETE)
+    def remove_building(building_id: int) -> dict[str, Any]:
+        """Ask for a workshop or furnace to be removed. Needs `build_write`.
+
+        A finished building gets a deconstruction job, so a dwarf takes it apart and its
+        materials drop on the ground (`status: removal_queued`). An unfinished blueprint is
+        cancelled immediately (`blueprint_cancelled`). A building claimed by a strange mood
+        is refused. Ids come from `list_workshops`.
+        """
+        return call(bridge, "build.remove", {"id": building_id})

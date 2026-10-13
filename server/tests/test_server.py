@@ -42,6 +42,7 @@ def test_server_registers_expected_tools():
         "get_area_map",
         "find_build_space",
         "place_workshop",
+        "remove_building",
         "run_console_command",
     }
     by_name = {t.name: t for t in tools}

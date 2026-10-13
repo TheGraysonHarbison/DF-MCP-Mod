@@ -59,7 +59,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `orders_write` | off | `orders.create`, `orders.edit`, `orders.delete` |
 | `workshops` | on | `workshops.list`, `workshops.get` |
 | `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space` |
-| `build_write` | off | `build.workshop` |
+| `build_write` | off | `build.workshop`, `build.remove` |
 | `console` | off | `console.run` (plus a per-command allowlist) |
 | `lua_eval` | off | no ops; gates `lua` through `console.run` |
 
@@ -329,6 +329,14 @@ Args: `type` (a `workshop_type` or `furnace_type` token such as `Masons` or `Sme
 Steps, in order: resolve the type and its size with `getCorrectSize`; scan the footprint with the same rules as `map.find_space` and then `checkFreeTiles`; build the game's default job item filters with `getFiltersByType` (restricted to `material` when given) and count usable items in play that satisfy each (`isSuitableItem` and `isSuitableMaterial`, skipping forbidden, dumped, melting, in-job, built, trader, and hostile items); then `constructBuilding` with those filters, which queues the construction job. The building is never completed by the bridge.
 
 Result: `status` of `placed` (with `building` `{id, kind, pos, bounds}`, `requirements`), `invalid_space` (with `footprint`, `blocked_at`, `reason`), or `no_materials` (with `requirements` `[{item_type, quantity, material, flags, available}]` and `missing`). An unknown type is `NOT_FOUND` with the known types listed.
+
+### `build.remove`
+
+Args: `id` (building id). Needs a map and `build_write`. Only workshops and furnaces; anything else is `BAD_REQUEST`, as is a building claimed by a strange mood.
+
+Calls `dfhack.buildings.deconstruct`: a finished building gets a deconstruction job for the dwarves, an unfinished blueprint is removed at once.
+
+Result: `status` (`removal_queued`, `blueprint_cancelled`, `removed`, or `already_queued`), `building` `{id, kind, type, name, pos}`, `note`.
 
 ### `console.run`
 

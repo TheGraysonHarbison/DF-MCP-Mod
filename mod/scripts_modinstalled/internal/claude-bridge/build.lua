@@ -237,8 +237,73 @@ local function workshop(args)
     }
 end
 
+local function building_summary(b)
+    return {
+        id = b.id,
+        kind = enum_name(df.building_type, b:getType()),
+        type = (function()
+            if df.building_workshopst:is_instance(b) then return enum_name(df.workshop_type, b.type) end
+            if df.building_furnacest:is_instance(b) then return enum_name(df.furnace_type, b.type) end
+            return nil
+        end)(),
+        name = safe(function() return b.name ~= '' and b.name or nil end),
+        pos = {x = b.centerx, y = b.centery, z = b.z},
+    }
+end
+
+-- Ask for a building to be removed. A finished building gets a deconstruction job for the
+-- dwarves; an unfinished blueprint is cancelled on the spot. Workshops and furnaces only.
+local function remove(args)
+    local id = tonumber(args.id)
+    if not id then return rpc.error_result(rpc.ERR_BAD_REQUEST, '"id" must be a building id') end
+    local b = df.building.find(id)
+    if not b then return rpc.error_result(rpc.ERR_NOT_FOUND, 'no building with id ' .. id) end
+    if not df.building_workshopst:is_instance(b) and not df.building_furnacest:is_instance(b) then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('building %d is a %s; only workshops and furnaces can be removed here'):format(
+                id, enum_name(df.building_type, b:getType()) or '?'))
+    end
+    local mood = false
+    pcall(function()
+        for _, job in ipairs(b.jobs) do
+            if df.job_type_class[df.job_type.attrs[job.job_type].type] == 'StrangeMood' then
+                mood = true
+            end
+        end
+    end)
+    if mood then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('building %d is claimed by a strange mood; removing it would ruin the mood'):format(id))
+    end
+    if safe(B.markedForRemoval, b) then
+        return {status = 'already_queued', building = building_summary(b)}
+    end
+    local stage = safe(function() return b:getBuildStage() end)
+    local max_stage = safe(function() return b:getMaxBuildStage() end)
+    local finished = stage ~= nil and max_stage ~= nil and stage >= max_stage
+    local summary = building_summary(b)
+    -- deconstruct returns true when it destroyed the building on the spot and false when it
+    -- queued a DestroyBuilding job for a finished one (checked against Buildings.cpp,
+    -- 2026-10-12), so the return value is a mode, not a failure.
+    local ok, err = pcall(B.deconstruct, b)
+    if not ok then
+        return rpc.error_result(rpc.ERR_INTERNAL, 'deconstruct failed: ' .. tostring(err))
+    end
+    local remaining = df.building.find(id)
+    if remaining == nil then
+        return {status = finished and 'removed' or 'blueprint_cancelled', building = summary,
+                note = 'the building is gone'}
+    end
+    if safe(B.markedForRemoval, remaining) then
+        return {status = 'removal_queued', building = summary,
+                note = 'a dwarf will deconstruct it; materials are returned to the ground'}
+    end
+    return rpc.error_result(rpc.ERR_INTERNAL, 'DFHack neither removed nor queued the building')
+end
+
 function ops()
     return {
         ['build.workshop'] = {namespace = 'build_write', handler = workshop, needs_map = true},
+        ['build.remove'] = {namespace = 'build_write', handler = remove, needs_map = true},
     }
 end
