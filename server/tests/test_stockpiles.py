@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from test_units import last_request, make, run
 
@@ -11,3 +13,30 @@ def test_stockpile_tools_send_args():
     assert last_request(holder)["args"] == {"id": 9, "limit": 3}
     with pytest.raises(Exception):  # noqa: B017
         run(mcp, "list_stockpiles", category="beer")
+
+
+def test_stockpile_write_tools_send_args():
+    mcp, holder = make()
+    asyncio.run(
+        mcp.call_tool(
+            "create_stockpile",
+            {"x1": 1, "y1": 2, "x2": 3, "y2": 4, "z": 5, "name": "Rocks", "categories": ["stone"]},
+        )
+    )
+    args = last_request(holder)["args"]
+    assert last_request(holder)["op"] == "stockpiles.create"
+    assert args["x1"] == 1 and args["y2"] == 4 and args["categories"] == ["stone"]
+    assert args["preset_mode"] == "set"
+    run(mcp, "configure_stockpile", building_id=7, disable=["wood"])
+    assert last_request(holder)["args"]["disable"] == ["wood"]
+    asyncio.run(mcp.call_tool("rename_stockpile", {"building_id": 7, "name": "Pile"}))
+    assert last_request(holder)["op"] == "stockpiles.rename"
+    run(mcp, "delete_stockpile", building_id=7)
+    assert last_request(holder)["op"] == "stockpiles.delete"
+    run(mcp, "list_stockpile_presets", query="stone")
+    assert last_request(holder)["op"] == "stockpiles.presets"
+    for kwargs in [{"categories": ["beer"]}, {"preset_mode": "replace"}]:
+        with pytest.raises(Exception):  # noqa: B017
+            run(mcp, "create_stockpile", x1=1, y1=2, x2=3, y2=4, z=5, **kwargs)
+    with pytest.raises(Exception):  # noqa: B017
+        run(mcp, "configure_stockpile", building_id=7)

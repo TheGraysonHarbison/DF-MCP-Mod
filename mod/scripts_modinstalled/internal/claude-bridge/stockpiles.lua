@@ -1,8 +1,10 @@
--- Stockpiles: list with a category filter, and inspect one (bounds, settings, links,
--- contents). Read-only. Plan section 10, item 4.4.
+-- Stockpiles: list with a category filter, inspect one (bounds, settings, links, contents),
+-- and under stockpiles_write: paint a rectangle, configure, rename, delete.
+-- Plan section 10, items 4.4 and 4.5.
 --@ module = true
 
 local rpc = reqscript('internal/claude-bridge/rpc')
+local map = reqscript('internal/claude-bridge/map')
 
 local B = dfhack.buildings
 
@@ -246,9 +248,310 @@ local function get(args)
     return row
 end
 
+----------------------------------------------------------------------------------------------
+-- presets (DFHack stockpiles plugin library)
+
+-- The plugin's library lives in hack/data/stockpiles; getHackPath may or may not end in '/'.
+local function presets_dir()
+    local candidates = {
+        safe(function() return (dfhack.getHackPath():gsub('/?$', '/')) .. 'data/stockpiles' end),
+        'hack/data/stockpiles',
+    }
+    for _, dir in ipairs(candidates) do
+        if dir and safe(dfhack.filesystem.isdir, dir) then return dir end
+    end
+    return nil
+end
+
+local function list_presets(query)
+    local dir = presets_dir()
+    local out = {}
+    if not dir then return out end
+    local entries = safe(dfhack.filesystem.listdir_recursive, dir, 10, false) or {}
+    local needle = query and query:lower() or nil
+    for _, entry in ipairs(entries) do
+        local path = type(entry) == 'table' and entry.path or entry
+        if type(path) == 'string' and not (type(entry) == 'table' and entry.isdir) then
+            local name = path:gsub('^' .. dir:gsub('%p', '%%%0') .. '/?', ''):gsub('^/', '')
+                :gsub('%.dfstock$', '')
+            if name ~= '' and (not needle or name:lower():find(needle, 1, true)) then
+                table.insert(out, 'library/' .. name)
+            end
+        end
+    end
+    table.sort(out)
+    return out
+end
+
+local function presets(args)
+    local limit, err = parse_limit(args)
+    if err then return err end
+    local all = list_presets(type(args.query) == 'string' and args.query or nil)
+    local rows = {}
+    for i = 1, math.min(limit, #all) do rows[i] = all[i] end
+    return {total = #all, count = #rows, truncated = #all > #rows, presets = rows,
+            note = 'apply with stockpiles.create or stockpiles.configure "preset"; '
+                .. 'mode set replaces, enable adds, disable removes'}
+end
+
+local function apply_preset(sp, name, mode)
+    local ok, plugin = pcall(require, 'plugins.stockpiles')
+    if not ok or not plugin or not plugin.import_settings then
+        return false, 'the DFHack stockpiles plugin is not available'
+    end
+    local ok2, err = pcall(plugin.import_settings, name, {id = sp.id, mode = mode or 'set'})
+    if not ok2 then return false, tostring(err) end
+    return true
+end
+
+----------------------------------------------------------------------------------------------
+-- category toggles
+
+-- Fill every option under one category by hand. Only a fallback: on a freshly painted pile
+-- the per-material vectors are empty, so this cannot enable materials the game has not
+-- sized yet; the plugin presets below can.
+local function set_category_manually(settings, cat, on)
+    local okflag = pcall(function() settings.flags[cat] = on end)
+    if not okflag then return false end
+    local struct = safe(function() return settings[cat] end)
+    if not struct then return true end
+    pcall(function()
+        for field, value in pairs(struct) do
+            if type(field) == 'string' then
+                if type(value) == 'boolean' then
+                    pcall(function() struct[field] = on end)
+                elseif type(value) == 'userdata' then
+                    local n = safe(function() return #value end)
+                    if n then
+                        for i = 0, n - 1 do
+                            local set = pcall(function() value[i] = on end)
+                            if not set then pcall(function() value[i] = on and 1 or 0 end) end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    return true
+end
+
+-- DFHack's library has one preset per category (sheet is "cat_sheets"; ore has none).
+local CATEGORY_PRESET = {sheet = 'library/cat_sheets', ore = nil}
+
+local function category_preset(cat)
+    if cat == 'ore' then return nil end
+    return CATEGORY_PRESET[cat] or ('library/cat_' .. cat)
+end
+
+-- Enable or disable a whole category: the plugin preset sizes and fills the material lists
+-- the way the game's own toggle does; fall back to the manual pass when it is unavailable.
+local function set_category(sp, cat, on)
+    local preset = category_preset(cat)
+    if preset then
+        local ok = apply_preset(sp, preset, on and 'enable' or 'disable')
+        if ok then
+            pcall(function() sp.settings.flags[cat] = on end)
+            return true, 'preset'
+        end
+    end
+    return set_category_manually(sp.settings, cat, on), 'manual'
+end
+
+local function check_categories(list)
+    if list == nil then return {} end
+    if type(list) ~= 'table' then list = {list} end
+    local out = {}
+    for _, c in ipairs(list) do
+        local name = tostring(c):lower()
+        local known = false
+        for _, k in ipairs(CATEGORIES) do if k == name then known = true end end
+        if not known then
+            return nil, rpc.error_result(rpc.ERR_BAD_REQUEST,
+                ('unknown category "%s"; valid: %s'):format(name, table.concat(CATEGORIES, ', ')))
+        end
+        table.insert(out, name)
+    end
+    return out
+end
+
+local function find_stockpile(args)
+    local id = tonumber(args.id)
+    if not id then
+        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, '"id" must be a stockpile building id')
+    end
+    local b = df.building.find(id)
+    if not b then return nil, rpc.error_result(rpc.ERR_NOT_FOUND, 'no building with id ' .. id) end
+    if not df.building_stockpilest:is_instance(b) then
+        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('building %d is a %s, not a stockpile'):format(id,
+                enum_name(df.building_type, b:getType()) or '?'))
+    end
+    return b
+end
+
+-- Shared by create and configure: categories, preset, name, container limits.
+local function apply_config(sp, args)
+    local changed = {}
+    local enable, err = check_categories(args.categories or args.enable)
+    if err then return nil, err end
+    local disable, err2 = check_categories(args.disable)
+    if err2 then return nil, err2 end
+    for _, c in ipairs(enable) do
+        local ok, how = set_category(sp, c, true)
+        if ok then table.insert(changed, ('enable:%s (%s)'):format(c, how)) end
+    end
+    for _, c in ipairs(disable) do
+        local ok, how = set_category(sp, c, false)
+        if ok then table.insert(changed, ('disable:%s (%s)'):format(c, how)) end
+    end
+    if args.preset ~= nil then
+        local mode = args.preset_mode or 'set'
+        if mode ~= 'set' and mode ~= 'enable' and mode ~= 'disable' then
+            return nil, rpc.error_result(rpc.ERR_BAD_REQUEST,
+                '"preset_mode" must be set, enable, or disable')
+        end
+        local ok, why = apply_preset(sp, tostring(args.preset), mode)
+        if not ok then
+            return nil, rpc.error_result(rpc.ERR_BAD_REQUEST,
+                ('preset "%s" failed: %s'):format(tostring(args.preset), why))
+        end
+        table.insert(changed, 'preset:' .. tostring(args.preset))
+    end
+    if args.name ~= nil then
+        if type(args.name) ~= 'string' or #args.name > 64 then
+            return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, '"name" must be a string of up to 64 characters')
+        end
+        sp.name = dfhack.utf2df(args.name)
+        table.insert(changed, 'name')
+    end
+    for _, field in ipairs({'max_barrels', 'max_bins', 'max_wheelbarrows'}) do
+        if args[field] ~= nil then
+            local n = tonumber(args[field])
+            if not n or n < 0 then
+                return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, '"' .. field .. '" must be 0 or more')
+            end
+            local set = pcall(function() sp.storage[field] = math.floor(n) end)
+            if not set then set = pcall(function() sp[field] = math.floor(n) end) end
+            if set then table.insert(changed, field) end
+        end
+    end
+    return changed
+end
+
+----------------------------------------------------------------------------------------------
+-- writes
+
+local function create(args)
+    local x1, y1, x2, y2, z = tonumber(args.x1), tonumber(args.y1), tonumber(args.x2),
+                              tonumber(args.y2), tonumber(args.z)
+    if not (x1 and y1 and x2 and y2 and z) then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"x1", "y1", "x2", "y2", "z" are required')
+    end
+    x1, y1, x2, y2, z = math.floor(x1), math.floor(y1), math.floor(x2), math.floor(y2), math.floor(z)
+    if x1 > x2 then x1, x2 = x2, x1 end
+    if y1 > y2 then y1, y2 = y2, y1 end
+    local w, h = x2 - x1 + 1, y2 - y1 + 1
+    if w > 31 or h > 31 then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, 'a stockpile is at most 31 by 31 tiles')
+    end
+    -- Validate the configuration before anything is painted.
+    local _, cat_err = check_categories(args.categories or args.enable)
+    if cat_err then return cat_err end
+    local _, cat_err2 = check_categories(args.disable)
+    if cat_err2 then return cat_err2 end
+    if args.preset_mode ~= nil and args.preset_mode ~= 'set' and args.preset_mode ~= 'enable'
+        and args.preset_mode ~= 'disable' then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"preset_mode" must be set, enable, or disable')
+    end
+    if args.name ~= nil and (type(args.name) ~= 'string' or #args.name > 64) then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"name" must be a string of up to 64 characters')
+    end
+    local footprint = {x1 = x1, y1 = y1, x2 = x2, y2 = y2, z = z, width = w, height = h}
+    for y = y1, y2 do
+        for x = x1, x2 do
+            local pos = {x = x, y = y, z = z}
+            if not dfhack.maps.isValidTilePos(pos) then
+                return {status = 'invalid_space', footprint = footprint, blocked_at = pos,
+                        reason = 'outside the map'}
+            end
+            local t = map.describe_tile(pos, 1)
+            local why = nil
+            if t.unknown then why = 'no map block'
+            elseif t.hidden then why = 'hidden (not yet revealed)'
+            elseif t.building then why = ('occupied by %s %d'):format(t.building.type or 'building', t.building.id)
+            elseif t.liquid then why = ('%s depth %d'):format(t.liquid.type, t.liquid.depth)
+            elseif t.plant then why = 'tree or plant'
+            elseif t.basic_shape ~= 'Floor' then why = ('%s, not floor'):format(t.basic_shape or '?')
+            end
+            if why then
+                return {status = 'invalid_space', footprint = footprint, blocked_at = pos, reason = why}
+            end
+        end
+    end
+    local sp, err = B.constructBuilding{
+        type = df.building_type.Stockpile, abstract = true,
+        pos = {x = x1, y = y1, z = z}, width = w, height = h,
+    }
+    if not sp then
+        return {status = 'invalid_space', footprint = footprint, reason = tostring(err)}
+    end
+    local changed, cfg_err = apply_config(sp, args)
+    if cfg_err then
+        -- keep the pile but report the configuration problem
+        local row = summary(sp)
+        row.settings = settings_summary(sp, false)
+        return {status = 'placed_unconfigured', stockpile = row,
+                error = cfg_err.message}
+    end
+    local row = summary(sp)
+    row.settings = settings_summary(sp, false)
+    return {status = 'placed', stockpile = row, changed = changed}
+end
+
+local function configure(args)
+    local sp, err = find_stockpile(args)
+    if err then return err end
+    local changed, cfg_err = apply_config(sp, args)
+    if cfg_err then return cfg_err end
+    if #changed == 0 then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            'nothing to change; pass enable, disable, preset, name, max_barrels, max_bins, or max_wheelbarrows')
+    end
+    local row = summary(sp)
+    row.settings = settings_summary(sp, true)
+    return {changed = changed, stockpile = row}
+end
+
+local function rename(args)
+    local sp, err = find_stockpile(args)
+    if err then return err end
+    if type(args.name) ~= 'string' then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"name" must be a string (empty clears)')
+    end
+    local changed, cfg_err = apply_config(sp, {name = args.name})
+    if cfg_err then return cfg_err end
+    return {changed = changed, stockpile = summary(sp)}
+end
+
+local function delete(args)
+    local sp, err = find_stockpile(args)
+    if err then return err end
+    local row = summary(sp)
+    local ok, why = pcall(B.deconstruct, sp)
+    if not ok then return rpc.error_result(rpc.ERR_INTERNAL, 'deconstruct failed: ' .. tostring(why)) end
+    local gone = df.building.find(row.id) == nil
+    return {status = gone and 'deleted' or 'removal_queued', stockpile = row,
+            note = 'items stay where they lie'}
+end
+
 function ops()
     return {
         ['stockpiles.list'] = {namespace = 'stockpiles', handler = list, needs_map = true},
         ['stockpiles.get'] = {namespace = 'stockpiles', handler = get, needs_map = true},
+        ['stockpiles.presets'] = {namespace = 'stockpiles', handler = presets},
+        ['stockpiles.create'] = {namespace = 'stockpiles_write', handler = create, needs_map = true},
+        ['stockpiles.configure'] = {namespace = 'stockpiles_write', handler = configure, needs_map = true},
+        ['stockpiles.rename'] = {namespace = 'stockpiles_write', handler = rename, needs_map = true},
+        ['stockpiles.delete'] = {namespace = 'stockpiles_write', handler = delete, needs_map = true},
     }
 end

@@ -104,7 +104,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 4.2 | Map: bounds, wagon, tile read, text area map, free-space finder (`get_map_bounds`, `get_wagon`, `get_tile`, `get_area_map`, `find_build_space`) | verified in-game 2026-10-12 |
 | 4.3 | Place workshop blueprints with footprint and material checks, and call for removal (`place_workshop`, `remove_building`, `build_write` permission) | verified in-game 2026-10-12 |
 | 4.4 | Stockpiles: list by category, bounds, settings, links, contents (`list_stockpiles`, `get_stockpile`) | verified in-game 2026-10-12 |
-| 4.5 | Paint stockpiles | not started |
+| 4.5 | Paint a rectangular stockpile, configure categories and presets, rename, delete (`create_stockpile`, `configure_stockpile`, `rename_stockpile`, `delete_stockpile`, `list_stockpile_presets`, `stockpiles_write` permission) | verified in-game 2026-10-12 |
 
 ## Known bugs
 
