@@ -106,6 +106,21 @@ local function position_codes(entity)
     return codes
 end
 
+local find_position
+
+-- Holder of the position with this code, or nil when vacant or absent. Used by stocks.lua.
+function position_holder(code)
+    local entity = fort_entity()
+    if not entity then return nil end
+    local position = find_position(entity, code)
+    if not position then return nil end
+    for _, slot in ipairs(slots_of(entity, position)) do
+        local holder = holder_of(slot.assignment)
+        if holder then return holder end
+    end
+    return nil
+end
+
 function describe_position(entity, position)
     local slots = slots_of(entity, position)
     local holders, slot_rows, vacant = {}, {}, 0
@@ -182,7 +197,7 @@ local function list(args)
     }
 end
 
-local function find_position(entity, wanted)
+find_position = function(entity, wanted)
     local own = entity.positions.own
     local as_number = tonumber(wanted)
     local as_code = type(wanted) == 'string' and wanted:upper() or nil

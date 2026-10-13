@@ -23,6 +23,10 @@ def test_server_registers_expected_tools():
         "set_unit_nickname",
         "list_nobles",
         "assign_noble",
+        "get_stock_bar",
+        "list_stocks",
+        "find_items",
+        "list_artifacts",
         "run_console_command",
     }
     by_name = {t.name: t for t in tools}

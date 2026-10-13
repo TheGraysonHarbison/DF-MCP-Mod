@@ -53,6 +53,8 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `units_write` | off | `units.set_nickname` |
 | `nobles` | on | `nobles.list` |
 | `nobles_write` | off | `nobles.assign` |
+| `stocks` | on | `stocks.bar`, `stocks.list`, `stocks.find`, `stocks.artifacts` |
+| `stocks_true` | on | no ops; a toggle. Off puts the stocks ops in bookkeeper view. |
 | `console` | off | `console.run` (plus a per-command allowlist) |
 | `lua_eval` | off | no ops; gates `lua` through `console.run` |
 
@@ -68,7 +70,7 @@ Result: `mod_version`, `protocol_version`, `dfhack_version`, `df_version`, `worl
 
 Args: none.
 
-Result: `permissions` (object of `{allowed, label}` keyed by namespace), `console_allow` (array of command names), `ops` (array of `{op, namespace}`).
+Result: `groups` (display order: General, Units, Items, Commands), `permissions` (object of `{allowed, label, group, toggle}` keyed by namespace; `toggle` marks plain settings such as `stocks_true` that gate behaviour inside a handler rather than an op namespace), `console_allow` (array of command names), `ops` (array of `{op, namespace}`).
 
 ### `time.now`
 
@@ -186,6 +188,38 @@ Refused with `BAD_REQUEST` when the position is military (`squad_size` above zer
 The change mirrors what DFHack's `make-monarch` does: the assignment's `histfig` is swapped, the previous holder's position link is removed from their historical figure, and a new position link is added to the appointee. `histfig2` records the previous holder. No former-position record is written for the previous holder.
 
 Result: `changed`, `previous` (holder object or absent), `position` (as in `nobles.list`, after the change).
+
+### `stocks.bar`
+
+Args: `category` (optional: `food`, `drink`, `seed`, `meat`, `fish`, `plant`, `other`). Needs a map.
+
+The counts are `plotinfo.tasks.food`; `food` is meat + fish + plant + other. When the bookkeeper's achieved precision is below `all_accurate` the player's view is an estimate: rounded **up** to the next multiple of the precision step (10 for `NONE` and `nearest_10`, 100 for `nearest_100`, and so on) and prefixed with `~`.
+
+Result: `mode` (`true` or `bookkeeper`), `bookkeeper` `{assigned, bookkeeper, precision, goal, cooldown, step}`, `counts` keyed by category, each `{display, estimated, shown, value}` where `value` is the true count and is present only in true mode. In bookkeeper view only the estimate is returned. With `category`, the single entry plus `category`, `mode`, and `bookkeeper`.
+
+### `stocks.list`
+
+Args: `category` (optional item type token such as `weapon`, `helm`, `bag`, or the game caption), `query` (optional substring matched against item kind, material, and caption), `limit` (rows per category, default 50). Needs a map.
+
+Walks `world.items.other.IN_PLAY`, skipping items flagged `trader`, `hostile`, `garbage_collect`, `removed`, `murder`, or `construction`. Items flagged `forbid`, `dump`, `melt`, `in_building`, or `in_job` are counted but reported as unavailable. A `BOX` made of leather, silk, plant thread, or yarn is listed as `bag`. Items whose material is a creature (fish, raw fish, eggs, live vermin) report the creature's caste name as `material`.
+
+Bookkeeper view (`stocks_true` off) while the bookkeeper's achieved precision is below `all_accurate`: the categories come from the bookkeeper's own records (`plotinfo.tasks.item_counts`), each `{name, total, display, estimated}` rounded like the top bar, with no rows; `query` is refused with `NOT_ALLOWED`, and a fort with no bookkeeper gets no categories and a `note`. Once the records are fully accurate the view equals true view.
+
+Result: `mode`, `count` (categories), `truncated` (category keys that hit `limit`), `categories` keyed by item type token: `{name, total, unavailable, row_count, truncated, rows}` with rows `{item, material, count, quantity, unavailable}` sorted by quantity. `quantity` sums stack sizes; `count` is the number of item objects. Empty categories are omitted; an unknown or empty `category` returns `count: 0` and a `note`.
+
+### `stocks.find`
+
+Args: `query` (non-empty string), `limit` (default 50). Needs a map.
+
+Result: `query`, `total`, `count`, `truncated`, `rows` (as `stocks.list` rows plus `category` and `category_name`), highest quantity first. Refused with `NOT_ALLOWED` in bookkeeper view below full accuracy.
+
+### `stocks.artifacts`
+
+Args: none. Needs a map.
+
+Only artifacts on this map are listed: ones with a position, a holder unit, or a holder building. The rest of the world's artifacts are counted in `elsewhere` and never described.
+
+Result: `count`, `elsewhere`, `artifacts` `{id, name, name_english, item_id, description, material, pos, holder {id, name}, building {id, type}}`.
 
 ### `console.run`
 

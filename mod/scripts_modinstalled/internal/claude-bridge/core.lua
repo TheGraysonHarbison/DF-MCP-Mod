@@ -29,9 +29,12 @@ local function settings_get(args)
         permissions[ns.key] = {
             allowed = s.permissions[ns.key] == true,
             label = ns.label,
+            group = ns.group,
+            toggle = ns.toggle == true,
         }
     end
     return {
+        groups = state.GROUPS,
         permissions = permissions,
         console_allow = s.console_allow,
         ops = rpc.list_ops(),
