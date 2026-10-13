@@ -127,8 +127,8 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         """Find units by name, nickname, or description and get their ids.
 
         The match is a case-insensitive substring against the unit's native name, English
-        name, nickname, and readable name (which includes race and profession, so "cat" or
-        "mason" work). Use the returned `id` with `get_unit`.
+        name, nickname, creature name, and readable name (which includes the profession, so
+        "cat" or "mason" work). Use the returned `id` with `get_unit`.
         """
         if not query or not query.strip():
             raise ValueError("query must be a non-empty string")

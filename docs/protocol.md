@@ -100,7 +100,7 @@ Result: `total` (matching units), `count` (rows returned), `offset`, `units` (ar
 
 Args: `query` (non-empty string), `bucket` (string or null), `limit` (default 20), `include_dead` (bool, default false). Needs a map.
 
-Case-insensitive substring match against the readable name, nickname, native name, and English name.
+Case-insensitive substring match against the readable name, creature name, nickname, native name, and English name.
 
 Result: `query`, `total`, `count`, `units` (array of rows).
 

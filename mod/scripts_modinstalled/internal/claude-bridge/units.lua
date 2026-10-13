@@ -282,6 +282,7 @@ local function search_text(unit)
         end
     end
     add(safe(U.getReadableName, unit))
+    add(safe(U.getRaceReadableName, unit))
     add(nickname(unit))
     add(safe(function()
         return dfhack.translation.translateName(U.getVisibleName(unit), false)
