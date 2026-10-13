@@ -45,6 +45,11 @@ def test_server_registers_expected_tools():
         "remove_building",
         "list_stockpiles",
         "get_stockpile",
+        "list_stockpile_presets",
+        "create_stockpile",
+        "configure_stockpile",
+        "rename_stockpile",
+        "delete_stockpile",
         "run_console_command",
     }
     by_name = {t.name: t for t in tools}

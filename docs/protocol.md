@@ -60,7 +60,8 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `workshops` | on | `workshops.list`, `workshops.get` |
 | `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space` |
 | `build_write` | off | `build.workshop`, `build.remove` |
-| `stockpiles` | on | `stockpiles.list`, `stockpiles.get` |
+| `stockpiles` | on | `stockpiles.list`, `stockpiles.get`, `stockpiles.presets` |
+| `stockpiles_write` | off | `stockpiles.create`, `stockpiles.configure`, `stockpiles.rename`, `stockpiles.delete` |
 | `console` | off | `console.run` (plus a per-command allowlist) |
 | `lua_eval` | off | no ops; gates `lua` through `console.run` |
 
@@ -352,6 +353,32 @@ Result: `total`, `count`, `offset`, `limit`, `truncated`, `stockpiles` (by id), 
 Args: `id`, `limit` (contents rows, default 25). Needs a map. A building that is not a stockpile is `BAD_REQUEST`.
 
 Result: the row plus `settings` `{categories, allow_organic, allow_inorganic, max_barrels, max_bins, max_wheelbarrows, use_links_only, details}` where `details` holds, per enabled category, its booleans and `{enabled, total}` counts for each list of sub-options; `links` `{give_to_pile, take_from_pile, give_to_workshop, take_from_workshop}` as building references; `contents` `{entries [{id, type, description, quantity}], total, truncated, by_type}` from `dfhack.buildings.getStockpileContents`.
+
+### `stockpiles.presets`
+
+Args: `query` (optional substring), `limit` (default 25). Lists the DFHack stockpiles plugin's bundled presets as `library/<name>` from `data/stockpiles`. Result: `total`, `count`, `truncated`, `presets`, `note`.
+
+### `stockpiles.create`
+
+Args: `x1`, `y1`, `x2`, `y2`, `z` (any two opposite corners, at most 31 by 31), and optionally the configuration fields of `stockpiles.configure` (`categories` as the enable list, `preset`, `preset_mode`, `name`, container limits). Needs a map and `stockpiles_write`.
+
+The configuration arguments are validated first, so a bad category paints nothing. Every tile is checked with the map rules (revealed, flat floor, no building, liquid, or plant); then `constructBuilding{type=Stockpile, abstract=true, pos, width, height}` paints it, and the configuration is applied.
+
+Result: `status` of `placed` (with `stockpile` row plus `settings`, and `changed`), `placed_unconfigured` (the pile exists but a configuration step failed; `error` says why), or `invalid_space` (`footprint`, `blocked_at`, `reason`).
+
+### `stockpiles.configure`
+
+Args: `id`, and at least one of `enable` / `disable` (category name or list; applied through DFHack's `library/cat_<name>` preset so the material lists are sized and filled as the game's own toggle does, with a manual pass as fallback; `ore` has no preset and is manual), `preset` with `preset_mode` (`set` replaces all settings, `enable` adds, `disable` removes; applied through the DFHack stockpiles plugin), `name` (up to 64 characters, converted to code page 437), `max_barrels`, `max_bins`, `max_wheelbarrows`. Needs a map and `stockpiles_write`.
+
+Result: `changed` (list of what was applied), `stockpile` (row plus deep `settings`).
+
+### `stockpiles.rename`
+
+Args: `id`, `name` (empty clears). Result: `changed`, `stockpile`.
+
+### `stockpiles.delete`
+
+Args: `id`. Calls `dfhack.buildings.deconstruct`; an abstract building is removed at once and its items stay on the ground. Result: `status` (`deleted` or `removal_queued`), `stockpile`, `note`.
 
 ### `console.run`
 
