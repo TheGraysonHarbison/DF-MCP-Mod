@@ -49,7 +49,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `core` | always allowed | `core.ping` |
 | `settings` | on | `settings.get` |
 | `time` | on | `time.now` |
-| `units` | on | `units.list`, `units.find`, `units.get` |
+| `units` | on | `units.list`, `units.find`, `units.get`, `units.sheet`, `units.full_sheet` |
 | `console` | off | `console.run` (plus a per-command allowlist) |
 | `lua_eval` | off | no ops; gates `lua` through `console.run` |
 
@@ -111,6 +111,40 @@ Args: `id` (unit id). Needs a map. Unknown id is `NOT_FOUND`.
 Result: the row plus `nickname`, `caste`, `profession`, `custom_profession`, `age` (years, fractional), `pos` `{x,y,z}`, `job`, `hist_figure_id` (-1 when none), `civ_id`, `squad` (`{id, name, position}` or absent), `flags` (object of true flags: `caged`, `chained`, `marauder`, `ghost`, `crazed`, `insane`, `baby`, `child`, `adult`, `opposed_to_life`, `marked_for_slaughter`), `dead`. Domesticated animals get `mood` as well as `owner`.
 
 Field availability is defensive: anything DFHack cannot provide for a unit is omitted.
+
+### `units.sheet`
+
+Args: `id` (unit id), `category` (string), `subcategory` (string or null), `limit` (positive int, default 50). Needs a map.
+
+Categories and sub-categories follow the in-game profile tabs:
+
+| Category | Sub-categories |
+|---|---|
+| `overview` | none |
+| `relations` | none |
+| `groups` | none |
+| `military` | `squads`, `uniform`, `kills` |
+| `thoughts` | `recent`, `memories` |
+| `personality` | `traits`, `values`, `preferences`, `needs` |
+| `items` | none |
+| `health` | `status`, `wounds`, `treatment`, `history`, `description` |
+| `skills` | `labor`, `combat`, `social`, `other`, `knowledge` |
+| `rooms` | none |
+| `labor` | `work_details`, `workshops`, `locations`, `work_animals` |
+
+An unknown category or sub-category, or a sub-category on a category without any, is `BAD_REQUEST` with the valid names in the message. Omitting `subcategory` on a category that has them returns every sub-category keyed by name.
+
+Result: `id`, `name`, `category`, `subcategory`, `limit`, `data`, `truncated` (array of section paths such as `skills.labor` that were cut at `limit`), `best_effort` (array of section paths that are incomplete reconstructions).
+
+Every list-valued section in `data` is an object `{entries, total, truncated}`. A section that is not implemented yet is `{best_effort: true, note}`. Enum values are DF tokens (`MINING`, `SWORD`) with a `caption` where DF has one.
+
+Implemented in full: `overview`, `personality`, `items`, `rooms`, `health.status`, `health.wounds`, `health.description` (without appearance text), `skills`, `thoughts.recent`, `military.squads`, `military.kills.count`. Everything else is a `best_effort` stub until the in-game struct check (plan section 8.6) is done.
+
+### `units.full_sheet`
+
+Args: `id`, `limit` (positive int, default 50). Needs a map.
+
+Result: `id`, `name`, `limit`, `sheet` (object keyed by category, each shaped as the `units.sheet` `data` with no sub-category filter), `truncated`, `best_effort`. A category whose builder raises is returned as `{best_effort: true, error}` rather than failing the call.
 
 ### `console.run`
 
