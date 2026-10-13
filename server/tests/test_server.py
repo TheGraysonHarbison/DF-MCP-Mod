@@ -18,6 +18,8 @@ def test_server_registers_expected_tools():
         "list_others",
         "find_unit",
         "get_unit",
+        "get_unit_sheet",
+        "get_unit_full_sheet",
         "run_console_command",
     }
     by_name = {t.name: t for t in tools}

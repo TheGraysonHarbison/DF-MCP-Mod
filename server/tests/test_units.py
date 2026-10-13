@@ -96,3 +96,28 @@ def test_get_unit_sends_id():
     assert request["op"] == "units.get"
     assert request["args"] == {"id": 42}
     assert request["v"] == 2
+
+
+def test_sheet_tools_send_category_and_limit():
+    mcp, holder = make()
+    run(mcp, "get_unit_sheet", unit_id=7, category="skills", subcategory="combat")
+    request = last_request(holder)
+    assert request["op"] == "units.sheet"
+    assert request["args"] == {"id": 7, "category": "skills", "subcategory": "combat", "limit": 50}
+    run(mcp, "get_unit_full_sheet", unit_id=7, limit=10)
+    request = last_request(holder)
+    assert request["op"] == "units.full_sheet"
+    assert request["args"] == {"id": 7, "limit": 10}
+
+
+def test_sheet_tool_rejects_bad_category_and_subcategory():
+    mcp, holder = make()
+    for kwargs in [
+        {"category": "stuff"},
+        {"category": "overview", "subcategory": "x"},
+        {"category": "skills", "subcategory": "cooking"},
+        {"category": "skills", "limit": 0},
+    ]:
+        with pytest.raises(Exception):  # noqa: B017
+            run(mcp, "get_unit_sheet", unit_id=7, **kwargs)
+    assert "client" not in holder

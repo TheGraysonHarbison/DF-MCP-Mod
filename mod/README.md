@@ -21,6 +21,7 @@ claude-bridge perm <ns> on|off   toggle a permission namespace (time, units, con
 claude-bridge allow <command> add a console command Claude may run
 claude-bridge deny <command>  remove it again
 claude-bridge test <json>     run a request through the dispatcher locally and print the reply
+claude-bridge reload          re-read the Lua modules from disk without disabling (development)
 ```
 
 Settings are stored in DFHack's mod state folder for `claude-bridge` and apply to every world.

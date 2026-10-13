@@ -65,8 +65,8 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 2 | 1. Unit lists by bucket and the unit id key (`list_units`, `list_citizens`, `list_domesticated`, `list_others`) | verified in-game 2026-10-12; design in [plan section 8](docs/ProjectPlan.md#8-phase-2-addendum-unit-analysis-planned-2026-10-12) |
 | 2 | 2. Unit search (`find_unit`) | verified in-game 2026-10-12 |
 | 2 | 3. Basic info for one unit (`get_unit`) | verified in-game 2026-10-12 |
-| 2 | 4. Unit sheet by category and sub-category (`get_unit_sheet`) | planned, needs the in-game struct check first |
-| 2 | 5. Whole unit sheet in one call (`get_unit_full_sheet`) | planned |
+| 2 | 4. Unit sheet by category and sub-category (`get_unit_sheet`) | implemented for overview, personality, items, skills, rooms, health wounds and description, recent thoughts; other tabs are stubs until the struct check |
+| 2 | 5. Whole unit sheet in one call (`get_unit_full_sheet`) | implemented, same coverage as item 4 |
 | 2 | 6. Nickname a unit (`set_unit_nickname`, `units_write` permission) | planned |
 | 3 | Event queue, in-game chat, autonomy timer | not started |
 | 4 | Actions: petitions, quickfort, orders, military | not started |

@@ -16,7 +16,11 @@ Usage::
     claude-bridge perm <namespace> on|off
     claude-bridge allow <command>
     claude-bridge deny <command>
+    claude-bridge reload
     claude-bridge test <json request>
+
+``reload`` re-reads the mod's Lua modules from disk and re-registers the ops without
+disabling the bridge. For development.
 ]====]
 
 local GLOBAL_KEY = 'claude-bridge'
@@ -24,10 +28,9 @@ local RPC_MODULE_NAME = 'rpc.claude_bridge'
 
 local state = reqscript('internal/claude-bridge/state')
 local rpc = reqscript('internal/claude-bridge/rpc')
-local core_ops = reqscript('internal/claude-bridge/core')
-local time_ops = reqscript('internal/claude-bridge/time')
-local units_ops = reqscript('internal/claude-bridge/units')
-local console_ops = reqscript('internal/claude-bridge/console')
+
+-- Op modules, loaded fresh on every enable and reload so edited files are picked up.
+local OP_MODULES = {'core', 'time', 'units', 'sheet', 'console'}
 
 enabled = enabled or false
 
@@ -55,12 +58,18 @@ local function unpublish_rpc()
     package.loaded[RPC_MODULE_NAME] = nil
 end
 
+local function register_ops()
+    state = reqscript('internal/claude-bridge/state')
+    rpc = reqscript('internal/claude-bridge/rpc')
+    rpc.reset()
+    for _, name in ipairs(OP_MODULES) do
+        rpc.register_many(reqscript('internal/claude-bridge/' .. name).ops())
+    end
+end
+
 local function do_enable()
     state.load_settings()
-    rpc.reset()
-    for _, mod in ipairs({core_ops, time_ops, units_ops, console_ops}) do
-        rpc.register_many(mod.ops())
-    end
+    register_ops()
     publish_rpc()
     enabled = true
 end
@@ -140,6 +149,11 @@ elseif command == 'deny' then
     if not args[2] then qerror('usage: claude-bridge deny <command>') end
     state.deny_console(args[2])
     print_status()
+elseif command == 'reload' then
+    if not enabled then qerror('claude-bridge is not enabled') end
+    register_ops()
+    publish_rpc()
+    print(('claude-bridge reloaded, %d ops'):format(#rpc.list_ops()))
 elseif command == 'test' then
     if not enabled then qerror('claude-bridge is not enabled') end
     local request = table.concat(args, ' ', 2)
