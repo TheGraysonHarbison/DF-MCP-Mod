@@ -43,6 +43,8 @@ def test_server_registers_expected_tools():
         "find_build_space",
         "place_workshop",
         "remove_building",
+        "list_stockpiles",
+        "get_stockpile",
         "run_console_command",
     }
     by_name = {t.name: t for t in tools}

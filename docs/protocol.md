@@ -60,6 +60,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `workshops` | on | `workshops.list`, `workshops.get` |
 | `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space` |
 | `build_write` | off | `build.workshop`, `build.remove` |
+| `stockpiles` | on | `stockpiles.list`, `stockpiles.get` |
 | `console` | off | `console.run` (plus a per-command allowlist) |
 | `lua_eval` | off | no ops; gates `lua` through `console.run` |
 
@@ -337,6 +338,20 @@ Args: `id` (building id). Needs a map and `build_write`. Only workshops and furn
 Calls `dfhack.buildings.deconstruct`: a finished building gets a deconstruction job for the dwarves, an unfinished blueprint is removed at once.
 
 Result: `status` (`removal_queued`, `blueprint_cancelled`, `removed`, or `already_queued`), `building` `{id, kind, type, name, pos}`, `note`.
+
+### `stockpiles.list`
+
+Args: `category` (optional, one of `animals`, `food`, `furniture`, `corpses`, `refuse`, `stone`, `ore`, `ammo`, `coins`, `bars_blocks`, `gems`, `finished_goods`, `leather`, `cloth`, `wood`, `weapons`, `armor`, `sheet`), `limit` (default 25), `offset`. Needs a map.
+
+Row: `id`, `number` (the game's "Stockpile #n"), `name`, `label` (name or number), `bounds`, `pos`, `tiles` (counting extents), `categories` (enabled top-level categories), `items`.
+
+Result: `total`, `count`, `offset`, `limit`, `truncated`, `stockpiles` (by id), `counts_by_category` (whole map).
+
+### `stockpiles.get`
+
+Args: `id`, `limit` (contents rows, default 25). Needs a map. A building that is not a stockpile is `BAD_REQUEST`.
+
+Result: the row plus `settings` `{categories, allow_organic, allow_inorganic, max_barrels, max_bins, max_wheelbarrows, use_links_only, details}` where `details` holds, per enabled category, its booleans and `{enabled, total}` counts for each list of sub-options; `links` `{give_to_pile, take_from_pile, give_to_workshop, take_from_workshop}` as building references; `contents` `{entries [{id, type, description, quantity}], total, truncated, by_type}` from `dfhack.buildings.getStockpileContents`.
 
 ### `console.run`
 
