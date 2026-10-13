@@ -36,6 +36,11 @@ def test_server_registers_expected_tools():
         "delete_work_order",
         "list_workshops",
         "get_workshop",
+        "get_map_bounds",
+        "get_wagon",
+        "get_tile",
+        "get_area_map",
+        "find_build_space",
         "run_console_command",
     }
     by_name = {t.name: t for t in tools}

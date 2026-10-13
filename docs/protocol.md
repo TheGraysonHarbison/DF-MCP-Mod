@@ -58,6 +58,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `orders` | on | `orders.list`, `orders.get`, `orders.jobs` |
 | `orders_write` | off | `orders.create`, `orders.edit`, `orders.delete` |
 | `workshops` | on | `workshops.list`, `workshops.get` |
+| `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space` |
 | `console` | off | `console.run` (plus a per-command allowlist) |
 | `lua_eval` | off | no ops; gates `lua` through `console.run` |
 
@@ -287,6 +288,38 @@ Result: `total`, `count`, `offset`, `limit`, `truncated`, `workshops` (sorted by
 Args: `id` (building id), `limit` (default 25). Needs a map. A building that is not a workshop or furnace is `BAD_REQUEST`.
 
 Result: the row plus `jobs` `[{id, name, job, order_id, flags, worker {id, name}, strange_mood}]`, `inventory` `{entries, total, truncated}` of items in the workshop (`{id, description, quantity, flags}`), `materials` (the same shape, the items it was built from), `profile` `{permitted_workers, min_level, max_level, flags}`, `truncated` (section names that hit `limit`).
+
+### Map
+
+Coordinates are tile coordinates: `x` west to east, `y` north to south, `z` upward. Every op needs a map. Out-of-range coordinates are `BAD_REQUEST` with the valid ranges. Hidden tiles (not yet revealed to the player) are reported as hidden only.
+
+### `map.bounds`
+
+Args: none. Result: `x`, `y`, `z` `{min, max}`, `width`, `height`, `depth`, `center`, `surface_z_at_center` (highest outdoor floor or ramp in that column), `wagon_z`.
+
+### `map.wagon`
+
+Args: none. Result: `present`, and when present `id`, `pos` (centre), `bounds`; otherwise `center` (map centre at surface level) and a `note`.
+
+### `map.tile`
+
+Args: `x`, `y`, `z`, `limit` (items on the tile, default 25).
+
+Result: `pos`, `hidden`; for a revealed tile also `tiletype`, `caption`, `shape`, `basic_shape` (`Wall`, `Floor`, `Ramp`, `Stair`, `Open`, ...), `material` (tiletype material class), `special`, `walkable`, `walkable_group` (0 is not walkable; equal groups are connected), `passable_low`, `passable_high`, `outside`, `subterranean`, `light`, `liquid` `{type, depth}`, `designation` (`smooth`, `pile`), `dig`, `traffic`, `occupancy` `{building, unit, item}`, `building` `{id, type, name}`, `zones`, `plant` `{id, tree, name}`, `buildable` (flat walkable floor with no building, liquid, or plant), `items` `{entries, total, truncated}`, `units`.
+
+### `map.area`
+
+Args: `x`, `y`, `z` (top-left origin), `width`, `height` (1-64, default 32).
+
+Result: `origin`, `width`, `height` (clipped at the map edge), `rows` (strings, one character per tile), `legend` (characters used), `counts`, `walkable_groups` (walkable tiles per group). Legend: `?` hidden, `B` building, `~` water, `%` magma, `T` tree, `#` wall, `^` ramp, `<` `>` `X` stairs, `.` floor, space open air, `*` other.
+
+### `map.find_space`
+
+Args: `width`, `height` (1-31, default 3), `z` (default: wagon level, else the surface at the search point), `near_x`, `near_y` (default: the wagon, else the map centre), `max_radius` (default 30).
+
+Searches outward in square rings for a rectangle where every tile is revealed, flat floor, in one walkable group, with no building, liquid, or plant, and that passes `dfhack.buildings.checkFreeTiles`.
+
+Result: `found`; when true `origin`, `center`, `width`, `height`, `walkable_group`, `distance`, `searched_from`, `checked`; when false `searched_from`, `max_radius`, `checked`, `note`.
 
 ### `console.run`
 
