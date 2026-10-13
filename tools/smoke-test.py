@@ -48,7 +48,10 @@ def main() -> int:
         ("settings.get", {}),
         ("time.now", {}),
         ("units.list", {"limit": 5}),
-        ("units.list", {"category": "citizen", "limit": 3}),
+        ("units.list", {"bucket": "citizen", "limit": 3}),
+        ("units.list", {"bucket": "domesticated", "limit": 3}),
+        ("units.list", {"bucket": "other", "limit": 3}),
+        ("units.find", {"query": "cat", "limit": 3}),
         ("console.run", {"command": "ls"}),
         ("nope.nothing", {}),
     ]:

@@ -5,8 +5,8 @@ local json = require('json')
 local scriptmanager = require('script-manager')
 
 MOD_ID = 'claude-bridge'
-MOD_VERSION = '0.1.0'
-PROTOCOL_VERSION = 1
+MOD_VERSION = '0.2.0'
+PROTOCOL_VERSION = 2
 
 -- Permission namespaces. Order is the display order in the settings window.
 NAMESPACES = {

@@ -13,6 +13,10 @@ def test_server_registers_expected_tools():
         "get_permissions",
         "get_time",
         "list_units",
+        "list_citizens",
+        "list_domesticated",
+        "list_others",
+        "find_unit",
         "get_unit",
         "run_console_command",
     }

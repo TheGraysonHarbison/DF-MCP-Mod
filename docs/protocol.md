@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **1**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **2**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -13,7 +13,7 @@ The mod publishes `rpc.claude_bridge` into `package.loaded` when enabled. If the
 Request:
 
 ```json
-{"op": "units.list", "args": {"category": "citizen"}, "id": 7, "v": 1}
+{"op": "units.list", "args": {"bucket": "citizen"}, "id": 7, "v": 2}
 ```
 
 - `op` is `namespace.verb`. The namespace is what permissions are checked against.
@@ -49,7 +49,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `core` | always allowed | `core.ping` |
 | `settings` | on | `settings.get` |
 | `time` | on | `time.now` |
-| `units` | on | `units.list`, `units.get` |
+| `units` | on | `units.list`, `units.find`, `units.get` |
 | `console` | off | `console.run` (plus a per-command allowlist) |
 | `lua_eval` | off | no ops; gates `lua` through `console.run` |
 
@@ -73,23 +73,44 @@ Args: none. Needs a map.
 
 Result: `year`, `month` (1-12), `month_name`, `day` (1-28), `day_of_year`, `season` (spring, summer, autumn, winter), `season_day` (1-84), `hour`, `minute`, `year_tick`, `frame`, `paused`, `weather` (`None`, `Rain`, `Snow`, or null), `fort_name`, `unsaved_seconds`, `date_string`.
 
+### Units
+
+Every unit is in exactly one bucket, with a finer `kind`. Design and the tests behind each label: `docs/ProjectPlan.md` section 8.
+
+| Bucket | Kinds |
+|---|---|
+| `citizen` | `citizen`, `resident` |
+| `domesticated` | `pet`, `war_animal`, `hunting_animal`, `livestock`, `stray` |
+| `other` | `visitor`, `merchant`, `diplomat`, `invader`, `undead`, `wildlife`, `agitated`, `hostile`, `other` |
+
+Row: `id`, `name`, `unit` (bucket), `kind`, `gender` (`female`, `male`, `none`), `creature`, and either `mood` (`miserable`, `unhappy`, `displeased`, `content`, `pleased`, `happy`, `ecstatic`, or `none` when the unit has no soul) or, for `domesticated`, `owner` (the pet owner's readable name or `None`).
+
+```json
+{"id": 1234, "name": "Urist McMason", "unit": "citizen", "kind": "citizen", "gender": "female", "creature": "dwarf", "mood": "content"}
+{"id": 1301, "name": "Stray Cat (Tame)", "unit": "domesticated", "kind": "stray", "gender": "male", "creature": "cat", "owner": "None"}
+```
+
 ### `units.list`
 
-Args: `category` (string or null), `include_dead` (bool, default false), `limit` (default 200), `offset` (default 0). Needs a map.
+Args: `bucket` (string or null), `kind` (string or null), `include_dead` (bool, default false), `limit` (default 200), `offset` (default 0). Needs a map. An unknown `bucket` is `BAD_REQUEST`; an unknown `kind` simply matches nothing.
 
-Categories: `citizen`, `resident`, `visitor`, `merchant`, `diplomat`, `animal`, `wildlife`, `invader`, `undead`, `hostile`, `other`.
+Result: `total` (matching units), `count` (rows returned), `offset`, `units` (array of rows), `counts_by_bucket` and `counts_by_kind` (whole map, ignore the filter).
 
-Result: `total` (matching units), `count` (rows returned), `offset`, `units` (array of summary rows), `counts_by_category` (whole map, ignores the filter).
+### `units.find`
 
-Summary row: `id`, `name`, `category`, `race`, `profession`, `age` (years, fractional), `sex`, `pos` `{x,y,z}`, `job`, `dead`.
+Args: `query` (non-empty string), `bucket` (string or null), `limit` (default 20), `include_dead` (bool, default false). Needs a map.
+
+Case-insensitive substring match against the readable name, creature name, nickname, native name, and English name.
+
+Result: `query`, `total`, `count`, `units` (array of rows).
 
 ### `units.get`
 
-Args: `id` (unit id). Needs a map.
+Args: `id` (unit id). Needs a map. Unknown id is `NOT_FOUND`.
 
-Result: summary row plus `mood`, `stress`, `stress_category`, `skills` (array of `{skill, rating, level, experience}`, sorted by rating), `labors` (array of enabled labor names), `wounds`, `blood`, `squad` (`{id, name, position}` or null), `flags` (object of true flags: `caged`, `chained`, `marauder`, `crazed`, `baby`, `child`, `adult`, `opposed_to_life`), `civ_id`.
+Result: the row plus `nickname`, `caste`, `profession`, `custom_profession`, `age` (years, fractional), `pos` `{x,y,z}`, `job`, `hist_figure_id` (-1 when none), `civ_id`, `squad` (`{id, name, position}` or absent), `flags` (object of true flags: `caged`, `chained`, `marauder`, `ghost`, `crazed`, `insane`, `baby`, `child`, `adult`, `opposed_to_life`, `marked_for_slaughter`), `dead`. Domesticated animals get `mood` as well as `owner`.
 
-Field availability is defensive: anything DFHack cannot provide for a unit is omitted. The detail fields still need a pass against the 53.x `df.unit` struct in-game.
+Field availability is defensive: anything DFHack cannot provide for a unit is omitted.
 
 ### `console.run`
 
