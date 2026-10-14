@@ -348,6 +348,14 @@ Scans the level for revealed wall tiles with no building that have at least one 
 
 Result: `z`, `scanned` `{x1, y1, x2, y2}`, `total_tiles`, `total_segments`, `count`, `truncated`, `segments` `[{x1, y1, x2, y2, z, length, material, material_class, kind, open_sides, floor_group}]` longest first, `tiles_by_material`, `note`.
 
+### `map.designations`
+
+Args: `x1`, `y1`, `z1`, `x2`, `y2`, `z2` (two corners in any order; every corner must be inside the map; at most 64 by 64 tiles per level and 32 levels), `kind` (optional: `mine`, `up_stair`, `down_stair`, `up_down_stair`, `channel`, `ramp`, `smooth`, `engrave`), `assigned_only` (default false), `limit` (default 25).
+
+Two sources are merged (verified live 2026-10-13). Pending orders are tiles whose `tile_designation.dig` (`Default` is `mine`) or `tile_designation.smooth` (1 smooth, 2 engrave) is set. Taken orders are the entries of `world.jobs.list` whose job type has the `is_designation` attribute (`Dig`, `CarveUpwardStaircase`, `CarveDownwardStaircase`, `CarveUpDownStaircase`, `DigChannel`, `CarveRamp`, `RemoveStairs`, `SmoothWall`, `SmoothFloor`, `DetailWall`, `DetailFloor`, `CarveFortification`), keyed by their `pos`: when the game creates such a job it clears the tile's flag, so a taken order is only visible in the job list, and it reappears as a tile flag if the job is cancelled. The game queues jobs ahead of the miners, so a taken order may have no worker yet; `assigned` means `dfhack.job.getWorker` returned a dwarf.
+
+Result: `box`, `total`, `count`, `truncated`, `counts` (per kind), `taken` (rows with a job), `assigned` (rows with a worker), `designations` `[{pos, kind, state (pending or taken), marker (blueprint mode), hidden, assigned, job {id, type, name, kind, pos, worker {id, name}}}]`, `note`.
+
 ### `build.workshop`
 
 Args: `type` (a `workshop_type` or `furnace_type` token such as `Masons` or `Smelter`, or a custom building code or name), `x`, `y`, `z` (top-left corner of the footprint, as `map.find_space` returns in `origin`), `material` (optional `dfhack.matinfo.find` token). Needs a map and `build_write`.

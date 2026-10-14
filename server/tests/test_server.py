@@ -42,6 +42,7 @@ def test_server_registers_expected_tools():
         "get_area_map",
         "find_build_space",
         "find_exposed_walls",
+        "list_designations",
         "place_workshop",
         "remove_building",
         "list_stockpiles",
