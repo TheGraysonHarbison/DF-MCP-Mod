@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **6**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **7**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -58,10 +58,10 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `stocks_true` | on | no ops; a toggle. Off puts the stocks ops in bookkeeper view. |
 | `orders` | on | `orders.list`, `orders.get`, `orders.jobs` |
 | `orders_write` | off | `orders.create`, `orders.edit`, `orders.delete` |
-| `workshops` | on | `workshops.list`, `workshops.get`, `build.plan_construction` |
+| `workshops` | on | `workshops.list`, `workshops.get`, `build.plan_construction`, `build.plan_furniture` |
 | `dig_write` | off | `dig.designate`, `dig.erase` (`dig.plan` is under `map`) |
 | `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space` |
-| `build_write` | off | `build.workshop`, `build.remove`, `build.construct` |
+| `build_write` | off | `build.workshop`, `build.remove`, `build.construct`, `build.place` |
 | `stockpiles` | on | `stockpiles.list`, `stockpiles.get`, `stockpiles.presets` |
 | `stockpiles_write` | off | `stockpiles.create`, `stockpiles.configure`, `stockpiles.rename`, `stockpiles.delete` |
 | `console` | off | `console.run` (plus a per-command allowlist) |
@@ -332,7 +332,7 @@ Args: none. Result: `present`, and when present `id`, `pos` (centre), `bounds`; 
 
 Args: `x`, `y`, `z`, `limit` (items on the tile, default 25).
 
-Result: `pos`, `hidden`; for a revealed tile also `tiletype`, `caption`, `shape`, `basic_shape` (`Wall`, `Floor`, `Ramp`, `Stair`, `Open`, ...), `material` (tiletype material class), `special`, `material_name` (the stone, soil, plant, or construction material: "granite", "yellow sand", "date palm trunk"), `material_class` (`natural_stone`, `mineral_vein`, `soil`, `lava_stone`, `feature_stone`, `ice`, `construction`, `tree`, `other`), `wall_kind` (walls only: `natural`, `smoothed`, `engraved`, `constructed`, `tree`), `construction` `{item_type, material}` for constructed tiles, `engraved`, `smooth` (`smooth` or `engrave` when designated), `walkable`, `walkable_group` (0 is not walkable; equal groups are connected), `passable_low`, `passable_high`, `outside`, `subterranean`, `light`, `liquid` `{type, depth}`, `designation` (`smooth`, `pile`), `dig` (`Default`, `UpStair`, `DownStair`, `UpDownStair`, `Channel`, `Ramp` when designated), `traffic`, `occupancy` `{building, unit, item}`, `building` `{id, type, name}`, `zones`, `plant` `{id, tree, name}`, `buildable` (flat walkable floor with no building, liquid, or plant), `items` `{entries, total, truncated}`, `units`.
+Result: `pos`, `hidden`; for a revealed tile also `tiletype`, `caption`, `shape`, `basic_shape` (`Wall`, `Floor`, `Ramp`, `Stair`, `Open`, ...), `material` (tiletype material class), `special`, `material_name` (the stone, soil, plant, or construction material: "granite", "yellow sand", "date palm trunk"), `material_class` (`natural_stone`, `mineral_vein`, `soil`, `lava_stone`, `feature_stone`, `ice`, `construction`, `tree`, `other`), `wall_kind` (walls only: `natural`, `smoothed`, `engraved`, `constructed`, `tree`), `construction` `{item_type, material}` for constructed tiles, `engraved`, `smooth` (`smooth` or `engrave` when designated), `walkable`, `walkable_group` (0 is not walkable; equal groups are connected), `passable_low`, `passable_high`, `outside`, `subterranean`, `light`, `liquid` `{type, depth}`, `designation` (`smooth`, `pile`), `dig` (`Default`, `UpStair`, `DownStair`, `UpDownStair`, `Channel`, `Ramp` when designated), `traffic`, `occupancy` `{building, unit, item}`, `building` `{id, type, name, built}` (a planned building occupies its tiles before it is built; `built` says whether it is finished), `zones`, `plant` `{id, tree, name}`, `buildable` (flat walkable floor with no building, liquid, or plant), `items` `{entries, total, truncated}`, `units`.
 
 Material lookup (plan 11.2, a Lua copy of DFHack's `MapExtras::BlockInfo::getBaseMaterial`): veins from the block's `block_square_event_mineralst` events (last one covering the tile wins), layer stone and soil from `designation.geolayer_index` into the biome's `world_geo_biome.layers` (a stone tile on a soil layer takes the biome's first stone layer, a soil tile on a stone layer its last soil layer), lava stone from the region details, feature stone from the local or global feature's material, constructions from `dfhack.constructions.findAtTile`, trees and roots from the plant raw. Tree trunk tiletypes carry the `SMOOTH` special, so trees are classed before the special is read.
 
@@ -430,6 +430,18 @@ Result (per-tile kinds): `kind`, `shape`, `box` (line endpoints under `line`, ci
 ### `build.construct`
 
 Args and result as `build.plan_construction`. Needs a map and `build_write`. Places each construction with `dfhack.buildings.constructBuilding` and fresh filters per building; a placement DFHack refuses is added to `skipped` as `placement failed`.
+
+### `build.plan_furniture`
+
+Args: `type` (plain name: `door`, `floodgate`, `hatch`, `wall_grate`, `floor_grate`, `vertical_bars`, `floor_bars`, `glass_window`, `gem_window`, `bed`, `table`, `chair`, `cabinet`, `chest`, `armor_stand`, `weapon_rack`, `statue`, `slab`, `coffin`, `cage`, `restraint`, `well`, `archery_target`, `traction_bench`, `nest_box`, `hive`, `bookcase`, `display_case`, `offering_place`, `instrument`, `animal_trap`; aliases `throne`, `seat`, `box`, `coffer`, `container`, `chain`, `rope`, `window`, `grate`, `bars`), either `x, y, z` or a one-level box `x1, y1, z1, x2, y2, z2`, `material` (a word from the Materials section; a form word is refused), `limit` (default 25, the most placed per call). Needs a map and `workshops`. Computes what `build.place` would do.
+
+Per tile: no map block, map edge, quickfort's base rule (hidden, building, magma, deep water), then the type's rule: `coverable` (hatch, floor grate, floor bars) takes floor, open air, ramp top, or a stair; `well` takes open air or a ramp top with an orthogonal floor neighbour; everything else takes a floor-like tile (`FLOOR`, `BOULDER`, `PEBBLES`, `TWIG`, `SAPLING`, `SHRUB`), beds additionally not `outside`, doors additionally a `WALL` or `FORTIFICATION` tile cardinally adjacent (a planned wall is not a wall yet), with a warning when no two opposite sides are walls. Items: the type's filters from `getFiltersByType` with the spec merged into the first; `requirements` carries each filter's item type, quantity times the tile count, material, and the available count; a shortage gives `status` `no_materials` with `missing` and `make_with` `{job, item, tool_use}` (the first of `ConstructDoor`, `ConstructBed`, `ConstructThrone`, `ConstructTable`, `ConstructCabinet`, `ConstructChest`, `ConstructArmorStand`, `ConstructWeaponRack`, `ConstructStatue`, `ConstructCoffin`, `ConstructSlab`, `ConstructHatchCover`, `ConstructGrate`, `ConstructFloodgate`, `ConstructTractionBench`, `MakeWindow`, `MakeCage`, `MakeChain`, `MakeAnimalTrap`, `MakeTool`, `CutGems`, `MakeInstrument` that exists in `df.job_type`).
+
+Result: `type`, `building_type`, `box`, `dry_run`, `applied`, `status` (`plan`, `placed`, `no_materials`, `nothing_to_place`), `placed`, `candidates`, `skipped_unsuitable`, `skipped_building`, `skipped_edge`, `over_limit`, `limit`, `skipped` `[{pos, reason}]` (first 25), `requirements`, `missing`, `make_with`, `warnings`, `buildings` (ids), `note`.
+
+### `build.place`
+
+Args and result as `build.plan_furniture`. Needs a map and `build_write`. One `constructBuilding` per tile with fresh filters.
 
 ### `build.remove`
 

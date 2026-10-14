@@ -47,7 +47,7 @@ local function enum_name(enum, value)
     return nil
 end
 
-local function facts(pos)
+function facts(pos)
     local tt = M.getTileType(pos)
     local des, occ = M.getTileFlags(pos)
     if not tt or not des then return nil end
@@ -61,13 +61,13 @@ local function facts(pos)
     }
 end
 
-local function is_edge(pos)
+function is_edge(pos)
     local w, h = M.getTileSize()
     return pos.x == 0 or pos.y == 0 or pos.x == w - 1 or pos.y == h - 1
 end
 
 -- quickfort is_valid_tile_base: revealed, no building, no deep water, no magma.
-local function base_problem(f)
+function base_problem(f)
     if f.des.hidden then return 'hidden (not yet revealed)' end
     if f.occ.building ~= 0 then
         return 'building (' .. (enum_name(df.tile_building_occ, f.occ.building) or '?'):lower() .. ')'
@@ -202,7 +202,7 @@ end
 local function list_limit(list) return #list < LIST_LIMIT end
 
 -- Material filter for a construction kind: the game's default slot plus the spec.
-local function filters_for(btype, subtype, spec)
+function filters_for(btype, subtype, spec)
     local filter_args = {}
     if spec then filter_args.material = materials.job_item_fields(spec) end
     return safe(B.getFiltersByType, filter_args, btype, subtype, -1)

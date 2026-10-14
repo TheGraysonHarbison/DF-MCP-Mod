@@ -51,6 +51,8 @@ def test_server_registers_expected_tools():
         "list_building_materials",
         "plan_construction",
         "place_construction",
+        "plan_furniture",
+        "place_furniture",
         "remove_building",
         "list_stockpiles",
         "get_stockpile",
