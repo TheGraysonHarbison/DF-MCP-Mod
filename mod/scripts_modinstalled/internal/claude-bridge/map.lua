@@ -446,7 +446,11 @@ function describe_tile(pos, limit)
     if building then
         out.building = {id = building.id,
                         type = enum_name(df.building_type, building:getType()),
-                        name = safe(function() return building.name ~= '' and building.name or nil end)}
+                        name = safe(function() return building.name ~= '' and building.name or nil end),
+                        -- A planned building occupies its tiles before it is built.
+                        built = safe(function()
+                            return building:getBuildStage() >= building:getMaxBuildStage()
+                        end)}
     end
     local zones = safe(dfhack.buildings.findCivzonesAt, pos)
     if zones and #zones > 0 then

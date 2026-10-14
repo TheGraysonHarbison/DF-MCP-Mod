@@ -16,6 +16,7 @@ from df_mcp.tools import (
     construct,
     core,
     dig,
+    furniture,
     map,
     nobles,
     orders,
@@ -62,6 +63,7 @@ TOOL_MODULES = (
     stockpiles,
     dig,
     construct,
+    furniture,
     console,
 )
 
