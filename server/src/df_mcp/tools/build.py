@@ -40,14 +40,104 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
 
     @mcp.tool(name="remove_building", annotations=DELETE)
     def remove_building(building_id: int) -> dict[str, Any]:
-        """Ask for a workshop or furnace to be removed. Needs `build_write`.
+        """Ask for a building to be removed: a workshop, furnace, furniture, door, bridge,
+        road, or an unbuilt construction. Needs `build_write`.
 
         A finished building gets a deconstruction job, so a dwarf takes it apart and its
-        materials drop on the ground (`status: removal_queued`). An unfinished blueprint is
-        cancelled immediately (`blueprint_cancelled`). A building claimed by a strange mood
-        is refused. Ids come from `list_workshops`.
+        items drop on the ground (`status: removal_queued`). An unfinished blueprint is
+        cancelled immediately (`blueprint_cancelled`). Stockpiles and zones have their own
+        delete tools; a building claimed by a strange mood is refused. Finished walls,
+        floors, and stairs are map tiles, not buildings: use `remove_constructions`. Ids
+        come from `list_buildings`.
         """
         return call(bridge, "build.remove", {"id": building_id})
+
+    @mcp.tool(name="list_buildings", annotations=READ_ONLY)
+    def list_buildings(
+        kind: str | None = None,
+        planned_only: bool = False,
+        z: int | None = None,
+        x1: int | None = None,
+        y1: int | None = None,
+        z1: int | None = None,
+        x2: int | None = None,
+        y2: int | None = None,
+        z2: int | None = None,
+        limit: int = 25,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """List every building in the fort except stockpiles and zones: workshops,
+        furnaces, furniture, doors, bridges, roads, and unbuilt constructions.
+
+        Each row has `id`, `kind` (plain name such as door, bed, workshop, construction),
+        `type` (the workshop, furnace, or construction subtype), `name`, `pos`, `bounds`,
+        `built`, `planned` (nothing built yet), `suspended`, `marked_for_removal`,
+        `strange_mood`, and for unbuilt ones `job` (type, worker, suspended) and `materials`
+        (items attached vs still needed). Filter with `kind` (a plain name, a building
+        type, or a subtype such as Masons or Wall), `planned_only`, `z`, or a box. Finished
+        walls and floors are map tiles, not buildings; see `get_tile`.
+        """
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        box = [x1, y1, z1, x2, y2, z2]
+        if any(v is not None for v in box) and any(v is None for v in box):
+            raise ValueError("a box needs all of x1, y1, z1, x2, y2, z2")
+        args: dict[str, Any] = {
+            "kind": kind.strip().lower() if kind else None,
+            "planned_only": planned_only,
+            "z": z,
+            "limit": limit,
+            "offset": offset,
+        }
+        if all(v is not None for v in box):
+            args.update({"x1": x1, "y1": y1, "z1": z1, "x2": x2, "y2": y2, "z2": z2})
+        return call(bridge, "build.list", args)
+
+    @mcp.tool(name="suspend_building", annotations=WRITE_SAFE)
+    def suspend_building(building_id: int, suspended: bool = True) -> dict[str, Any]:
+        """Suspend (`suspended=true`) or resume (`false`) the construction job of an
+        unbuilt building, so dwarves leave it alone or pick it up again. Needs
+        `build_write`. A finished building has no job and is refused.
+        """
+        return call(bridge, "build.suspend", {"id": building_id, "suspended": bool(suspended)})
+
+    @mcp.tool(name="remove_constructions", annotations=DELETE)
+    def remove_constructions(
+        x1: int | None = None,
+        y1: int | None = None,
+        z1: int | None = None,
+        x2: int | None = None,
+        y2: int | None = None,
+        z2: int | None = None,
+        center_x: int | None = None,
+        center_y: int | None = None,
+        center_z: int | None = None,
+        radius: int | None = None,
+        dry_run: bool = True,
+    ) -> dict[str, Any]:
+        """Remove constructions (walls, floors, ramps, stairs, fortifications) in a box or a
+        filled circle. Needs `build_write`. Defaults to `dry_run=true`, which only reports;
+        pass `dry_run=false` to act.
+
+        Planned constructions are cancelled at once; finished ones are designated for
+        removal and a miner takes them apart, leaving the material on the ground. Natural
+        tiles are skipped. Returns `cancelled`, `designated`, `already_designated`,
+        `skipped`, and the first 25 tiles with their action.
+        """
+        circle = [center_x, center_y, center_z, radius]
+        box = [x1, y1, z1, x2, y2, z2]
+        args: dict[str, Any] = {"dry_run": dry_run}
+        if all(v is not None for v in circle):
+            if any(v is not None for v in box):
+                raise ValueError("give either a box or a circle, not both")
+            args["circle"] = {"x": center_x, "y": center_y, "z": center_z, "radius": radius}
+        elif any(v is not None for v in circle):
+            raise ValueError("a circle needs center_x, center_y, center_z, and radius")
+        elif any(v is None for v in box):
+            raise ValueError("give a box (x1, y1, z1, x2, y2, z2) or a circle")
+        else:
+            args.update({"x1": x1, "y1": y1, "z1": z1, "x2": x2, "y2": y2, "z2": z2})
+        return call(bridge, "build.remove_constructions", args)
 
     @mcp.tool(name="list_building_materials", annotations=READ_ONLY)
     def list_building_materials(
