@@ -584,9 +584,9 @@ Every designate response: `{designated, skipped_existing, skipped_unsuitable, sk
 
 Recorded in `docs/decisions/0004-dig-fields.md` as they are done.
 
-1. `probe` output against our material lookup on a layer stone wall, a vein, a soil wall, a constructed wall, a smoothed wall, an ice wall.
-2. A three-level staircase carved through the game's own UI: the `dig` value on each level.
-3. A tile designated with no priority block event is picked up and dug.
+1. `probe` output against our material lookup on a layer stone wall, a vein, a soil wall, a constructed wall, a smoothed wall, an ice wall. Done 2026-10-13 without `probe` (it needs an in-game keyboard cursor): the owner confirmed soil by eye, and the 6.2 dig exposed sandstone (layer), kaolinite, bituminous coal, and turquoise (veins) that read back by name. Constructed, smoothed, and ice walls remain unchecked.
+2. A three-level staircase carved through the game's own UI: the `dig` value on each level. Superseded 2026-10-13: our own six-level column (up/down on an existing up stair, up/down between, up stair at the bottom) was carved by the miner into a working staircase.
+3. A tile designated with no priority block event is picked up and dug. Done 2026-10-13: all 102 tiles were taken and dug with no priority written.
 4. A designation job in `world.jobs.list` has `pos` set and `getWorker` returns the miner once assigned. Done 2026-10-13, with a twist: creating the job clears the tile's dig flag, so pending and taken orders are two sources that `map.designations` merges; the game queues jobs ahead of the miners, so taken does not imply assigned.
 5. Vanilla "rock throne" and "wooden throne" orders made in the UI: `mat_type`, `mat_index`, `material_category`, `item_type` (through the new `raw` field).
 6. `MakeWeapon` pick order with `item_type` left unset still labels as "forge copper pick".
@@ -595,6 +595,8 @@ Recorded in `docs/decisions/0004-dig-fields.md` as they are done.
 ### 11.6 Delivery and technique notes
 
 One branch per item from `main`, each verified live and updating `docs/protocol.md`, the README progress table, and the smoke test: `mod/orders-material` (5.0), `mod/map-materials` (6.0), `mod/map-designations` (6.1), `mod/dig` (6.2), `mod/dig-smooth` (6.3), `mod/dig-circles` (6.4). Protocol version bumps on each.
+
+Room layout rule (owner's note, 2026-10-13): dwarves move diagonally, so a mined room needs a fully solid border including its corners. Leave at least one wall tile between rooms and between a room and a corridor, and join them only through deliberate doorways; rooms whose corners touch are one room. The first 6.2 test placed three chambers whose corners met the hall, which the owner flagged. This rule is in the `designate_dig` tool description so Claude applies it when planning.
 
 Exposed-walls technique, kept for reference in case it needs replacing: scan one z-level by block (`map_block.tiletype` and `map_block.walkable` are 16 by 16 arrays, so a 3 by 3 embark level is about 20,000 tiles and well under a frame of Lua), keep wall tiles that are not hidden and have an orthogonal neighbour with a non-zero walkable group, then merge neighbours into runs along x and along y when material, kind, and open side match, preferring the longer axis. Expected failure mode: natural caverns and irregular dug-outs produce many one- and two-tile segments and hit the cap. Fallbacks, in order: a `segments=false` switch that returns tiles grouped by material with counts; the `material` view of `map.area` over the region of interest; `dfhack.maps.forEachTile` with a `shape_basic = Wall` filter as a native prefilter if the Lua scan is ever too slow.
 
