@@ -1,6 +1,6 @@
 # Project Plan: DFHack Claude Integration Mod
 
-Status: Phases 0 through 6 merged and verified in-game by 2026-10-13 against DFHack 53.16-r2. Phases 7 to 9 (building, zoning, pause) planned on 2026-10-14; see section 3 and section 12. Last updated 2026-10-14.
+Status: Phases 0 through 9 merged and verified in-game against DFHack 53.16-r2; Phases 7 to 9 (building, zoning, pause) were planned, built, and verified on 2026-10-14 (PRs #28 to #35), design in section 12. Nothing is scheduled beyond them; see Future in section 3. Last updated 2026-10-14.
 
 This document is the agreed plan for the project. The README describes the idea and current progress for readers; this file describes how we build it. When the two disagree, fix this file first, then the README.
 
@@ -702,6 +702,8 @@ Recorded in `docs/decisions/0005-building-fields.md` as they are done.
 ### 12.5 Delivery
 
 One branch per item from `main`, in this order, each verified live and updating `docs/protocol.md`, the README progress table, and the smoke test: `mod/pause` (9.0), `mod/build-materials` (7.0), `mod/constructions` (7.1), `mod/furniture` (7.2), `mod/build-remove` (7.3), `mod/zones` (8.0), `mod/zones-paint` (8.1). Protocol version bumps on each, starting at 4.
+
+Delivered 2026-10-14 in that order as PRs #29 to #35, protocol versions 4 to 10. Notes from the live tests: a reload of the mod now drops cached helper modules (7.0); a roof over walls needs a ramp or stair for access and a tree canopy above a ramp blocks it (7.2); `map.tile` buildings carry `built` because a planned building occupies its tiles (7.2); construction removal skips the top-of-wall records above constructed walls (7.3); `getRoomDescription` is empty for zones on 53.16-r2 (8.1). Still unverified live: the material class bits on construction jobs with mixed stock, pit and pond flags and archery directions written by the UI, animal assignment and zone deletion through the bridge.
 
 ---
 

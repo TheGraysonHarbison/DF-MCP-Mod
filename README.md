@@ -83,7 +83,7 @@ say "any stone" or "any wood" in plain words, and every order reports the label 
 - 6.3 Designate smoothing and engraving.
 - 6.4 Filled circles for digging, smoothing, and stockpiles from a centre and a radius in one call.
 
-**Phase 7: Building.** Claude builds structures. Planned 2026-10-14, design in
+**Phase 7: Building.** Claude builds structures. Planned and delivered 2026-10-14, design in
 [plan section 12](docs/ProjectPlan.md#12-phases-7-to-9-addendum-building-zoning-pause-planned-2026-10-14).
 
 - 7.0 Pick materials: use the game's closest-material default, or name one in plain words ("granite", "any stone",
