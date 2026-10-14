@@ -119,7 +119,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 4.4 | Stockpiles: list by category, bounds, settings, links, contents (`list_stockpiles`, `get_stockpile`) | verified in-game 2026-10-12 |
 | 4.5 | Paint a rectangular stockpile, configure categories and presets, rename, delete (`create_stockpile`, `configure_stockpile`, `rename_stockpile`, `delete_stockpile`, `list_stockpile_presets`, `stockpiles_write` permission) | verified in-game 2026-10-12 |
 | 5.0 | Work order materials in plain words ("any stone", "any wood", "silver"), game label on every order, orders that would read "unknown material" refused | verified in-game 2026-10-13; design in [plan section 11.1](docs/ProjectPlan.md#11-phases-5-and-6-addendum-work-order-fix-and-striking-the-earth-planned-2026-10-13) |
-| 6.0 | Wall material and kind on `get_tile`, material view on `get_area_map`, exposed-wall scan (`find_exposed_walls`) | planned 2026-10-13 |
+| 6.0 | Wall material and kind on `get_tile`, material and designation views on `get_area_map`, exposed-wall scan (`find_exposed_walls`) | verified in-game 2026-10-13 (soil, trees, exposed-wall scan); the stone, vein, and construction lookups follow DFHack's MapCache logic and get checked when the fort is dug |
 | 6.1 | List dig, stair, channel, ramp, smooth, and engrave designations with their assigned dwarf (`list_designations`) | planned 2026-10-13 |
 | 6.2 | Designate and erase digging in a box across z-levels (`designate_dig`, `erase_designations`, `dig_write` permission) | planned 2026-10-13 |
 | 6.3 | Designate smoothing and engraving | planned 2026-10-13 |
