@@ -13,6 +13,7 @@ from df_mcp.bridge import Bridge
 from df_mcp.tools import (
     build,
     console,
+    construct,
     core,
     dig,
     map,
@@ -60,6 +61,7 @@ TOOL_MODULES = (
     build,
     stockpiles,
     dig,
+    construct,
     console,
 )
 
