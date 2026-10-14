@@ -689,7 +689,7 @@ Every placement response: `{placed, skipped_existing, skipped_unsuitable, skippe
 
 Recorded in `docs/decisions/0005-building-fields.md` as they are done.
 
-1. A wall placed with a `flags3.stone` filter and one with `item_type=BLOCKS` are both built from matching items; a `mat_index` filter still works for constructions. Fallback if the class flags are ignored: pick the items and pass `items`.
+1. A wall placed with a `flags3.stone` filter and one with `item_type=BLOCKS` are both built from matching items; a `mat_index` filter still works for constructions. Fallback if the class flags are ignored: pick the items and pass `items`. Partly done 2026-10-14 on workshops: a `mat_index` filter (plum wood) was honoured, the builder fetched a plum log; the `wood` class bit placed and built fine but with only wood in stock it proves nothing yet. The construction test in 7.1 settles the class bits.
 2. Whether the game refuses an unsupported construction at placement or only at build time, by placing one floor tile over open air through the UI.
 3. A door placed through the UI next to one wall; a door with no adjacent wall (expected: refused by the UI).
 4. A pit and a pond placed through the UI: `keep_filled` on each; an archery range with each shooting direction: `dir_x`, `dir_y`.
