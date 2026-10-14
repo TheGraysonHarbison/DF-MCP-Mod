@@ -83,11 +83,35 @@ say "any stone" or "any wood" in plain words, and every order reports the label 
 - 6.3 Designate smoothing and engraving.
 - 6.4 Filled circles for digging, smoothing, and stockpiles from a centre and a radius in one call.
 
-**Future plans** (after 6.4, not scheduled):
+**Phase 7: Building.** Claude builds structures. Planned 2026-10-14, design in
+[plan section 12](docs/ProjectPlan.md#12-phases-7-to-9-addendum-building-zoning-pause-planned-2026-10-14).
+
+- 7.0 Pick materials: use the game's closest-material default, or name one in plain words ("granite", "any stone",
+  "blocks", "granite blocks", "logs"). A read lists usable building materials with counts.
+- 7.1 Constructions: walls, floors, ramps, stairs across levels, fortifications, bridges with a direction, roads, and
+  supports. Walls between two points at any angle, filled or hollow boxes, filled or hollow circles.
+- 7.2 Furniture and doors, each from an item made beforehand in a workshop; a missing item is refused with the work
+  order that makes it. Doors need an adjacent wall.
+- 7.3 Cancel blueprints, dismantle buildings, remove constructions, suspend and resume build jobs; a list of every
+  building with its state.
+
+**Phase 8: Zoning.**
+
+- 8.0 See every zone: list by type, name, or active state; read one with its tiles, owner, assigned animals, squads,
+  location, and settings.
+- 8.1 Paint zones in boxes and circles (walls and water count), rename, activate, resize, configure, assign and
+  unassign owners and animals, delete.
+
+**Phase 9: Pause.**
+
+- 9.0 See the pause state and pause or unpause the game, behind its own permission.
+
+**Future plans** (after 9.0, not scheduled):
 
 - Event queue, in-game chat window, and an autonomy timer so Claude is prompted by petitions, sieges, deaths, and on a
   schedule.
-- Petitions, quickfort blueprints, military (squads, alerts, stations), labor assignment, zones.
+- Petitions, quickfort blueprints, military (squads, alerts, stations, barracks and archery assignment), labor
+  assignment, locations (taverns, temples, libraries), traps and levers, tracks and minecarts.
 - Push transport, a headless Python conductor, Steam Workshop packaging, legends and adventure mode.
 
 ## Progress
@@ -124,6 +148,13 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 6.2 | Preview, place, and erase digging orders in a box across z-levels (`plan_dig`, `designate_dig`, `erase_designations`, `dig_write` permission) | verified in-game 2026-10-13: a 6-level stair column and three chambers (102 orders) placed from a dry-run plan, overlaps skipped, all dug by the miner; erase cleared a test order with and without a kind filter |
 | 6.3 | Designate smoothing and engraving (`designate_dig` kinds `smooth` and `engrave`) | verified in-game 2026-10-13: 147 smoothing orders over the dug chambers, all carried out; walls and floors read back as smoothed, a repeat refuses them; 147 engraving orders then placed and taken as jobs within a second |
 | 6.4 | Filled circles for digging, smoothing, and stockpiles (`plan_dig` and `designate_dig` with `center_x`, `center_y`, `center_z`, `radius`; `create_stockpile` with `center_x`, `center_y`, `radius`) | verified in-game 2026-10-13: a radius-3 round room (37 orders) with a doorway corridor, and a radius-2 round stockpile (21 tiles, corners left as floor) |
+| 9.0 | Pause and unpause (`set_paused`, `pause_write` permission) | planned 2026-10-14, delivered first |
+| 7.0 | Building materials in plain words for workshops and everything below; usable material list (`list_building_materials`) | planned 2026-10-14 |
+| 7.1 | Constructions: walls, floors, ramps, stairs, fortifications, bridges, roads, supports in lines, boxes, and circles, filled or hollow (`plan_construction`, `place_construction`) | planned 2026-10-14 |
+| 7.2 | Furniture, doors, hatches, grates, bars, windows from made items (`place_furniture`) | planned 2026-10-14 |
+| 7.3 | List every building, cancel or dismantle any, remove constructions, suspend and resume (`list_buildings`, `remove_building`, `remove_constructions`, `suspend_building`) | planned 2026-10-14 |
+| 8.0 | Zones: list and inspect (`list_zones`, `get_zone`, `zones` permission) | planned 2026-10-14 |
+| 8.1 | Zones: paint, edit, assign, delete (`create_zone`, `edit_zone`, `assign_zone`, `unassign_zone`, `delete_zone`, `zones_write` permission) | planned 2026-10-14 |
 
 ## Known bugs
 

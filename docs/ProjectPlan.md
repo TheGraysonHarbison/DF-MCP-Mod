@@ -1,6 +1,6 @@
 # Project Plan: DFHack Claude Integration Mod
 
-Status: Phases 0 through 4 merged and verified in-game on 2026-10-12 against DFHack 53.16-r2. Phases 5 and 6 planned on 2026-10-13; see section 3 and section 11. Last updated 2026-10-13.
+Status: Phases 0 through 6 merged and verified in-game by 2026-10-13 against DFHack 53.16-r2. Phases 7 to 9 (building, zoning, pause) planned on 2026-10-14; see section 3 and section 12. Last updated 2026-10-14.
 
 This document is the agreed plan for the project. The README describes the idea and current progress for readers; this file describes how we build it. When the two disagree, fix this file first, then the README.
 
@@ -173,10 +173,30 @@ Reads stay under `map`. Every write in this phase goes under one new namespace, 
 
 Design for all of Phase 6 in section 11.2 to 11.6.
 
-### Future (after 6.4, not scheduled)
+### Phase 7: Building
+
+Reads stay under `workshops` (relabelled "Read workshops and buildings") and `stocks`; every write stays under the one `build_write` namespace, relabelled "Place and remove buildings and constructions". Design in section 12.
+
+- 7.0 Materials: Claude either takes the closest material (the game's default filter) or names one in plain words, as work orders do since Phase 5: a material ("granite", "any stone", "wood"), a form ("blocks", "logs", "bars"), or both ("granite blocks"). A read lists usable building materials with counts by material and form. `build.workshop` takes the same words.
+- 7.1 Constructions: walls, floors, ramps, stairs across levels, fortifications, bridges with their direction, paved and dirt roads, and supports. Walls go between two points at any angle, in filled or hollow boxes, and in filled or hollow circles, the way dig orders do. Tracks, track stops, and rollers are deferred.
+- 7.2 Furniture and doors: beds, tables, chairs, cabinets, chests, and the rest of the furniture tab, plus doors, floodgates, hatches, grates, bars, and windows, each consuming an item made beforehand in a workshop. Doors follow the game's rule (one adjacent wall) and warn when not between two opposite walls.
+- 7.3 Cancel and dismantle: cancel any blueprint, dismantle any built building, remove finished constructions in a box or circle, suspend and resume build jobs. A general building list read gives Claude the targets.
+
+### Phase 8: Zoning
+
+Namespace `zones` (read, on) and `zones_write` (off), both in the World group. Design in section 12.
+
+- 8.0 See every zone: list by type, name, or active state, and read one zone with its tiles, owner, assigned units, squads, location, and per-type settings.
+- 8.1 Paint zones in boxes and circles over floors, walls, and water; rename, activate, resize, and configure them; assign and unassign owners and animals; delete them. Locations (taverns, temples, libraries, guildhalls, hospitals) are read in 8.0 and created in a later 8.2; squad assignment waits for the military phase.
+
+### Phase 9: Pause
+
+- 9.0 See the pause state (already in `time.now`) and set it, behind a new `pause_write` toggle, off by default. Delivered first because every live test benefits.
+
+### Future (after 9.0, not scheduled)
 
 - Event queue (2.3) with `events.poll` and `wait_for_event`; chat overlay with `chat.message` and `chat.say`; autonomy timer; event-kind filters; a documented play loop in `docs/playing.md`. The driver loop design in 2.4 stays as written.
-- Petitions, quickfort blueprints through the quickfort command, military (squads, alerts, stations), labor assignment, zones.
+- Petitions, quickfort blueprints through the quickfort command, military (squads, alerts, stations, barracks and archery range assignment), labor assignment, locations (8.2), traps and levers, tracks and minecarts, door and hatch toggles.
 - Luasocket push transport, a headless Python conductor using the Agent SDK, Steam Workshop packaging, legends and adventure mode.
 
 ---
@@ -602,6 +622,89 @@ Exposed-walls technique, kept for reference in case it needs replacing: scan one
 
 ---
 
+## 12. Phases 7 to 9 addendum: building, zoning, pause (planned 2026-10-14)
+
+Decisions agreed on 2026-10-14 after reading DFHack's `Buildings.cpp`, the `dfhack.buildings` Lua helper (the building input filter tables and `constructBuilding`), the quickfort build and zone modules, the buildingplan plugin and its placement overlay, the zone plugin, and the df-structures building, job, and basics definitions, all on the `master` branches listed in the references, plus the DF wiki pages for constructions, bridges, stairs, doors, activity zones, pastures, and archery ranges.
+
+### 12.1 What DFHack gives us
+
+| Need | Source (checked 2026-10-14) |
+|---|---|
+| Material filters | A building's construction job carries one `job_item` per input (`dfhack.buildings.getFiltersByType`). A filter can name a specific material (`mat_type`, `mat_index`), a material class through `flags3` (`stone`, `wood`, `metal`, `gem`; the v50 build menu's type toggles), or an item form through `item_type` (`BLOCKS`, `BOULDER`, `WOOD`, `BAR`). `flags2.building_material` marks the generic "building material" slot; `fire_safe` and `magma_safe` sit beside it. `isSuitableItem` and `isSuitableMaterial` judge an item against a filter, which `build.workshop` already uses to count stock. An explicit `items` list is the other route: `constructWithItems` attaches the items to the job (reserving them with `in_job`), which is what the vanilla UI and buildingplan's "choose items" do. |
+| buildingplan | Keeps material filters per building type, not per placement, and attaches items in a background cycle; `addPlannedBuilding` suspends a building until its items exist. Its global `reconstruct` setting allows building on existing constructions. Not used in this phase: per-placement material choice is the requirement. |
+| Constructions | `constructBuilding{type=Construction, subtype=df.construction_type.X, pos, filters}` places one tile; the subtypes are `Wall`, `Floor`, `Ramp`, `UpStair`, `DownStair`, `UpDownStair`, `Fortification`, `ReinforcedWall` (two materials plus a metal bar), and the `Track*` and `TrackRamp*` family. Each tile is its own building with its own `ConstructBuilding` job and one building material. `setSize` skips `setMaterialAmount` for constructions. |
+| Valid construction tiles | quickfort `is_valid_tile_has_space_or_is_ramp`: tiletype shape `EMPTY`, `FLOOR`, `BOULDER`, `PEBBLES`, `RAMP_TOP`, `BROOK_TOP`, `TWIG`, `SAPLING`, `SHRUB`, or `RAMP`; not hidden; no building occupancy; `flow_size` at most 1 and no magma. `checkFreeTiles` only checks occupancy, passability, and flow. Vanilla allows building on a constructed floor; quickfort refuses a construction of the same shape on top of an existing one (floor on floor, ramp on ramp) for idempotency. Neither DFHack nor quickfort checks support or reachability; quickfort says so in its header. |
+| Stairs across levels | buildingplan `get_stairs_subtype`: bottom level `UpStair` unless the tile is already a down or up/down stair (then `UpDownStair`), top level `DownStair` unless the tile is already an up or up/down stair, every level between `UpDownStair`. The same convention our `dig.designate` uses. The wiki adds that a stairwell through existing floors is built top down or needs access to each level. |
+| Bridges | One building, flexible size up to 31 by 31, `direction` from `df.building_bridgest.T_direction` (`Retracting` -1, `Left`, `Right`, `Up`, `Down`; the arrow is the side that becomes a wall when raised), fixed at placement. Filter quantity -1 makes DFHack compute the material count (floor(tiles/4)+1 per the wiki). `setSize` records `gate_flags.has_support` from `hasSupport`. quickfort: the anchor edge may not sit on ramps; other tiles may. The wiki: a bridge needs a walkable perimeter tile and no tile under it deeper than 1/7 water. |
+| Roads and supports | `RoadPaved` takes building material with computed quantity and supports extents; `RoadDirt` takes nothing and must sit on soil or grass; `Support` is 1 by 1 and takes one building material. |
+| Furniture inputs | `building_inputs` in `dfhack/buildings.lua`: `Bed` takes a `BED`, `Door` a `DOOR`, `Chair` a `CHAIR`, `Table` a `TABLE`, `Cabinet` a `CABINET`, `Box` an empty `BOX`, `Armorstand`, `Weaponrack`, `Statue`, `Coffin`, `Slab`, `Cage`, `Chain`, `Floodgate`, `Hatch` a `HATCH_COVER`, `GrateWall` and `GrateFloor` a `GRATE`, `BarsVertical` and `BarsFloor` a `BAR`, `WindowGlass` a `WINDOW`, `WindowGem` three `SMALLGEM`, `TractionBench`, `AnimalTrap`, `Instrument`, `NestBox`, `Hive`, `Bookcase`, `DisplayFurniture`, and `OfferingPlace` a `TOOL` with the matching tool use, `Well` blocks plus a bucket, a chain, and a mechanism, `ArcheryTarget` one building material. |
+| Furniture tile rules | quickfort: beds need an indoor floor (`not outside`); doors need a cardinally adjacent `WALL` or `FORTIFICATION` tile shape; wells need an empty tile (open air or ramp top) with an adjacent floor; hatches, floor grates, and floor bars go on floor, open air, ramp tops, or stairs; everything else needs a floor-like tile (floor, boulders, pebbles, twigs, saplings, shrubs). The wiki confirms a door needs one adjacent wall at designation and may be chained from constructed walls. |
+| Cancel and dismantle | `dfhack.buildings.deconstruct(b)`: an unbuilt blueprint is removed at once (returns true), a built building gets a `DestroyBuilding` job (returns false); already verified in `build.remove`. A finished construction is a map tile, not a building: `dfhack.constructions.designateRemove(pos)` designates it for removal by a miner, or cancels a planned one, returning `true, was_only_planned`. `dfhack.constructions.findAtTile(pos)` finds the construction record. Suspension is `building.jobs[0].flags.suspend`. |
+| Zone list and fields | `world.buildings.other.ACTIVITY_ZONE` (every fortress zone; `ANY_ZONE` includes site zones). `building_civzonest`: `type` (`civzone_type`), `zone_num` (the game's "Zone #n"), `name`, `spec_sub_flag.active`, `room` with `extents`, `assigned_unit_id` (the owner; `dfhack.buildings.getOwner`), `assigned_units` (pen, pit, pond), `assigned_items` (vermin), `squad_room_info` (barracks, archery), `location_id` and `site_id` (the location an area is attached to), `contained_buildings`, and `zone_settings`, a union: `pen.flags.check_occupants`; `pond.flag.keep_filled` (a pit is a pond zone without `keep_filled`); `gather.flags.pick_trees`, `pick_shrubs`, `gather_fallen`; `archery.dir_x`, `dir_y` (quickfort: shoot from west is `dir_x=1, dir_y=0`, from east `-1, 0`, from north `0, 1`, from south `0, -1`); `tomb.flags.no_pets`, `no_citizens`. `dfhack.buildings.getRoomDescription(zone)` gives the quality label. |
+| Zone types in the UI | `civzone_type`: `MeetingHall`, `Bedroom`, `DiningHall`, `Dormitory`, `Barracks`, `ArcheryRange`, `Office`, `Tomb`, `Pen`, `Pond`, `Dump`, `WaterSource`, `FishingArea`, `SandCollection`, `ClayCollection`, `PlantGathering`, `AnimalTraining`, `Dungeon` (18, matching the wiki). `Shrine` exists in the enum but not in the fortress UI; the rest of the enum is site-realization zones. |
+| Zone placement | quickfort zone module: `constructBuilding{type=Civzone, subtype=<civzone_type>, abstract=true, pos, width, height, fields={assigned_unit_id=-1, room={x, y, width, height, extents}}}`, then assign `spec_sub_flag.active`, `name`, and `zone_settings`. The only tile rule is "not hidden": zones go over walls, open space, water, buildings, and stockpiles. `checkFreeTiles` takes `allow_wall` and `allow_flow` for this. `constructAbstract` assigns `zone_num`. |
+| Zone edits | Extents are edited in place, then `dfhack.buildings.notifyCivzoneModified(zone)` rebuilds the building-to-zone map. `dfhack.buildings.setOwner(zone, unit)` sets or clears the owner (nil clears). The zone plugin assigns an animal by pushing its id onto `assigned_units` and adding a `general_ref_building_civzone_assignedst` to the unit, after detaching it from any previous zone, cage, or chain; unassigning erases both. `dfhack.buildings.deconstruct` removes a zone at once and clears its squad and unit links. |
+| Locations | A tavern, temple, library, guildhall, or hospital is an `abstract_building_*st` in `site.buildings` with flags, a name, and `contents.building_ids` listing the zones; the zone points back with `location_id`. quickfort creates them by hand. Read in 8.0, written in 8.2. |
+| Pause | `dfhack.world.ReadPauseState()` (true while paused or single-stepping) and `dfhack.world.SetPauseState(bool)`, which writes `df.global.pause_state`. The RPC call suspends the core only for its own duration, so the new state holds after the call returns. |
+
+### 12.2 Decisions
+
+| Question | Decision |
+|---|---|
+| Material input (7.0) | `material` accepts the Phase 5 plain words plus forms: a material ("granite", "silver", "any stone", "wood", "any metal"), a form ("blocks", "boulders", "logs", "bars"), or both ("granite blocks", "wooden logs"). Tokens such as `INORGANIC:GRANITE` keep working. The resolver lives in a shared `materials` module that `orders.create`, `build.workshop`, `build.construct`, and `build.place` all use. A material class sets the `flags3` bit; a form sets `item_type`; a specific material sets `mat_type` and `mat_index`. Omitted means the game's default filter: closest suitable material. |
+| Shortage | Count usable items per filter as `build.workshop` does. If any filter is short, refuse with `no_materials` and `available` broken down by material and form, so Claude can pick again. Nothing is placed suspended. For a shape, the count covers the whole shape: the response says `needed` and `available`, and nothing is placed when `available < needed`. |
+| Material list read | New `build.materials` under `stocks`: usable building materials in play (not forbidden, dumped, melting, in a job, built, trader, or hostile) grouped by material and form with counts, optional `form`, `material`, `fire_safe`, `magma_safe`, `limit`. |
+| Construction kinds (7.1) | `wall`, `floor`, `ramp`, `stairs`, `fortification`, `bridge`, `paved_road`, `dirt_road`, `support`. Tracks, track stops, rollers, and reinforced walls wait. |
+| Shapes | Walls, floors, ramps, fortifications: a box (`x1..z2`, filled or `hollow`), a circle (`circle={x,y,z,radius}`, filled or `hollow` ring), or a line (`line={x1,y1,x2,y2,z}`, any angle). A hollow box is its perimeter; a hollow circle is the ring of inside tiles that touch an outside tile. Lines are drawn with Bresenham; `thick` (default true) adds the orthogonal step at every diagonal move so the line has no diagonal gaps, because dwarves walk diagonally. A z range stacks the shape on every level (a tower in one call). Stairs take a box of at least two levels with the dig convention, and refuse circles and lines. Bridges, roads, and supports are single buildings: a bridge takes a box up to 31 by 31 on one level plus `direction` (`retracting`, `raise_north`, `raise_south`, `raise_east`, `raise_west`); roads take a box up to 31 by 31 with unsuitable tiles cut out of the extents; a support takes one tile. Boxes for per-tile kinds are at most 64 by 64 by 32, as for digging. |
+| Per-tile rules | quickfort's list above. An existing construction of the same shape on the tile is skipped as `existing`; other constructions are built over as vanilla allows. A tile with a building, a planned construction (occupancy `Planned`), a unit-blocked tile, liquid deeper than 1, magma, a tree, or hidden rock is skipped with a reason. Map-edge tiles are skipped. |
+| Support | Not enforced. A tile with no floor, wall, ramp, stair, or construction among its eight neighbours on the same level and no solid tile below is counted and listed as `unsupported` (first 25) so Claude can order supports or reorder its plan; it is still placed, as quickfort does. The game refuses the job at build time if a dwarf cannot reach it, which `build.list` then shows. |
+| Furniture types (7.2) | Plain names mapped to `building_type`: `door`, `floodgate`, `hatch`, `wall_grate`, `floor_grate`, `vertical_bars`, `floor_bars`, `glass_window`, `gem_window`, `bed`, `table`, `chair`, `cabinet`, `chest`, `armor_stand`, `weapon_rack`, `statue`, `slab`, `coffin`, `cage`, `restraint`, `well`, `archery_target`, `traction_bench`, `nest_box`, `hive`, `bookcase`, `display_case`, `offering_place`, `instrument`, `animal_trap`. Traps, levers, pressure plates, siege engines, machines, and the trade depot wait. |
+| Furniture placement | One tile `x, y, z`, or a box that places one per valid tile (beds in a dormitory), capped at 25 per call. Tile rules per type from quickfort (beds indoors; wells on an empty tile beside a floor; hatches, floor grates, and floor bars on floor, air, ramp tops, or stairs; doors beside a wall). `material` restricts the item the same way as constructions (a "granite door", "any wood"). Missing items refuse with `no_materials` and `make_with`, the work order job and item that produces it (from buildingplan's item-to-job table: `ConstructDoor`, `ConstructBed`, `ConstructThrone` for chairs, `ConstructChest` for boxes, and so on), so Claude can queue an order itself. |
+| Door rule | The game's rule: at least one cardinally adjacent wall or fortification, else `skipped_unsuitable`. When the door is not between two opposite walls the response carries a `warning` naming the open sides. Door and hatch toggles are deferred. |
+| Cancel and dismantle (7.3) | `build.remove` accepts every building type (the strange-mood guard stays; a zone or stockpile is refused and pointed at its own op). New `build.remove_construction` takes a box or circle with `dry_run`: planned constructions are cancelled at once, finished ones are designated for removal through `designateRemove`; tiles without a construction are skipped and counted. New `build.suspend` with `id` and `suspended` flips `jobs[0].flags.suspend`. |
+| Building list | New `build.list` under `workshops`: every building in play with `id`, `kind`, `type` (workshop, furnace, construction, or civzone subtype), `name`, `pos`, `bounds`, `stage` and `max_stage`, `planned` (stage 0), `suspended`, `marked_for_removal`, `job` `{type, worker}`, `materials` (attached item count vs. needed). Filters `kind`, `planned_only`, `z`, box, `limit`, `offset`. Stockpiles and zones are listed by their own ops and excluded here. |
+| Permissions (7.x) | One `build_write`, relabelled "Place and remove buildings and constructions". `workshops` relabelled "Read workshops and buildings". |
+| Zone reads (8.0) | `zones.list` with `type`, `query` (name substring), `active`, `limit`, `offset`; rows `{id, number, name, label, type, active, bounds, pos, tiles, owner, assigned_count, location}`. `zones.get` with `id` and `limit`: the row plus `extents` as the first 25 tiles (and a count), `owner` `{id, name}`, `assigned_units` `[{id, name}]`, `squads` (ids and names, read only), `location` `{id, type, name}`, `settings` (the type's union fields by name, with `pit_or_pond` spelled out), `contained_buildings`, `room_description`. `map.tile` keeps its `zones` field. |
+| Zone types (8.1) | The 18 UI types by plain name: `meeting_area`, `bedroom`, `dining_hall`, `dormitory`, `barracks`, `archery_range`, `office`, `tomb`, `pen`, `pit`, `pond`, `dump`, `water_source`, `fishing`, `sand`, `clay`, `gather`, `animal_training`, `dungeon`. `pit` and `pond` both map to `Pond`, differing in `keep_filled`. |
+| Zone painting | A box (`x1, y1, x2, y2, z`, at most 64 by 64) or a circle (radius 1 to 31), built with room extents as stockpiles are. Every revealed tile counts, walls and water included; hidden tiles are cut from the extents and counted. Args `name`, `active` (default true), and the type's settings (`keep_filled` is implied by `pit`/`pond`; `pick_trees`, `pick_shrubs`, `gather_fallen`; `shoot_from`; `allow_pets`, `allow_citizens`). An overlapping zone of the same type is reported as a `warning`, not refused, because the game allows it. |
+| Zone edits | `zones.edit` with `id` and any of `name`, `active`, settings, `add` (box or circle) and `remove` (box or circle) that grow or shrink the extents (the bounding box is re-fitted and `notifyCivzoneModified` called), and `type` is immutable. `zones.assign` with `id` and `unit_id`: for owner types (`bedroom`, `office`, `dining_hall`, `tomb`) it calls `setOwner` and replaces the previous owner; for `pen`, `pit`, and `pond` it appends to `assigned_units` with the unit general ref, detaching the unit from its previous zone first; pens accept tame animals only; pits and ponds accept any unit that is not a citizen or a pet, so Claude cannot pit a dwarf; other types are refused. `zones.unassign` reverses either. `zones.delete` calls `deconstruct`. Squads, locations, and `assigned_items` (vermin) are read only. |
+| Pause (9.0) | `time.set_pause` with `paused` under new `pause_write` (group General, off by default, label "Pause and unpause the game"). Returns the state before and after. `time.now` keeps `paused`. |
+| List caps | 25 by default everywhere, raised per call with `limit` (rule 12). Placement responses list the first 25 placed building ids and the first 25 skipped tiles with reasons. |
+
+### 12.3 Ops by item
+
+| Item | Ops | Tools |
+|---|---|---|
+| 9.0 | `time.set_pause` | `set_paused` |
+| 7.0 | `materials` module; `build.materials`; `build.workshop` and `orders.create` take the shared words | `list_building_materials`, `place_workshop(material=...)` |
+| 7.1 | `build.plan_construction` (read, `workshops`), `build.construct` (`build_write`) with `kind`, a box, circle, or line, `hollow`, `thick`, `material`, `direction`, `dry_run` | `plan_construction`, `place_construction` |
+| 7.2 | `build.place` with `type`, a tile or box, `material` | `place_furniture` |
+| 7.3 | `build.list`, `build.remove` (all types), `build.remove_construction`, `build.suspend` | `list_buildings`, `remove_building`, `remove_constructions`, `suspend_building` |
+| 8.0 | `zones.list`, `zones.get` | `list_zones`, `get_zone` |
+| 8.1 | `zones.create`, `zones.edit`, `zones.assign`, `zones.unassign`, `zones.delete` | `create_zone`, `edit_zone`, `assign_zone`, `unassign_zone`, `delete_zone` |
+
+Every placement response: `{placed, skipped_existing, skipped_unsuitable, skipped_building, skipped_edge, unsupported, buildings: [ids] (capped), skipped: [{pos, reason}] (capped), materials: {needed, available, filter}, dry_run, warnings}`.
+
+### 12.4 In-game checks before implementation
+
+Recorded in `docs/decisions/0005-building-fields.md` as they are done.
+
+1. A wall placed with a `flags3.stone` filter and one with `item_type=BLOCKS` are both built from matching items; a `mat_index` filter still works for constructions. Fallback if the class flags are ignored: pick the items and pass `items`.
+2. Whether the game refuses an unsupported construction at placement or only at build time, by placing one floor tile over open air through the UI.
+3. A door placed through the UI next to one wall; a door with no adjacent wall (expected: refused by the UI).
+4. A pit and a pond placed through the UI: `keep_filled` on each; an archery range with each shooting direction: `dir_x`, `dir_y`.
+5. A pasture with an animal assigned through the UI: the unit's general refs and `assigned_units`.
+6. A bedroom with an owner assigned through the UI: `assigned_unit_id` and `getOwner`.
+7. The stair subtype written by the UI on each level of a three-level constructed stairwell.
+8. A bridge placed through the UI with a raise direction: `direction` and `material_amount`.
+9. `SetPauseState(false)` from the RPC call leaves the game running after the call returns.
+
+### 12.5 Delivery
+
+One branch per item from `main`, in this order, each verified live and updating `docs/protocol.md`, the README progress table, and the smoke test: `mod/pause` (9.0), `mod/build-materials` (7.0), `mod/constructions` (7.1), `mod/furniture` (7.2), `mod/build-remove` (7.3), `mod/zones` (8.0), `mod/zones-paint` (8.1). Protocol version bumps on each, starting at 4.
+
+---
+
 ## References (checked 2026-10-12)
 
 - DFHack releases: https://github.com/DFHack/dfhack/releases (latest 53.16-r2)
@@ -619,5 +722,12 @@ Exposed-walls technique, kept for reference in case it needs replacing: scan one
 - DFHack MapCache base material lookup (checked 2026-10-13): https://github.com/DFHack/dfhack/blob/develop/library/modules/MapCache.cpp
 - DFHack orders plugin and rock order library (checked 2026-10-13): https://github.com/DFHack/dfhack/blob/develop/plugins/orders.cpp and https://github.com/DFHack/dfhack/blob/develop/data/orders/rockstock.json
 - df-structures tile designation and dig enums (checked 2026-10-13): https://github.com/DFHack/df-structures/blob/master/df.d_basics.xml
+- DFHack buildings Lua helper, input filter tables and constructBuilding (checked 2026-10-14): https://github.com/DFHack/dfhack/blob/master/library/lua/dfhack/buildings.lua
+- DFHack Buildings module, sizes, free-tile check, deconstruct (checked 2026-10-14): https://github.com/DFHack/dfhack/blob/master/library/modules/Buildings.cpp
+- DFHack quickfort build and zone modules (checked 2026-10-14): https://github.com/DFHack/scripts/blob/master/internal/quickfort/build.lua and https://github.com/DFHack/scripts/blob/master/internal/quickfort/zone.lua
+- DFHack buildingplan plugin and placement overlay (checked 2026-10-14): https://docs.dfhack.org/en/stable/docs/plugins/buildingplan.html and https://github.com/DFHack/dfhack/blob/master/plugins/lua/buildingplan/planneroverlay.lua
+- DFHack zone plugin assignment logic (checked 2026-10-14): https://github.com/DFHack/dfhack/blob/master/plugins/lua/zone.lua
+- df-structures buildings, zone settings, construction types, job item flags, civzone_type (checked 2026-10-14): https://github.com/DFHack/df-structures/blob/master/df.building.xml, https://github.com/DFHack/df-structures/blob/master/df.d_basics.xml
+- DF wiki construction, bridge, stairs, door, activity zone, pasture, archery range pages (checked 2026-10-14): https://dwarffortresswiki.org/index.php/Construction and siblings
 - MCP Python SDK: https://github.com/modelcontextprotocol/python-sdk (mcp 2.3.0, 2026-10-02)
 - Dwarf Fortress wiki: https://dwarffortresswiki.org/
