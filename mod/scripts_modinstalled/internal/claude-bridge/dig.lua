@@ -1,5 +1,5 @@
--- Dig designations: plan (read), designate (mine, stairs, channel, ramp, remove_stairs), and
--- erase, over a box of tiles. Plan section 11, items 6.2 to 6.4. Rules follow DFHack's
+-- Dig designations: plan (read), designate (mine, stairs, channel, ramp, remove_stairs,
+-- smooth, engrave), and erase, over a box of tiles. Plan section 11, items 6.2 to 6.4. Rules follow DFHack's
 -- quickfort dig module (internal/quickfort/dig.lua, checked 2026-10-13): mining, up stairs,
 -- and ramps need a wall or fortification that is not a construction; channels and down
 -- stairs also take floors, ramps, and stairs; hidden tiles may be designated (that is how
@@ -11,7 +11,10 @@ local map = reqscript('internal/claude-bridge/map')
 
 local M = dfhack.maps
 
-KINDS = {'mine', 'stairs', 'channel', 'ramp', 'remove_stairs'}
+KINDS = {'mine', 'stairs', 'channel', 'ramp', 'remove_stairs', 'smooth', 'engrave'}
+SMOOTH_KINDS = {smooth = 1, engrave = 2}
+-- Tiletype materials that can be smoothed: natural hard rock and ice (quickfort's list).
+HARD = {STONE = true, MINERAL = true, LAVA_STONE = true, FEATURE = true, FROZEN_LIQUID = true}
 ERASE_KINDS = {'mine', 'up_stair', 'down_stair', 'up_down_stair', 'channel', 'ramp',
                'smooth', 'engrave'}
 SKIPPED_LIMIT = 25
@@ -57,6 +60,37 @@ end
 local function is_wall(f) return f.basic == 'Wall' or f.shape == 'FORTIFICATION' end
 local function is_floor_like(f)
     return f.shape == 'FLOOR' or f.shape == 'BOULDER' or f.shape == 'PEBBLES'
+end
+
+local function has_engraving(pos)
+    local found = false
+    pcall(function()
+        for _, e in ipairs(df.global.world.engravings) do
+            if e.pos.x == pos.x and e.pos.y == pos.y and e.pos.z == pos.z then
+                found = true
+                return
+            end
+        end
+    end)
+    return found
+end
+
+-- The smooth value (1 smooth, 2 engrave) a tile can take, or nil, reason. Hidden tiles and
+-- anything but natural hard rock walls and floors are refused, as in quickfort.
+local function smooth_value_for(kind, f, pos)
+    if f.des.hidden then return nil, 'hidden' end
+    if is_construction(f) then return nil, 'construction' end
+    if not HARD[f.material or ''] then
+        return nil, 'not natural rock (' .. tostring(f.material):lower() .. ')'
+    end
+    if not (f.basic == 'Wall' or f.shape == 'FLOOR') then return nil, 'not a wall or floor' end
+    if kind == 'smooth' then
+        if f.special == 'SMOOTH' then return nil, 'already smooth' end
+        return SMOOTH_KINDS.smooth
+    end
+    if f.special ~= 'SMOOTH' then return nil, 'not smooth yet (smooth it first)' end
+    if has_engraving(pos) then return nil, 'already engraved' end
+    return SMOOTH_KINDS.engrave
 end
 
 -- What dig value a tile of the given facts can take for a kind, or nil, reason. `level` is
@@ -166,15 +200,22 @@ local function run_designate(args, apply)
                 elseif f.occ.building ~= 0 then
                     skip(pos, 'skipped_building', 'building')
                 else
-                    local value, why = dig_value_for(kind, f, level)
+                    local smoothing = SMOOTH_KINDS[kind] ~= nil
+                    local value, why
+                    if smoothing then
+                        value, why = smooth_value_for(kind, f, pos)
+                    else
+                        value, why = dig_value_for(kind, f, level)
+                    end
                     if value == nil then
                         skip(pos, 'skipped_unsuitable', why)
                     else
                         counts.designated = counts.designated + 1
                         level_count.designated = level_count.designated + 1
-                        level_count.dig = map.DIG_NAMES[enum_name(df.tile_dig_designation, value)]
+                        level_count.dig = smoothing and kind
+                            or map.DIG_NAMES[enum_name(df.tile_dig_designation, value)]
                         if apply then
-                            f.des.dig = value
+                            if smoothing then f.des.smooth = value else f.des.dig = value end
                             local block = M.getTileBlock(pos)
                             if block then
                                 block.flags.designated = true

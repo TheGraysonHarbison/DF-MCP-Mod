@@ -18,6 +18,10 @@ def test_plan_and_designate_send_box():
     run(mcp, "designate_dig", kind="mine", x1=0, y1=0, z1=1, x2=4, y2=4, z2=1)
     assert last_request(holder)["op"] == "dig.designate"
     assert last_request(holder)["args"]["kind"] == "mine"
+    run(mcp, "designate_dig", kind="smooth", x1=0, y1=0, z1=1, x2=4, y2=4, z2=1)
+    assert last_request(holder)["args"]["kind"] == "smooth"
+    run(mcp, "plan_dig", kind="engrave", x1=0, y1=0, z1=1, x2=4, y2=4, z2=1)
+    assert last_request(holder)["args"]["kind"] == "engrave"
     with pytest.raises(Exception):  # noqa: B017
         run(mcp, "plan_dig", kind="tunnel", x1=0, y1=0, z1=0, x2=1, y2=1, z2=1)
 
