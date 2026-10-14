@@ -1,5 +1,9 @@
--- Manager work orders: read, search job types, create, edit, delete. Plan section 10.
+-- Manager work orders: read, search job types, create, edit, delete. Plan sections 10 and 11.1.
 -- The status bitfield (validated, active) is never written here: only the manager approves.
+-- Materials: "any stone" is the generic inorganic material (mat_type 0, mat_index -1), which
+-- is how the game stores every rock order; there is no stone category flag. An order with no
+-- material at all is what the Work Orders screen labels "unknown material", so create refuses
+-- those using the game's own label.
 --@ module = true
 
 local rpc = reqscript('internal/claude-bridge/rpc')
@@ -114,6 +118,15 @@ local function order_condition(c)
     }
 end
 
+-- The description the Work Orders screen shows, or nil on DFHack builds without the helper.
+local function order_label(order)
+    local fn = safe(function() return dfhack.job.getManagerOrderName end)
+    if type(fn) ~= 'function' then return nil end
+    local label = safe(fn, order)
+    if type(label) == 'string' and label ~= '' then return label end
+    return nil
+end
+
 function row(order)
     local items, conditions = {}, {}
     pcall(function()
@@ -125,6 +138,7 @@ function row(order)
     local validated = safe(function() return order.status.validated end) == true
     local out = {
         id = order.id,
+        label = order_label(order),
         job = enum_name(df.job_type, order.job_type),
         job_name = job_caption(order.job_type),
         item_type = order.item_type >= 0 and enum_name(df.item_type, order.item_type) or nil,
@@ -200,7 +214,10 @@ local function get(args)
     if not id then return rpc.error_result(rpc.ERR_BAD_REQUEST, '"id" must be an order id') end
     local order = find_order(id)
     if not order then return rpc.error_result(rpc.ERR_NOT_FOUND, 'no work order with id ' .. id) end
-    return row(order)
+    local out = row(order)
+    out.raw = {mat_type = order.mat_type, mat_index = order.mat_index,
+               item_type = order.item_type, item_subtype = order.item_subtype}
+    return out
 end
 
 -- Job types that can be ordered: manufacturing and similar, not designations or moods.
@@ -320,6 +337,69 @@ local function resolve_subtype(item_type, name)
     return nil, ('no %s subtype named "%s"'):format(df.item_type[item_type]:lower(), name)
 end
 
+-- Words that mean the generic inorganic material ("any stone"), and words that mean a job
+-- material category flag. "any " and "wooden" style prefixes are normalised first.
+local STONE_WORDS = {stone = true, rock = true, ['any stone'] = true, ['any rock'] = true,
+                     inorganic = true}
+local CATEGORY_WORDS = {wood = 'wood', wooden = 'wood', log = 'wood', logs = 'wood',
+                        bone = 'bone', bones = 'bone', shell = 'shell', leather = 'leather',
+                        cloth = 'cloth', silk = 'silk', yarn = 'yarn', wool = 'yarn',
+                        horn = 'horn', pearl = 'pearl', tooth = 'tooth', ivory = 'tooth',
+                        plant = 'plant', ['plant fiber'] = 'cloth', soap = 'soap',
+                        strand = 'strand'}
+
+local function normalise_word(name)
+    local word = tostring(name):lower():gsub('^%s+', ''):gsub('%s+$', ''):gsub('%s+', ' ')
+    word = word:gsub('^any ', '')
+    return word
+end
+
+-- Resolve a material argument. Returns {mat_type, mat_index} or {category = flag} or nil, err.
+local function resolve_material(name)
+    if name == nil then return nil end
+    local raw = tostring(name)
+    local word = normalise_word(raw)
+    if word == '' or word == 'any' or word == 'none' then return nil end
+    if STONE_WORDS[word] then return {mat_type = 0, mat_index = -1} end
+    if CATEGORY_WORDS[word] then return {category = CATEGORY_WORDS[word]} end
+    -- Tokens: as given, then upper-cased with spaces as underscores (GRANITE, INORGANIC:IRON).
+    for _, candidate in ipairs({raw, raw:upper():gsub('%s+', '_')}) do
+        local info = safe(dfhack.matinfo.find, candidate)
+        if info then return {mat_type = info.type, mat_index = info.index} end
+    end
+    -- Plain names from the inorganic raws: "granite", "silver", "native gold".
+    local near, seen = {}, {}
+    local found = nil
+    pcall(function()
+        for index, inorganic in ipairs(df.global.world.raws.inorganics.all) do
+            local display = safe(function() return inorganic.material.state_name.Solid end)
+            local names = {
+                safe(function() return inorganic.id end),
+                display,
+                safe(function() return inorganic.material.state_adj.Solid end),
+            }
+            for _, candidate in ipairs(names) do
+                local lowered = type(candidate) == 'string' and candidate:lower() or nil
+                if lowered == word then
+                    found = index
+                    return
+                end
+                local shown = type(display) == 'string' and display:lower() or lowered
+                if lowered and shown and #near < 5 and not seen[shown]
+                    and lowered:find(word, 1, true) then
+                    seen[shown] = true
+                    table.insert(near, shown)
+                end
+            end
+        end
+    end)
+    if found then return {mat_type = 0, mat_index = found} end
+    local hint = #near > 0 and ('; close matches: ' .. table.concat(near, ', ')) or ''
+    return nil, ('unknown "material" %s; use "any stone", "any wood", a stone or metal name such as '
+        .. '"granite" or "silver", or a token such as INORGANIC:IRON or PLANT:PLUMP_HELMET:DRINK%s')
+        :format(raw, hint)
+end
+
 local function resolve_frequency(name)
     if name == nil then return df.workquota_frequency_type.OneTime end
     for _, f in ipairs(FREQUENCIES) do
@@ -361,39 +441,47 @@ local function create(args)
             '"frequency" must be one of ' .. table.concat(FREQUENCIES, ', '))
     end
 
+    -- item_type is written only when given: vanilla orders leave it unset and let the job's
+    -- own item attribute say what is made. The subtype lookup still needs that attribute.
     local item_type = resolve_item_type(args.item_type)
     if args.item_type ~= nil and item_type == nil then
         return rpc.error_result(rpc.ERR_BAD_REQUEST, 'unknown "item_type" ' .. tostring(args.item_type))
     end
-    if item_type == nil and job_type ~= df.job_type.CustomReaction then
-        local default = df.job_type.attrs[job_type].item
-        if default ~= nil and default >= 0 then item_type = default end
-    end
     local item_subtype = -1
     if args.item_subtype ~= nil then
-        if item_type == nil then
+        local lookup_type = item_type
+        if lookup_type == nil and job_type ~= df.job_type.CustomReaction then
+            local default = df.job_type.attrs[job_type].item
+            if default ~= nil and default >= 0 then lookup_type = default end
+        end
+        if lookup_type == nil then
             return rpc.error_result(rpc.ERR_BAD_REQUEST, '"item_subtype" needs an "item_type"')
         end
-        local sub, why = resolve_subtype(item_type, args.item_subtype)
+        local sub, why = resolve_subtype(lookup_type, args.item_subtype)
         if not sub then return rpc.error_result(rpc.ERR_BAD_REQUEST, why) end
         item_subtype = sub
     end
 
     local mat_type, mat_index = -1, -1
-    if args.material ~= nil then
-        local info = safe(dfhack.matinfo.find, tostring(args.material))
-        if not info then
-            return rpc.error_result(rpc.ERR_BAD_REQUEST,
-                ('unknown "material" %s (use a token such as INORGANIC:IRON or PLANT:PLUMP_HELMET:DRINK)')
-                    :format(tostring(args.material)))
-        end
-        mat_type, mat_index = info.type, info.index
-    end
     local categories = {}
+    local material, why = resolve_material(args.material)
+    if why then return rpc.error_result(rpc.ERR_BAD_REQUEST, why) end
+    if material and material.category then
+        table.insert(categories, material.category)
+    elseif material then
+        mat_type, mat_index = material.mat_type, material.mat_index
+    end
     if args.material_category ~= nil then
         local list = type(args.material_category) == 'table' and args.material_category
             or {args.material_category}
-        for _, name in ipairs(list) do table.insert(categories, tostring(name)) end
+        for _, name in ipairs(list) do
+            local word = normalise_word(name)
+            if STONE_WORDS[word] and mat_type < 0 then
+                mat_type, mat_index = 0, -1
+            else
+                table.insert(categories, CATEGORY_WORDS[word] or tostring(name))
+            end
+        end
     end
     local max_workshops = tonumber(args.max_workshops) or 0
     local workshop_id = tonumber(args.workshop_id) or -1
@@ -433,6 +521,15 @@ local function create(args)
     order.frequency = frequency
     order.max_workshops = max_workshops
     order.workshop_id = workshop_id
+    -- Refuse what the Work Orders screen would show as "unknown material" (plan 11.1).
+    local label = order_label(order)
+    if label and label:lower():find('unknown material', 1, true) then
+        handler.manager_order_next_id = handler.manager_order_next_id - 1
+        pcall(function() order:delete() end)
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('the game would list this order as "%s"; pass "material": "any stone", "any wood", '
+             .. 'or a specific material such as "granite" or "silver"'):format(label))
+    end
     handler.all:insert('#', order)
     return {created = true, order = row(order)}
 end
