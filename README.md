@@ -123,7 +123,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 6.1 | List dig, stair, channel, ramp, smooth, and engrave designations with their assigned dwarf (`list_designations`, designation view on `get_area_map`) | verified in-game 2026-10-13: pending tiles, queued jobs, and the assigned miner's name all read back from a player-designated block |
 | 6.2 | Preview, place, and erase digging orders in a box across z-levels (`plan_dig`, `designate_dig`, `erase_designations`, `dig_write` permission) | verified in-game 2026-10-13: a 6-level stair column and three chambers (102 orders) placed from a dry-run plan, overlaps skipped, all dug by the miner; erase cleared a test order with and without a kind filter |
 | 6.3 | Designate smoothing and engraving (`designate_dig` kinds `smooth` and `engrave`) | verified in-game 2026-10-13: 147 smoothing orders over the dug chambers, all carried out; walls and floors read back as smoothed, a repeat refuses them; 147 engraving orders then placed and taken as jobs within a second |
-| 6.4 | Filled circles for digging, smoothing, and stockpiles | planned 2026-10-13 |
+| 6.4 | Filled circles for digging, smoothing, and stockpiles (`plan_dig` and `designate_dig` with `center_x`, `center_y`, `center_z`, `radius`; `create_stockpile` with `center_x`, `center_y`, `radius`) | verified in-game 2026-10-13: a radius-3 round room (37 orders) with a doorway corridor, and a radius-2 round stockpile (21 tiles, corners left as floor) |
 
 ## Known bugs
 

@@ -73,17 +73,21 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
 
     @mcp.tool(name="create_stockpile", annotations=WRITE_SAFE)
     def create_stockpile(
-        x1: int,
-        y1: int,
-        x2: int,
-        y2: int,
-        z: int,
+        x1: int | None = None,
+        y1: int | None = None,
+        x2: int | None = None,
+        y2: int | None = None,
+        z: int | None = None,
         name: str | None = None,
+        center_x: int | None = None,
+        center_y: int | None = None,
+        radius: int | None = None,
         categories: list[str] | None = None,
         preset: str | None = None,
         preset_mode: str = "set",
     ) -> dict[str, Any]:
-        """Paint a rectangular stockpile between two corners. Needs `stockpiles_write`.
+        """Paint a stockpile: a rectangle between two corners, or a filled circle from
+        `center_x`, `center_y`, `z`, and `radius` (1 to 15). Needs `stockpiles_write`.
 
         Every tile must be revealed, flat floor, with no building, liquid, or tree. Then the
         pile is configured: `categories` enables whole categories with all their options
@@ -94,6 +98,19 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         """
         if preset_mode not in ("set", "enable", "disable"):
             raise ValueError("preset_mode must be set, enable, or disable")
+        if z is None:
+            raise ValueError("z is required")
+        circle: dict[str, int] | None = None
+        if radius is not None or center_x is not None or center_y is not None:
+            if radius is None or center_x is None or center_y is None:
+                raise ValueError("a circle needs center_x, center_y, and radius together")
+            if any(v is not None for v in (x1, y1, x2, y2)):
+                raise ValueError("give either corners (x1, y1, x2, y2) or a circle, not both")
+            circle = {"x": center_x, "y": center_y, "z": z, "radius": radius}
+        elif any(v is None for v in (x1, y1, x2, y2)):
+            raise ValueError(
+                "give corners (x1, y1, x2, y2, z) or a circle (center_x, center_y, z, radius)"
+            )
         if categories is not None:
             for c in categories:
                 if c not in CATEGORIES:
@@ -111,6 +128,7 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
                 "categories": categories,
                 "preset": preset,
                 "preset_mode": preset_mode,
+                "circle": circle,
             },
         )
 

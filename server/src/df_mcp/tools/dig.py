@@ -35,20 +35,68 @@ BOX_DOC = """The box is two corners in any order, every corner inside the map, a
         hidden rock); "engrave" engraves tiles that are already smooth.
         Tiles that already carry an order or a job are skipped, never overwritten, as are
         constructions, trees, buildings, and the map edge. Unrevealed rock is designated,
-        which is how exploratory mining works. Returns `designated`, the skipped counts,
-        `by_level`, and the first 25 skipped tiles with reasons. Layout rule: dwarves move
-        diagonally, so a room needs a fully solid border including its corners; leave at
-        least one wall tile between rooms and between a room and a corridor, and connect
-        them only through deliberate doorways. Two rooms whose corners touch are one room."""
+        which is how exploratory mining works. Instead of a box, a filled circle on one
+        level takes `center_x`, `center_y`, `center_z`, and `radius` (1 to 31; a tile is in
+        when dx*dx + dy*dy <= r*r + r), for every kind but stairs. Returns `designated`,
+        the skipped counts, `by_level`, and the first 25 skipped tiles with reasons.
+        Layout rule: dwarves move diagonally, so a room needs a fully solid border
+        including its corners; leave at least one wall tile between rooms and between a
+        room and a corridor, and connect them only through deliberate doorways. Two rooms
+        whose corners touch are one room."""
 
 
 def _box(x1: int, y1: int, z1: int, x2: int, y2: int, z2: int, kind: str | None) -> dict[str, Any]:
     return {"x1": x1, "y1": y1, "z1": z1, "x2": x2, "y2": y2, "z2": z2, "kind": kind}
 
 
+def _shape(
+    kind: str,
+    x1: int | None,
+    y1: int | None,
+    z1: int | None,
+    x2: int | None,
+    y2: int | None,
+    z2: int | None,
+    center_x: int | None,
+    center_y: int | None,
+    center_z: int | None,
+    radius: int | None,
+) -> dict[str, Any]:
+    circle = [center_x, center_y, center_z, radius]
+    box = [x1, y1, z1, x2, y2, z2]
+    if all(v is not None for v in circle):
+        if any(v is not None for v in box):
+            raise ValueError("give either a box (x1..z2) or a circle (center_x..radius), not both")
+        if kind == "stairs":
+            raise ValueError("stairs take a box; a 1 by 1 box across levels makes a stair column")
+        return {
+            "kind": kind,
+            "circle": {"x": center_x, "y": center_y, "z": center_z, "radius": radius},
+        }
+    if any(v is not None for v in circle):
+        raise ValueError("a circle needs center_x, center_y, center_z, and radius together")
+    if any(v is None for v in box):
+        raise ValueError(
+            "give a box (x1, y1, z1, x2, y2, z2) or a circle (center_x, center_y, center_z, radius)"
+        )
+    return _box(x1, y1, z1, x2, y2, z2, kind)  # type: ignore[arg-type]
+
+
 def register(mcp: MCPServer, bridge: Bridge) -> None:
     @mcp.tool(name="plan_dig", annotations=READ_ONLY)
-    def plan_dig(kind: str, x1: int, y1: int, z1: int, x2: int, y2: int, z2: int) -> dict[str, Any]:
+    def plan_dig(
+        kind: str,
+        x1: int | None = None,
+        y1: int | None = None,
+        z1: int | None = None,
+        x2: int | None = None,
+        y2: int | None = None,
+        z2: int | None = None,
+        center_x: int | None = None,
+        center_y: int | None = None,
+        center_z: int | None = None,
+        radius: int | None = None,
+    ) -> dict[str, Any]:
         (
             """Preview a dig order without changing anything: what `designate_dig` would place.
 
@@ -59,11 +107,25 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         )
         if kind not in KINDS:
             raise ValueError(f"kind must be one of {', '.join(KINDS)}")
-        return call(bridge, "dig.plan", _box(x1, y1, z1, x2, y2, z2, kind))
+        return call(
+            bridge,
+            "dig.plan",
+            _shape(kind, x1, y1, z1, x2, y2, z2, center_x, center_y, center_z, radius),
+        )
 
     @mcp.tool(name="designate_dig", annotations=WRITE_SAFE)
     def designate_dig(
-        kind: str, x1: int, y1: int, z1: int, x2: int, y2: int, z2: int
+        kind: str,
+        x1: int | None = None,
+        y1: int | None = None,
+        z1: int | None = None,
+        x2: int | None = None,
+        y2: int | None = None,
+        z2: int | None = None,
+        center_x: int | None = None,
+        center_y: int | None = None,
+        center_z: int | None = None,
+        radius: int | None = None,
     ) -> dict[str, Any]:
         (
             """Place dig orders in a box for the miners. Needs `dig_write`.
@@ -75,7 +137,11 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         )
         if kind not in KINDS:
             raise ValueError(f"kind must be one of {', '.join(KINDS)}")
-        return call(bridge, "dig.designate", _box(x1, y1, z1, x2, y2, z2, kind))
+        return call(
+            bridge,
+            "dig.designate",
+            _shape(kind, x1, y1, z1, x2, y2, z2, center_x, center_y, center_z, radius),
+        )
 
     @mcp.tool(name="erase_designations", annotations=ERASE)
     def erase_designations(

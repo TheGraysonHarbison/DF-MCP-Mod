@@ -590,7 +590,7 @@ Recorded in `docs/decisions/0004-dig-fields.md` as they are done.
 4. A designation job in `world.jobs.list` has `pos` set and `getWorker` returns the miner once assigned. Done 2026-10-13, with a twist: creating the job clears the tile's dig flag, so pending and taken orders are two sources that `map.designations` merges; the game queues jobs ahead of the miners, so taken does not imply assigned.
 5. Vanilla "rock throne" and "wooden throne" orders made in the UI: `mat_type`, `mat_index`, `material_category`, `item_type` (through the new `raw` field).
 6. `MakeWeapon` pick order with `item_type` left unset still labels as "forge copper pick".
-7. A stockpile with circular extents accepts items and shows as one stockpile in the game.
+7. A stockpile with circular extents accepts items and shows as one stockpile in the game. Done 2026-10-13: "Round Pile" (radius 2, 21 tiles) placed in the west chamber with the four corners left as floor; one building id, `tiles` counts the extents. Whether it accepts items is untested (no categories were enabled).
 
 ### 11.6 Delivery and technique notes
 
