@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from df_mcp import PROTOCOL_VERSION
 from df_mcp.bridge import Bridge, BridgeError
 from df_mcp.dfhack_rpc import RpcError
 
@@ -47,7 +48,7 @@ def test_call_sends_envelope_and_unwraps_result():
     assert request["op"] == "core.ping"
     assert request["args"] == {}
     assert request["id"] == 1
-    assert request["v"] == 2
+    assert request["v"] == PROTOCOL_VERSION
 
 
 def test_error_response_becomes_bridge_error():

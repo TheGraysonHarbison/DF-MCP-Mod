@@ -20,12 +20,14 @@ def test_list_and_get():
 
 def test_create_requires_exactly_one_of_job_or_reaction():
     mcp, holder = make()
-    run(mcp, "create_work_order", job="ConstructThrone", amount=2, material_category=["stone"])
+    run(mcp, "create_work_order", job="ConstructThrone", amount=2, material="any stone")
     args = last_request(holder)["args"]
     assert args["job"] == "ConstructThrone"
     assert args["reaction"] is None
     assert args["amount"] == 2
-    assert args["material_category"] == ["stone"]
+    assert args["material"] == "any stone"
+    assert args["material_category"] is None
+    assert args["item_type"] is None
     assert args["frequency"] == "OneTime"
     for kwargs in [
         {},

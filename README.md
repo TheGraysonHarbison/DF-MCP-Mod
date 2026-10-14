@@ -118,7 +118,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 4.3 | Place workshop blueprints with footprint and material checks, and call for removal (`place_workshop`, `remove_building`, `build_write` permission) | verified in-game 2026-10-12 |
 | 4.4 | Stockpiles: list by category, bounds, settings, links, contents (`list_stockpiles`, `get_stockpile`) | verified in-game 2026-10-12 |
 | 4.5 | Paint a rectangular stockpile, configure categories and presets, rename, delete (`create_stockpile`, `configure_stockpile`, `rename_stockpile`, `delete_stockpile`, `list_stockpile_presets`, `stockpiles_write` permission) | verified in-game 2026-10-12 |
-| 5.0 | Work order materials in plain words, game label on every order, no more "unknown material" orders | planned 2026-10-13; design in [plan section 11.1](docs/ProjectPlan.md#11-phases-5-and-6-addendum-work-order-fix-and-striking-the-earth-planned-2026-10-13) |
+| 5.0 | Work order materials in plain words ("any stone", "any wood", "silver"), game label on every order, orders that would read "unknown material" refused | verified in-game 2026-10-13; design in [plan section 11.1](docs/ProjectPlan.md#11-phases-5-and-6-addendum-work-order-fix-and-striking-the-earth-planned-2026-10-13) |
 | 6.0 | Wall material and kind on `get_tile`, material view on `get_area_map`, exposed-wall scan (`find_exposed_walls`) | planned 2026-10-13 |
 | 6.1 | List dig, stair, channel, ramp, smooth, and engrave designations with their assigned dwarf (`list_designations`) | planned 2026-10-13 |
 | 6.2 | Designate and erase digging in a box across z-levels (`designate_dig`, `erase_designations`, `dig_write` permission) | planned 2026-10-13 |
@@ -127,8 +127,11 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 
 ## Known bugs
 
-- Open: a work order created without a material shows in the game as "unknown material" (for example "make unknown
-  material rock blocks"). Reproduced 2026-10-13; fix is Phase 5.0. Until then pass `material="INORGANIC"` for any stone.
+None open.
+
+Fixed 2026-10-13: a work order created without a material showed in the game as "unknown material" (for example
+"make unknown material rock blocks") because "any stone" was not expressible; `create_work_order` now takes plain
+words and refuses orders the game would label that way.
 
 Fixed: allowlisting `claude-bridge` used to let the console tool run `claude-bridge perm`, `allow`, and `deny`; the
 console op now refuses those subcommands regardless of the allowlist (only `status`, `help`, `reload`, and `test`

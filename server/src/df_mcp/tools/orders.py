@@ -31,7 +31,8 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
     ) -> dict[str, Any]:
         """List the manager's work orders.
 
-        Each order has `id`, `job` and `job_name`, the item and material it makes, `amount`
+        Each order has `id`, `label` (the text the Work Orders screen shows), `job` and
+        `job_name`, the item and material it makes, `amount`
         `{left, total, unlimited}`, `frequency`, `status {validated, active}`, `approved`
         (validated by the manager; Claude never approves orders), `max_workshops`, and its
         item and order `conditions` as readable text. `query` matches job, item, material,
@@ -47,7 +48,8 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
 
     @mcp.tool(name="get_work_order", annotations=READ_ONLY)
     def get_work_order(order_id: int) -> dict[str, Any]:
-        """Get one work order by id, with its conditions."""
+        """Get one work order by id, with its conditions and the `raw` material and item
+        fields (`mat_type`, `mat_index`, `item_type`, `item_subtype`) for diagnosis."""
         return call(bridge, "orders.get", {"id": order_id})
 
     @mcp.tool(name="find_job_types", annotations=READ_ONLY)
@@ -80,13 +82,18 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
 
         Give either `job` (a token or caption from `find_job_types`, e.g. ConstructThrone
         or "Make Crafts") or `reaction` (a reaction code such as BREW_DRINK or SMELT_IRON).
-        `amount` 0 means unlimited. `item_type` and `item_subtype` pick what to make for
-        jobs that need it (MakeWeapon with WEAPON and "pick"). `material` is a material
-        token (INORGANIC:IRON, PLANT:PLUMP_HELMET:STRUCTURAL); `material_category` is a
-        list of job material flags (wood, stone, bone, cloth, ...). `frequency` is OneTime,
-        Daily, Monthly, Seasonally, or Yearly. `max_workshops` 0 is unlimited;
-        `workshop_id` pins the order to one workshop. The order starts unapproved; only the
-        manager dwarf validates it.
+        `amount` 0 means unlimited. `material` is a plain word: "any stone" for bulk stone
+        goods (blocks, doors, tables), "any wood" for wooden ones, or a specific material
+        such as "granite", "silver", or "steel" when value or function matters. Raw tokens
+        (INORGANIC:IRON, PLANT:PLUMP_HELMET:DRINK) also work. Orders with no material at all
+        are refused because the game would list them as "unknown material"; jobs that take
+        no material (reactions, meals) are fine without one. `item_subtype` picks what to
+        make for jobs with variants (MakeWeapon with "pick"); `item_type` is only needed to
+        override the job's default item. `material_category` is an optional list of job
+        material flags (wood, bone, shell, cloth, ...). `frequency` is OneTime, Daily,
+        Monthly, Seasonally, or Yearly. `max_workshops` 0 is unlimited; `workshop_id` pins
+        the order to one workshop. The returned order carries `label`, the text the Work
+        Orders screen shows. The order starts unapproved; only the manager validates it.
         """
         if (job is None) == (reaction is None):
             raise ValueError("give exactly one of job or reaction")

@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **2**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **3**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -236,7 +236,7 @@ Result: `site` `{id, name, name_english}`, `civilization` `{id, name}`, `governm
 
 ### Work orders
 
-Order row: `id`, `job` (token), `job_name` (caption), `item_type`, `item_subtype` `{index, id, name}`, `material`, `material_category` (flag names), `reaction` `{code, name}`, `amount` `{left, total, unlimited}` (`total` 0 is unlimited), `frequency` (`OneTime`, `Daily`, `Monthly`, `Seasonally`, `Yearly`), `status` `{validated, active}`, `approved` (same as `validated`: the manager's decision, never written by the bridge), `workshop_id` (when pinned), `max_workshops` (0 unlimited), `conditions` `{items: [{compare, value, item_type, item_subtype, material, flags, text}], orders: [{order_id, condition, text}]}`, `next_check` `{year, year_tick}` for repeating orders.
+Order row: `id`, `label` (the description the Work Orders screen shows, from `dfhack.job.getManagerOrderName`; absent on DFHack builds without it), `job` (token), `job_name` (caption), `item_type` (only when the order sets one; vanilla orders leave it unset and the job's own item attribute says what is made), `item_subtype` `{index, id, name}`, `material`, `material_category` (flag names), `reaction` `{code, name}`, `amount` `{left, total, unlimited}` (`total` 0 is unlimited), `frequency` (`OneTime`, `Daily`, `Monthly`, `Seasonally`, `Yearly`), `status` `{validated, active}`, `approved` (same as `validated`: the manager's decision, never written by the bridge), `workshop_id` (when pinned), `max_workshops` (0 unlimited), `conditions` `{items: [{compare, value, item_type, item_subtype, material, flags, text}], orders: [{order_id, condition, text}]}`, `next_check` `{year, year_tick}` for repeating orders.
 
 ### `orders.list`
 
@@ -248,6 +248,8 @@ Result: `total`, `count`, `offset`, `limit`, `truncated`, `orders`.
 
 Args: `id`. Needs a map. Unknown id is `NOT_FOUND`.
 
+Result: the row plus `raw` `{mat_type, mat_index, item_type, item_subtype}` as stored, for diagnosis.
+
 ### `orders.jobs`
 
 Args: `query` (non-empty), `limit` (default 25, applied to each list). Needs a world.
@@ -258,9 +260,21 @@ Result: `query`, `jobs` `[{job, caption, class, item, possible_items, skill}]`, 
 
 ### `orders.create`
 
-Args: exactly one of `job` (token or caption) or `reaction` (code or name, implies the `CustomReaction` job); `amount` (whole number, default 1, 0 unlimited); `item_type` (token, defaults to the job's item); `item_subtype` (raw id such as `ITEM_WEAPON_PICK` or name such as `pick`, needs `item_type`); `material` (a `dfhack.matinfo.find` token); `material_category` (string or array of `job_material_category` flag names); `frequency` (default `OneTime`); `max_workshops` (default 0); `workshop_id`. Needs a map and `orders_write`.
+Args: exactly one of `job` (token or caption) or `reaction` (code or name, implies the `CustomReaction` job); `amount` (whole number, default 1, 0 unlimited); `item_type` (token; written only when given, otherwise the job's item attribute applies as in vanilla orders); `item_subtype` (raw id such as `ITEM_WEAPON_PICK` or name such as `pick`; resolved against `item_type` or, when that is absent, the job's item attribute); `material`; `material_category` (string or array of `job_material_category` flag names; the words in the table below are accepted too); `frequency` (default `OneTime`); `max_workshops` (default 0); `workshop_id`. Needs a map and `orders_write`.
 
-The order is appended to `world.manager_orders.all` with the next id, the way DFHack's `workorder` script does it. `status` is left clear: the manager validates and activates it.
+`material` accepts, case-insensitively and with an optional `any ` prefix:
+
+| Input | Stored as |
+|---|---|
+| `stone`, `rock`, `inorganic` | `mat_type` 0, `mat_index` -1: the generic inorganic material, which the game labels "rock" and uses for every stone order (verified 2026-10-13). There is no stone category flag. |
+| `wood`, `wooden`, `bone`, `shell`, `leather`, `cloth`, `silk`, `yarn`, `wool`, `horn`, `pearl`, `tooth`, `ivory`, `plant`, `soap`, `strand` | the matching `material_category` flag, `mat_type` -1 |
+| a `dfhack.matinfo.find` token (`INORGANIC:IRON`, `GRANITE`, `PLANT:PLUMP_HELMET:DRINK`), tried as given and upper-cased | that material |
+| a plain inorganic name (`granite`, `silver`, `native gold`), matched against the raw id and the solid-state name and adjective | `mat_type` 0 and that raw's index |
+| `any`, `none`, or absent | no material |
+
+Anything else is `BAD_REQUEST` with up to five close inorganic names in the message.
+
+The order is appended to `world.manager_orders.all` with the next id, the way DFHack's `workorder` script does it. `status` is left clear: the manager validates and activates it. Before insertion the handler asks `dfhack.job.getManagerOrderName` for the screen label; if it contains "unknown material" (an order that needs a material and got none), the order is discarded and the call is `BAD_REQUEST` quoting that label. Jobs that take no material, such as custom reactions and meals, pass.
 
 Result: `created`, `order` (row).
 

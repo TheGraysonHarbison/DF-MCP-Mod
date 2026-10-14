@@ -536,7 +536,7 @@ Decisions:
 | `item_type` | No longer copied from the job's default `item` attribute; vanilla orders leave it unset. It is written only when Claude passes it. Subtype lookup still uses the job's item attribute, as DFHack's orders plugin does. Verified live before merge with a `MakeWeapon` pick order. |
 | Row shape | Every order row gains `label`, the string from `dfhack.job.getManagerOrderName`, so Claude and the player read the same text. `orders.get` also gains `raw` `{mat_type, mat_index, item_type, item_subtype}` for diagnosis. |
 
-Protocol version bumps. Branch `mod/orders-material`. Verified by creating a rock blocks order, a wooden door order, a silver goblet order, and a MakeWeapon pick order and reading the labels off the Work Orders screen.
+Protocol version bumps to 3. Branch `mod/orders-material`. Verified in-game on 2026-10-13: rock blocks, wooden door, silver goblet, copper pick (no `item_type`), and a brew reaction all labelled correctly on the Work Orders screen; the no-material order was refused quoting "Make unknown material blocks". Section 11.5 checks 5 and 6 are covered by this.
 
 ### 11.2 What DFHack gives us for Phase 6
 

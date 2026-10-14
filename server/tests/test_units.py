@@ -3,6 +3,7 @@ import json
 
 import pytest
 
+from df_mcp import PROTOCOL_VERSION
 from df_mcp.bridge import Bridge
 from df_mcp.server import build_server
 
@@ -95,7 +96,7 @@ def test_get_unit_sends_id():
     request = last_request(holder)
     assert request["op"] == "units.get"
     assert request["args"] == {"id": 42}
-    assert request["v"] == 2
+    assert request["v"] == PROTOCOL_VERSION
 
 
 def test_sheet_tools_send_category_and_limit():

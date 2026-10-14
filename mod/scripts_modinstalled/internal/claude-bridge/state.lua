@@ -5,8 +5,8 @@ local json = require('json')
 local scriptmanager = require('script-manager')
 
 MOD_ID = 'claude-bridge'
-MOD_VERSION = '0.2.0'
-PROTOCOL_VERSION = 2
+MOD_VERSION = '0.3.0'
+PROTOCOL_VERSION = 3
 
 -- Settings groups, in display order.
 GROUPS = {'General', 'Units', 'Items', 'Logistics', 'World', 'Commands'}
