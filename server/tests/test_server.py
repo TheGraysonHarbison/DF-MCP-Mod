@@ -54,6 +54,8 @@ def test_server_registers_expected_tools():
         "list_buildings",
         "suspend_building",
         "remove_constructions",
+        "list_zones",
+        "get_zone",
         "plan_furniture",
         "place_furniture",
         "remove_building",

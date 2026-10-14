@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **8**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **9**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -59,6 +59,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `orders` | on | `orders.list`, `orders.get`, `orders.jobs` |
 | `orders_write` | off | `orders.create`, `orders.edit`, `orders.delete` |
 | `workshops` | on | `workshops.list`, `workshops.get`, `build.plan_construction`, `build.plan_furniture`, `build.list` |
+| `zones` | on | `zones.list`, `zones.get` |
 | `dig_write` | off | `dig.designate`, `dig.erase` (`dig.plan` is under `map`) |
 | `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space` |
 | `build_write` | off | `build.workshop`, `build.remove`, `build.construct`, `build.place`, `build.suspend`, `build.remove_constructions` |
@@ -512,6 +513,24 @@ Args: `id`, `name` (empty clears). Result: `changed`, `stockpile`.
 ### `stockpiles.delete`
 
 Args: `id`. Calls `dfhack.buildings.deconstruct`; an abstract building is removed at once and its items stay on the ground. Result: `status` (`deleted` or `removal_queued`), `stockpile`, `note`.
+
+### Zones
+
+Namespace `zones` (read, on by default, group World). Activity zones are `building_civzonest` entries in `world.buildings.other.ACTIVITY_ZONE`. Plain type names: `meeting_area`, `bedroom`, `dining_hall`, `dormitory`, `barracks`, `archery_range`, `office`, `tomb`, `pen`, `pit`, `pond`, `dump`, `water_source`, `fishing`, `sand`, `clay`, `gather`, `animal_training`, `dungeon` (`pit` and `pond` are both `civzone_type.Pond`, split by `zone_settings.pond.flag.keep_filled`).
+
+### `zones.list`
+
+Args: `type` (optional plain name, token, or alias such as `pasture`, `garbage_dump`), `query` (name substring), `active` (boolean), `limit` (default 25), `offset`. Needs a map.
+
+Row: `id`, `number` (`zone_num`), `name`, `label`, `type`, `type_token`, `active` (`spec_sub_flag.active`), `bounds`, `pos`, `tiles` (counting extents), `assignment` (`owner` for bedroom, office, dining hall, tomb; `units` for pen, pit, pond, dungeon; `squads` for barracks and archery range; `location` for meeting areas; else `none`), `owner` `{id, name}` (`dfhack.buildings.getOwner`), `assigned_units` (count), `squads` (count), `location` `{id, type, name}` from the site's abstract buildings when `location_id` is set.
+
+Result: `total`, `count`, `offset`, `limit`, `truncated`, `zones` (by id), `counts_by_type`, `filter`.
+
+### `zones.get`
+
+Args: `id`, `limit` (default 25, caps every list). Needs a map. A building that is not a zone is `BAD_REQUEST`.
+
+Result: the row plus `extents` (tiles, first `limit`), `tiles_truncated`, `settings` by type (`pen`: `check_occupants`; `pond`: `pit_or_pond`, `keep_filled`, `check_occupants`; `gather`: `pick_trees`, `pick_shrubs`, `gather_fallen`; `archery_range`: `dir_x`, `dir_y`, `shoot_from` with quickfort's mapping, west is `1, 0`, east `-1, 0`, north `0, 1`, south `0, -1`; `tomb`: `allow_pets`, `allow_citizens`), `assigned_units` `[{id, name}]` with `assigned_units_total`, `assigned_items` (vermin count), `squads` `[{id, name, alias}]`, `contained_buildings` `[{id, kind, type, pos, built}]` with a total, `room_description` (`dfhack.buildings.getRoomDescription`).
 
 ### `console.run`
 
