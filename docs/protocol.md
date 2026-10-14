@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **9**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **10**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -60,6 +60,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `orders_write` | off | `orders.create`, `orders.edit`, `orders.delete` |
 | `workshops` | on | `workshops.list`, `workshops.get`, `build.plan_construction`, `build.plan_furniture`, `build.list` |
 | `zones` | on | `zones.list`, `zones.get` |
+| `zones_write` | off | `zones.create`, `zones.edit`, `zones.assign`, `zones.unassign`, `zones.delete` |
 | `dig_write` | off | `dig.designate`, `dig.erase` (`dig.plan` is under `map`) |
 | `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space` |
 | `build_write` | off | `build.workshop`, `build.remove`, `build.construct`, `build.place`, `build.suspend`, `build.remove_constructions` |
@@ -530,7 +531,39 @@ Result: `total`, `count`, `offset`, `limit`, `truncated`, `zones` (by id), `coun
 
 Args: `id`, `limit` (default 25, caps every list). Needs a map. A building that is not a zone is `BAD_REQUEST`.
 
-Result: the row plus `extents` (tiles, first `limit`), `tiles_truncated`, `settings` by type (`pen`: `check_occupants`; `pond`: `pit_or_pond`, `keep_filled`, `check_occupants`; `gather`: `pick_trees`, `pick_shrubs`, `gather_fallen`; `archery_range`: `dir_x`, `dir_y`, `shoot_from` with quickfort's mapping, west is `1, 0`, east `-1, 0`, north `0, 1`, south `0, -1`; `tomb`: `allow_pets`, `allow_citizens`), `assigned_units` `[{id, name}]` with `assigned_units_total`, `assigned_items` (vermin count), `squads` `[{id, name, alias}]`, `contained_buildings` `[{id, kind, type, pos, built}]` with a total, `room_description` (`dfhack.buildings.getRoomDescription`).
+Result: the row plus `extents` (tiles, first `limit`), `tiles_truncated`, `settings` by type (`pen`: `check_occupants`; `pond`: `pit_or_pond`, `keep_filled`, `check_occupants`; `gather`: `pick_trees`, `pick_shrubs`, `gather_fallen`; `archery_range`: `dir_x`, `dir_y`, `shoot_from` with quickfort's mapping, west is `1, 0`, east `-1, 0`, north `0, 1`, south `0, -1`; `tomb`: `allow_pets`, `allow_citizens`), `assigned_units` `[{id, name}]` with `assigned_units_total`, `assigned_items` (vermin count), `squads` `[{id, name, alias}]`, `contained_buildings` `[{id, kind, type, pos, built}]` with a total, `room_description` (`dfhack.buildings.getRoomDescription`, with the owner when there is one; empty on DFHack 53.16-r2 for an owned office, so expect `null` until DFHack fills it).
+
+### `zones.create`
+
+Args: `type` (plain name; `pit` and `pond` both make a `Pond` zone, with `keep_filled` set for `pond`), a box (`x1, y1, x2, y2, z`, at most 64 by 64) or `circle` `{x, y, z, radius}` (1 to 31), `name` (up to 64 characters), `active` (default true), and the type's settings (`check_occupants`; `keep_filled`; `pick_trees`, `pick_shrubs`, `gather_fallen`; `shoot_from` north/south/east/west; `allow_pets`, `allow_citizens`), `limit`. Needs a map and `zones_write`.
+
+Builds room extents over the bounding box with every revealed tile of the shape set (hidden tiles are cut and counted) and calls `constructBuilding{type=Civzone, subtype, abstract=true, pos, width, height, fields={assigned_unit_id=-1, room}}`, as quickfort's zone module does. New pens get `check_occupants`, gather zones all three gather flags, archery ranges shoot from the west, as the game's defaults. A setting that does not belong to the type is `BAD_REQUEST` (on create it is reported as a warning after the zone exists). Zones of the same type sharing a tile are reported in `warnings`.
+
+Result: `status` (`created` or `invalid_space` with `reason`), `zone` (a `zones.get` row), `hidden_skipped`, `changed`, `warnings`, `note`.
+
+### `zones.edit`
+
+Args: `id`, and any of `name`, `active`, the type's settings, `add` and `remove` (each a box `{x1, y1, x2, y2}` on the zone's level or a circle `{x, y, radius}`), `limit`. `type` is refused. Needs a map and `zones_write`.
+
+Tile edits rebuild the extents from the current tiles plus added revealed tiles minus removed ones, refit `x1..y2`, `room`, and the centre, free the old extents, and call `notifyCivzoneModified`. A zone keeps at least one tile.
+
+Result: `changed` (field names, plus `add` and `remove`), `tiles_added`, `tiles_removed`, `zone`.
+
+### `zones.assign`
+
+Args: `id`, `unit_id`. Needs a map and `zones_write`.
+
+Bedroom, office, dining hall, tomb: the unit must be a citizen; `dfhack.buildings.setOwner` replaces any previous owner (`previous_owner` in the result). Pen: a tame non-citizen; pit or pond: neither a citizen nor a pet. The unit is detached from any zone it was assigned to (its `general_ref_building_civzone_assignedst` and the old zone's `assigned_units` entry, the zone plugin's way), then added to `assigned_units` with a new ref; `moved_from` lists the old zone ids. Any other zone type is `BAD_REQUEST`.
+
+Result: `status` (`assigned`, `already_assigned`), `role` (`owner`, `animal`), `previous_owner` or `moved_from`, `zone`.
+
+### `zones.unassign`
+
+Args: `id`, `unit_id` (animals only). Owner types clear the owner (`status` `unassigned` or `no_owner`); pens, pits, and ponds drop the unit and its ref (`unassigned` or `not_assigned`). Result: `status`, `role`, `previous_owner`, `zone`.
+
+### `zones.delete`
+
+Args: `id`. Calls `dfhack.buildings.deconstruct`, which removes an abstract building at once and clears its squad and unit links. Result: `status` (`deleted`), `zone` (the row before deletion), `note`.
 
 ### `console.run`
 

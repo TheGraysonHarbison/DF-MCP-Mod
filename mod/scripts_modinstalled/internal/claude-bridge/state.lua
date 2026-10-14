@@ -6,7 +6,7 @@ local scriptmanager = require('script-manager')
 
 MOD_ID = 'claude-bridge'
 MOD_VERSION = '0.3.0'
-PROTOCOL_VERSION = 9
+PROTOCOL_VERSION = 10
 
 -- Settings groups, in display order.
 GROUPS = {'General', 'Units', 'Items', 'Logistics', 'World', 'Commands'}
@@ -51,6 +51,8 @@ NAMESPACES = {
      label = 'Designate digging and smoothing'},
     {key = 'zones',    group = 'World',    hotkey = 'CUSTOM_Z', default = true,
      label = 'Read zones'},
+    {key = 'zones_write', group = 'World', hotkey = 'CUSTOM_Y', default = false,
+     label = 'Paint, edit, assign, delete zones'},
     {key = 'console',  group = 'Commands', hotkey = 'CUSTOM_C', default = false,
      label = 'Run allowlisted console cmds'},
     {key = 'lua_eval', group = 'Commands', hotkey = 'CUSTOM_L', default = false,
