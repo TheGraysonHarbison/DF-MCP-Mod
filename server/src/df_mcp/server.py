@@ -25,6 +25,7 @@ from df_mcp.tools import (
     time,
     units,
     workshops,
+    zones,
 )
 
 INSTRUCTIONS = """\
@@ -64,6 +65,7 @@ TOOL_MODULES = (
     dig,
     construct,
     furniture,
+    zones,
     console,
 )
 
