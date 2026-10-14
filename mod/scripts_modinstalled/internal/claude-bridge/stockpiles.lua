@@ -5,6 +5,7 @@
 
 local rpc = reqscript('internal/claude-bridge/rpc')
 local map = reqscript('internal/claude-bridge/map')
+local dig = reqscript('internal/claude-bridge/dig')
 
 local B = dfhack.buildings
 
@@ -136,10 +137,17 @@ local function links(sp)
     return out
 end
 
+-- Tiles the pile covers: the non-zero bytes of its room extents when it has them (a circle),
+-- else the rectangle.
 local function tile_count(sp)
     local from_extents = safe(function()
-        if sp.room.extents then return B.countExtentTiles(sp.room, 0) end
-        return nil
+        local room = sp.room
+        if not room.extents then return nil end
+        local n = 0
+        for i = 0, room.width * room.height - 1 do
+            if room.extents[i] ~= 0 then n = n + 1 end
+        end
+        return n
     end)
     if from_extents then return from_extents end
     return (sp.x2 - sp.x1 + 1) * (sp.y2 - sp.y1 + 1)
@@ -442,17 +450,28 @@ end
 -- writes
 
 local function create(args)
-    local x1, y1, x2, y2, z = tonumber(args.x1), tonumber(args.y1), tonumber(args.x2),
-                              tonumber(args.y2), tonumber(args.z)
-    if not (x1 and y1 and x2 and y2 and z) then
-        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"x1", "y1", "x2", "y2", "z" are required')
+    local x1, y1, x2, y2, z
+    local inside = nil  -- membership test for a circle (plan 11.3, item 6.4)
+    if args.circle ~= nil then
+        local box, cerr, test = dig.parse_circle(args)
+        if cerr then return cerr end
+        x1, y1, x2, y2, z = box.x1, box.y1, box.x2, box.y2, box.z1
+        inside = test
+    else
+        x1, y1, x2, y2, z = tonumber(args.x1), tonumber(args.y1), tonumber(args.x2),
+                            tonumber(args.y2), tonumber(args.z)
+        if not (x1 and y1 and x2 and y2 and z) then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST,
+                '"x1", "y1", "x2", "y2", "z" are required (or a "circle")')
+        end
+        x1, y1, x2, y2, z = math.floor(x1), math.floor(y1), math.floor(x2), math.floor(y2), math.floor(z)
+        if x1 > x2 then x1, x2 = x2, x1 end
+        if y1 > y2 then y1, y2 = y2, y1 end
     end
-    x1, y1, x2, y2, z = math.floor(x1), math.floor(y1), math.floor(x2), math.floor(y2), math.floor(z)
-    if x1 > x2 then x1, x2 = x2, x1 end
-    if y1 > y2 then y1, y2 = y2, y1 end
     local w, h = x2 - x1 + 1, y2 - y1 + 1
     if w > 31 or h > 31 then
-        return rpc.error_result(rpc.ERR_BAD_REQUEST, 'a stockpile is at most 31 by 31 tiles')
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            'a stockpile is at most 31 by 31 tiles (circle radius at most 15)')
     end
     -- Validate the configuration before anything is painted.
     local _, cat_err = check_categories(args.categories or args.enable)
@@ -466,10 +485,16 @@ local function create(args)
     if args.name ~= nil and (type(args.name) ~= 'string' or #args.name > 64) then
         return rpc.error_result(rpc.ERR_BAD_REQUEST, '"name" must be a string of up to 64 characters')
     end
-    local footprint = {x1 = x1, y1 = y1, x2 = x2, y2 = y2, z = z, width = w, height = h}
+    local footprint = {x1 = x1, y1 = y1, x2 = x2, y2 = y2, z = z, width = w, height = h,
+                       shape = inside and 'circle' or 'rectangle'}
+    local tiles = 0
     for y = y1, y2 do
         for x = x1, x2 do
             local pos = {x = x, y = y, z = z}
+            if inside and not inside(x, y) then
+                goto continue
+            end
+            tiles = tiles + 1
             if not dfhack.maps.isValidTilePos(pos) then
                 return {status = 'invalid_space', footprint = footprint, blocked_at = pos,
                         reason = 'outside the map'}
@@ -486,11 +511,24 @@ local function create(args)
             if why then
                 return {status = 'invalid_space', footprint = footprint, blocked_at = pos, reason = why}
             end
+            ::continue::
         end
+    end
+    footprint.tiles = tiles
+    -- A circle is a stockpile with room extents, built the way quickfort's place module
+    -- does it: one byte per tile of the bounding box, 1 inside the shape.
+    local fields = nil
+    if inside then
+        local extents = df.reinterpret_cast(df.building_extents_type, df.new('uint8_t', w * h))
+        for i = 0, w * h - 1 do
+            local ex, ey = x1 + i % w, y1 + math.floor(i / w)
+            extents[i] = inside(ex, ey) and 1 or 0
+        end
+        fields = {room = {x = x1, y = y1, width = w, height = h, extents = extents}}
     end
     local sp, err = B.constructBuilding{
         type = df.building_type.Stockpile, abstract = true,
-        pos = {x = x1, y = y1, z = z}, width = w, height = h,
+        pos = {x = x1, y = y1, z = z}, width = w, height = h, fields = fields,
     }
     if not sp then
         return {status = 'invalid_space', footprint = footprint, reason = tostring(err)}

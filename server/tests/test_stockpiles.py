@@ -40,3 +40,18 @@ def test_stockpile_write_tools_send_args():
             run(mcp, "create_stockpile", x1=1, y1=2, x2=3, y2=4, z=5, **kwargs)
     with pytest.raises(Exception):  # noqa: B017
         run(mcp, "configure_stockpile", building_id=7)
+
+
+def test_create_stockpile_circle():
+    mcp, holder = make()
+    run(mcp, "create_stockpile", center_x=16, center_y=18, z=145, radius=2)
+    args = last_request(holder)["args"]
+    assert args["circle"] == {"x": 16, "y": 18, "z": 145, "radius": 2}
+    assert args["x1"] is None
+    for kwargs in [
+        {"center_x": 1, "z": 1, "radius": 2},
+        {"x1": 1, "y1": 1, "x2": 2, "y2": 2, "z": 1, "center_x": 1, "center_y": 1, "radius": 1},
+        {"x1": 1, "y1": 1, "z": 1},
+    ]:
+        with pytest.raises(Exception):  # noqa: B017
+            run(mcp, "create_stockpile", **kwargs)

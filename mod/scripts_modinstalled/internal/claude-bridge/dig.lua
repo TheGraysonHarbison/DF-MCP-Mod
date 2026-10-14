@@ -18,6 +18,7 @@ HARD = {STONE = true, MINERAL = true, LAVA_STONE = true, FEATURE = true, FROZEN_
 ERASE_KINDS = {'mine', 'up_stair', 'down_stair', 'up_down_stair', 'channel', 'ramp',
                'smooth', 'engrave'}
 SKIPPED_LIMIT = 25
+MAX_RADIUS = 31
 
 local function safe(fn, ...)
     local ok, value = pcall(fn, ...)
@@ -155,6 +156,35 @@ local function parse_kind(args, valid)
     return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, '"kind" must be one of ' .. table.concat(valid, ', '))
 end
 
+-- A filled circle: {x, y, z, radius}. A tile is inside when dx*dx + dy*dy <= r*r + r
+-- (plan 11.3). Returns the bounding box and a membership test, or nil, err.
+function parse_circle(args)
+    local c = args.circle
+    if type(c) ~= 'table' then
+        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, '"circle" must be {x, y, z, radius}')
+    end
+    local cx, cy, cz, r = tonumber(c.x), tonumber(c.y), tonumber(c.z), tonumber(c.radius)
+    if not (cx and cy and cz and r) then
+        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, '"circle" needs numbers x, y, z, radius')
+    end
+    cx, cy, cz, r = math.floor(cx), math.floor(cy), math.floor(cz), math.floor(r)
+    if r < 1 or r > MAX_RADIUS then
+        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, ('"radius" must be 1-%d'):format(MAX_RADIUS))
+    end
+    local w, h, d = M.getTileSize()
+    if cx - r < 0 or cy - r < 0 or cx + r >= w or cy + r >= h or cz < 0 or cz >= d then
+        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('the circle reaches outside the map: x 0-%d, y 0-%d, z 0-%d'):format(w - 1, h - 1, d - 1))
+    end
+    local box = {x1 = cx - r, x2 = cx + r, y1 = cy - r, y2 = cy + r, z1 = cz, z2 = cz,
+                 center = {x = cx, y = cy, z = cz}, radius = r}
+    local limit = r * r + r
+    return box, nil, function(x, y)
+        local dx, dy = x - cx, y - cy
+        return dx * dx + dy * dy <= limit
+    end
+end
+
 -- Shared by dig.plan and dig.designate. apply=false only looks.
 local function run_designate(args, apply)
     local kind, err = parse_kind(args, KINDS)
@@ -162,7 +192,16 @@ local function run_designate(args, apply)
     if kind == nil then
         return rpc.error_result(rpc.ERR_BAD_REQUEST, '"kind" must be one of ' .. table.concat(KINDS, ', '))
     end
-    local box, berr = map.parse_box(args)
+    local box, berr, inside
+    if args.circle ~= nil then
+        if kind == 'stairs' then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST,
+                'staircases take a box, not a circle; a 1 by 1 box across levels makes a stair column')
+        end
+        box, berr, inside = parse_circle(args)
+    else
+        box, berr = map.parse_box(args)
+    end
     if berr then return berr end
     local levels = box.z2 - box.z1 + 1
     if kind == 'stairs' and levels < 2 then
@@ -186,11 +225,14 @@ local function run_designate(args, apply)
             if z == box.z2 then level = 'top' elseif z == box.z1 then level = 'bottom' end
         end
         local level_count = {z = z, designated = 0, skipped = 0, dig = nil}
+        local outside = 0
         for y = box.y1, box.y2 do
             for x = box.x1, box.x2 do
                 local pos = {x = x, y = y, z = z}
-                local f = tile_facts(pos)
-                if not f then
+                local f = (inside == nil or inside(x, y)) and tile_facts(pos) or false
+                if f == false then
+                    outside = outside + 1
+                elseif not f then
                     skip(pos, 'skipped_unsuitable', 'no map block')
                 elseif is_edge(pos) then
                     skip(pos, 'skipped_edge', 'map edge')
@@ -227,7 +269,8 @@ local function run_designate(args, apply)
                 end
             end
         end
-        level_count.skipped = (box.x2 - box.x1 + 1) * (box.y2 - box.y1 + 1) - level_count.designated
+        level_count.skipped = (box.x2 - box.x1 + 1) * (box.y2 - box.y1 + 1) - outside
+            - level_count.designated
         table.insert(by_level, level_count)
     end
     if apply and counts.designated > 0 then
@@ -236,7 +279,8 @@ local function run_designate(args, apply)
     local blocks = 0
     for _ in pairs(touched_blocks) do blocks = blocks + 1 end
     return {
-        kind = kind, box = box, applied = apply and counts.designated > 0,
+        kind = kind, box = box, shape = inside and 'circle' or 'box',
+        applied = apply and counts.designated > 0,
         dry_run = not apply,
         designated = counts.designated,
         skipped_existing = counts.skipped_existing,

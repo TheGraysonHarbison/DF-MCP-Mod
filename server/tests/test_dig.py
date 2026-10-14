@@ -22,8 +22,32 @@ def test_plan_and_designate_send_box():
     assert last_request(holder)["args"]["kind"] == "smooth"
     run(mcp, "plan_dig", kind="engrave", x1=0, y1=0, z1=1, x2=4, y2=4, z2=1)
     assert last_request(holder)["args"]["kind"] == "engrave"
-    with pytest.raises(Exception):  # noqa: B017
-        run(mcp, "plan_dig", kind="tunnel", x1=0, y1=0, z1=0, x2=1, y2=1, z2=1)
+    run(mcp, "plan_dig", kind="mine", center_x=10, center_y=12, center_z=5, radius=3)
+    assert last_request(holder)["args"] == {
+        "kind": "mine",
+        "circle": {"x": 10, "y": 12, "z": 5, "radius": 3},
+    }
+    for kwargs in [
+        {"kind": "tunnel", "x1": 0, "y1": 0, "z1": 0, "x2": 1, "y2": 1, "z2": 1},
+        {"kind": "stairs", "center_x": 1, "center_y": 1, "center_z": 1, "radius": 2},
+        {"kind": "mine", "center_x": 1, "center_y": 1, "radius": 2},
+        {"kind": "mine", "x1": 0, "y1": 0, "z1": 0},
+        {
+            "kind": "mine",
+            "x1": 0,
+            "y1": 0,
+            "z1": 0,
+            "x2": 1,
+            "y2": 1,
+            "z2": 1,
+            "radius": 1,
+            "center_x": 1,
+            "center_y": 1,
+            "center_z": 1,
+        },
+    ]:
+        with pytest.raises(Exception):  # noqa: B017
+            run(mcp, "plan_dig", **kwargs)
 
 
 def test_erase_sends_optional_kind():
