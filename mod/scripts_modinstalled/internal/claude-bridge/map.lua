@@ -1,6 +1,7 @@
--- Map reads: bounds, the wagon, one tile, an ASCII area map, and a free-space finder.
--- Read-only. Hidden (unrevealed) tiles are reported as hidden and nothing else, so Claude
--- sees what the player sees. Plan section 10, item 4.2.
+-- Map reads: bounds, the wagon, one tile, an ASCII area map, a free-space finder, wall
+-- materials, and the exposed-wall scan. Read-only. Hidden (unrevealed) tiles are reported as
+-- hidden and nothing else, so Claude sees what the player sees. Plan sections 10 (4.2) and
+-- 11 (6.0).
 --@ module = true
 
 local rpc = reqscript('internal/claude-bridge/rpc')
@@ -9,6 +10,15 @@ local M = dfhack.maps
 
 DEFAULT_LIMIT = 25
 MAX_AREA = 64
+
+VIEWS = {'shape', 'material', 'designations'}
+
+-- Dig and smooth designations drawn over the shape map in the designations view (quickfort's
+-- letters) and reported by name elsewhere.
+DIG_GLYPHS = {Default = 'd', UpStair = 'u', DownStair = 'j', UpDownStair = 'i',
+              Channel = 'h', Ramp = 'r'}
+DIG_NAMES = {Default = 'mine', UpStair = 'up_stair', DownStair = 'down_stair',
+             UpDownStair = 'up_down_stair', Channel = 'channel', Ramp = 'ramp'}
 
 -- One character per tile in map.area. Order matters: the first match wins.
 LEGEND = {
@@ -124,6 +134,204 @@ local function wagon_building()
         if df.building_wagonst:is_instance(b) then return b end
     end
     return nil
+end
+
+----------------------------------------------------------------------------------------------
+-- materials (plan 11.2): a Lua copy of DFHack's MapExtras::BlockInfo::getBaseMaterial,
+-- checked against library/modules/MapCache.cpp on 2026-10-13.
+
+-- tiletype material class to the readable class we report.
+local MATERIAL_CLASS = {
+    STONE = 'natural_stone', MINERAL = 'mineral_vein', SOIL = 'soil', LAVA_STONE = 'lava_stone',
+    FEATURE = 'feature_stone', FROZEN_LIQUID = 'ice', CONSTRUCTION = 'construction',
+    TREE = 'tree', ROOT = 'tree', MUSHROOM = 'tree',
+}
+
+local function plant_name(pos)
+    return safe(function()
+        local plant = M.getPlantAtTile(pos)
+        return df.global.world.raws.plants.all[plant.material].name
+    end)
+end
+
+local function inorganic_is_soil(index)
+    return safe(function()
+        return df.global.world.raws.inorganics.all[index].flags.SOIL_ANY
+    end) == true
+end
+
+local function inorganic_name(index)
+    if index == nil or index < 0 then return nil end
+    return safe(function() return dfhack.matinfo.decode(0, index):toString() end)
+end
+
+local function matpair_name(mat_type, mat_index)
+    if mat_type == nil or mat_type < 0 then return nil end
+    return safe(function() return dfhack.matinfo.decode(mat_type, mat_index):toString() end)
+end
+
+-- The inorganic of the last mineral vein event covering the tile, as MapCache's SquashVeins.
+local function vein_material(block, lx, ly)
+    local found = nil
+    pcall(function()
+        for _, ev in ipairs(block.block_events) do
+            if df.block_square_event_mineralst:is_instance(ev)
+                and M.getTileAssignment(ev.tile_bitmask, lx, ly) then
+                found = ev.inorganic_mat
+            end
+        end
+    end)
+    return found
+end
+
+-- Geological layers of the tile's biome: 0-based list of inorganic indices plus the biome's
+-- default soil (last soil layer) and default stone (first non-soil layer).
+local layer_cache = {}
+local function geo_layers(pos)
+    local rx, ry = M.getTileBiomeRgn(pos)
+    if rx == nil then return nil end
+    local key = rx .. ',' .. ry
+    if layer_cache[key] ~= nil then return layer_cache[key] or nil end
+    local out = false
+    pcall(function()
+        local region = M.getRegionBiome(rx, ry)
+        local geo = region and df.world_geo_biome.find(region.geo_index)
+        if not geo then return end
+        local layers = {n = 0, default_soil = -1, default_stone = -1}
+        for i, layer in ipairs(geo.layers) do
+            local mat = layer.mat_index
+            layers[i] = mat
+            layers.n = layers.n + 1
+            if inorganic_is_soil(mat) then
+                layers.default_soil = mat
+            elseif layers.default_stone < 0 then
+                layers.default_stone = mat
+            end
+        end
+        out = layers
+    end)
+    layer_cache[key] = out
+    return out or nil
+end
+
+local function layer_material(pos, des, want_soil)
+    local layers = geo_layers(pos)
+    if not layers then return nil end
+    local mat = layers[des.geolayer_index]
+    if mat == nil then return nil end
+    if want_soil and not inorganic_is_soil(mat) and layers.default_soil >= 0 then
+        return layers.default_soil
+    elseif not want_soil and inorganic_is_soil(mat) and layers.default_stone >= 0 then
+        return layers.default_stone
+    end
+    return mat
+end
+
+local function lava_stone(pos)
+    local rx, ry = M.getTileBiomeRgn(pos)
+    local found = nil
+    pcall(function()
+        for _, d in ipairs(df.global.world.world_data.region_details) do
+            if d.pos.x == rx and d.pos.y == ry then found = d.lava_stone end
+        end
+    end)
+    if found == nil or found < 0 then
+        found = safe(function() return dfhack.matinfo.find('OBSIDIAN').index end)
+    end
+    return found
+end
+
+local function feature_material(block, des)
+    local feature = nil
+    pcall(function()
+        if des.feature_local and block.local_feature >= 0 then
+            feature = M.getLocalInitFeature(block.region_pos, block.local_feature)
+        elseif des.feature_global and block.global_feature >= 0 then
+            feature = M.getGlobalInitFeature(block.global_feature)
+        end
+    end)
+    if not feature then return nil end
+    local ok, mat_type, mat_index = pcall(function() return feature:getMaterial() end)
+    if ok and type(mat_type) == 'number' and mat_type >= 0 then
+        return mat_type, mat_index
+    end
+    return nil
+end
+
+-- Engravings indexed by position, built once per call that needs it.
+local function engraving_index()
+    local index = {}
+    pcall(function()
+        for _, e in ipairs(df.global.world.engravings) do
+            index[e.pos.x .. ',' .. e.pos.y .. ',' .. e.pos.z] = true
+        end
+    end)
+    return index
+end
+
+local function is_engraved(pos, index)
+    if index then return index[pos.x .. ',' .. pos.y .. ',' .. pos.z] == true end
+    local found = false
+    pcall(function()
+        for _, e in ipairs(df.global.world.engravings) do
+            if e.pos.x == pos.x and e.pos.y == pos.y and e.pos.z == pos.z then
+                found = true
+                return
+            end
+        end
+    end)
+    return found
+end
+
+-- Material facts for a revealed tile: {material_name, material_class, construction}.
+function tile_material(pos, info, des)
+    local out = {material_class = MATERIAL_CLASS[info.material or ''] or 'other'}
+    local block = M.getTileBlock(pos)
+    if not block then return out end
+    local lx, ly = pos.x % 16, pos.y % 16
+    local mat = info.material
+    if mat == 'MINERAL' then
+        local vein = vein_material(block, lx, ly)
+        out.material_name = inorganic_name(vein) or inorganic_name(layer_material(pos, des, false))
+    elseif mat == 'STONE' then
+        out.material_name = inorganic_name(layer_material(pos, des, false))
+    elseif mat == 'SOIL' then
+        out.material_name = inorganic_name(layer_material(pos, des, true))
+    elseif mat == 'LAVA_STONE' then
+        out.material_name = inorganic_name(lava_stone(pos))
+    elseif mat == 'FEATURE' then
+        local mt, mi = feature_material(block, des)
+        out.material_name = matpair_name(mt, mi) or 'feature stone'
+    elseif mat == 'FROZEN_LIQUID' then
+        out.material_name = 'ice'
+    elseif mat == 'TREE' or mat == 'MUSHROOM' then
+        out.material_name = (plant_name(pos) or 'tree') .. ' trunk'
+    elseif mat == 'ROOT' then
+        out.material_name = (plant_name(pos) or 'tree') .. ' roots'
+    elseif mat == 'CONSTRUCTION' then
+        local c = safe(dfhack.constructions.findAtTile, pos)
+        if c then
+            out.material_name = matpair_name(c.mat_type, c.mat_index)
+            out.construction = {
+                item_type = enum_name(df.item_type, c.item_type),
+                material = out.material_name,
+            }
+        end
+    end
+    return out
+end
+
+-- natural, smoothed, engraved, constructed, or tree; only for walls. Tree trunk tiletypes
+-- carry the SMOOTH special, so trees are decided before the special is looked at.
+local function wall_kind(info, material, pos, engraved_index)
+    if info.basic_shape ~= 'Wall' then return nil end
+    if material.material_class == 'tree' then return 'tree' end
+    if material.material_class == 'construction' then return 'constructed' end
+    if info.special == 'SMOOTH' then
+        if is_engraved(pos, engraved_index) then return 'engraved' end
+        return 'smoothed'
+    end
+    return 'natural'
 end
 
 ----------------------------------------------------------------------------------------------
@@ -245,7 +453,8 @@ function describe_tile(pos, limit)
     end
     local plant = safe(M.getPlantAtTile, pos)
     if plant then
-        out.plant = {id = plant.id, tree = safe(function() return plant.tree_info ~= nil end) == true,
+        out.plant = {id = safe(function() return plant.id end),
+                     tree = safe(function() return plant.tree_info ~= nil end) == true,
                      name = safe(function()
                          return df.global.world.raws.plants.all[plant.material].name
                      end)}
@@ -254,12 +463,25 @@ function describe_tile(pos, limit)
     out.walkable = out.walkable_group ~= 0
     out.buildable = out.basic_shape == 'Floor' and out.walkable and building == nil
         and des.flow_size == 0 and plant == nil
+    local material = tile_material(pos, info or {}, des)
+    out.material_name = material.material_name
+    out.material_class = material.material_class
+    out.construction = material.construction
+    out.wall_kind = wall_kind(info or {}, material, pos, nil)
+    out.engraved = out.wall_kind == 'engraved'
+        or (info and info.special == 'SMOOTH' and is_engraved(pos, nil)) or false
+    out.smooth = (function()
+        local v = des.smooth
+        if v == 1 then return 'smooth' elseif v == 2 then return 'engrave' end
+        return nil
+    end)()
     out.items = items_at(pos, limit)
     out.units = units_at(pos)
     return out
 end
 
 local function tile(args)
+    layer_cache = {}
     local pos, err = xyz(args)
     if err then return err end
     local limit = tonumber(args.limit) or DEFAULT_LIMIT
@@ -293,7 +515,11 @@ local function glyph(pos)
     return '*'
 end
 
+-- Letters handed out per distinct wall material in the material view.
+local MATERIAL_LETTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+
 local function area(args)
+    layer_cache = {}
     local pos, err = xyz(args)
     if err then return err end
     local w = math.floor(tonumber(args.width) or 32)
@@ -302,15 +528,60 @@ local function area(args)
         return rpc.error_result(rpc.ERR_BAD_REQUEST,
             ('"width" and "height" must be 1-%d'):format(MAX_AREA))
     end
+    local view = args.view == nil and 'shape' or tostring(args.view)
+    local known = false
+    for _, v in ipairs(VIEWS) do if v == view then known = true end end
+    if not known then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            '"view" must be one of ' .. table.concat(VIEWS, ', '))
+    end
     local mw, mh = tile_size()
     local x2 = math.min(pos.x + w - 1, mw - 1)
     local y2 = math.min(pos.y + h - 1, mh - 1)
     local rows, groups, counts = {}, {}, {}
+    local legend = {}
+    local letters, next_letter = {}, 1
+    local engraved = view == 'material' and engraving_index() or nil
     for y = pos.y, y2 do
         local chars = {}
         for x = pos.x, x2 do
             local p = {x = x, y = y, z = pos.z}
             local g = glyph(p)
+            if g == '#' and view == 'material' then
+                local tt = M.getTileType(p)
+                local des = designation_at(p)
+                local info = tile_shape(tt) or {}
+                local material = tile_material(p, info, des)
+                local kind = wall_kind(info, material, p, engraved) or 'natural'
+                if kind == 'tree' then
+                    g = 'T'
+                else
+                    local name = material.material_name or material.material_class
+                    local key = name .. '|' .. kind
+                    if not letters[key] then
+                        local letter = MATERIAL_LETTERS:sub(next_letter, next_letter)
+                        if letter == '' then letter = '#' end
+                        next_letter = next_letter + 1
+                        letters[key] = letter
+                        legend[letter] = name .. ' wall'
+                            .. (kind ~= 'natural' and (' (' .. kind .. ')') or '')
+                    end
+                    g = letters[key]
+                end
+            elseif view == 'designations' and g ~= '?' then
+                local des = designation_at(p)
+                local dig = des and enum_name(df.tile_dig_designation, des.dig)
+                if dig and DIG_GLYPHS[dig] then
+                    g = DIG_GLYPHS[dig]
+                    legend[g] = 'designated: ' .. DIG_NAMES[dig]
+                elseif des and des.smooth == 1 then
+                    g = 's'
+                    legend[g] = 'designated: smooth'
+                elseif des and des.smooth == 2 then
+                    g = 'e'
+                    legend[g] = 'designated: engrave'
+                end
+            end
             chars[#chars + 1] = g
             counts[g] = (counts[g] or 0) + 1
             if g == '.' or g == '^' then
@@ -323,17 +594,175 @@ local function area(args)
         end
         table.insert(rows, table.concat(chars))
     end
-    local legend = {}
-    for g in pairs(counts) do legend[g] = LEGEND[g] end
+    for g in pairs(counts) do
+        if legend[g] == nil then legend[g] = LEGEND[g] end
+    end
     return {
         origin = {x = pos.x, y = pos.y, z = pos.z},
         width = x2 - pos.x + 1,
         height = y2 - pos.y + 1,
+        view = view,
         rows = rows,
         legend = legend,
         counts = counts,
         walkable_groups = groups,
         note = 'rows run north to south (y increasing); each row runs west to east (x increasing)',
+    }
+end
+
+-- Exposed walls: wall tiles bordering walkable floor, merged into straight segments.
+-- Plan 11.3 and 11.6.
+local SIDES = {
+    {name = 'north', dx = 0, dy = -1}, {name = 'south', dx = 0, dy = 1},
+    {name = 'west', dx = -1, dy = 0}, {name = 'east', dx = 1, dy = 0},
+}
+
+local function exposed_walls(args)
+    layer_cache = {}
+    local z = tonumber(args.z)
+    if z == nil then return rpc.error_result(rpc.ERR_BAD_REQUEST, '"z" must be a number') end
+    z = math.floor(z)
+    local mw, mh, md = tile_size()
+    if z < 0 or z >= md then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, ('"z" must be 0-%d'):format(md - 1))
+    end
+    local limit = math.floor(tonumber(args.limit) or DEFAULT_LIMIT)
+    if limit < 1 then return rpc.error_result(rpc.ERR_BAD_REQUEST, '"limit" must be positive') end
+    local x1, y1, x2, y2 = 0, 0, mw - 1, mh - 1
+    local nx, ny, radius = tonumber(args.near_x), tonumber(args.near_y), tonumber(args.radius)
+    if nx ~= nil or ny ~= nil or radius ~= nil then
+        if nx == nil or ny == nil then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST, '"near_x" and "near_y" go together')
+        end
+        radius = math.floor(radius or 20)
+        x1, y1 = math.max(0, math.floor(nx) - radius), math.max(0, math.floor(ny) - radius)
+        x2, y2 = math.min(mw - 1, math.floor(nx) + radius), math.min(mh - 1, math.floor(ny) + radius)
+    end
+    local wanted = args.material ~= nil and tostring(args.material):lower() or nil
+    local engraved = engraving_index()
+
+    -- pass 1: exposed wall tiles
+    local tiles = {}  -- key -> record
+    local function key_of(x, y) return x .. ',' .. y end
+    local total_tiles = 0
+    for y = y1, y2 do
+        for x = x1, x2 do
+            local p = {x = x, y = y, z = z}
+            local tt = M.getTileType(p)
+            local des, occ = designation_at(p)
+            if tt and des and not des.hidden and occ.building == 0 then
+                local info = tile_shape(tt)
+                if info and info.basic_shape == 'Wall' then
+                    local open, group = {}, nil
+                    for _, side in ipairs(SIDES) do
+                        local q = {x = x + side.dx, y = y + side.dy, z = z}
+                        if in_bounds(q.x, q.y, q.z) then
+                            local qdes = designation_at(q)
+                            if qdes and not qdes.hidden then
+                                local g = safe(M.getWalkableGroup, q) or 0
+                                if g ~= 0 then
+                                    open[side.name] = true
+                                    group = group or g
+                                end
+                            end
+                        end
+                    end
+                    local material = group and tile_material(p, info, des)
+                    if group and material.material_class ~= 'tree'
+                        and material.material_class ~= 'other' then
+                        local name = material.material_name or material.material_class
+                        if wanted == nil or name:lower():find(wanted, 1, true) then
+                            total_tiles = total_tiles + 1
+                            tiles[key_of(x, y)] = {
+                                x = x, y = y, material = name,
+                                material_class = material.material_class,
+                                kind = wall_kind(info, material, p, engraved) or 'natural',
+                                open = open, group = group,
+                            }
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- pass 2: merge into runs. A tile joins the axis on which its run is longer.
+    local function same(a, b)
+        if not a or not b then return false end
+        if a.material ~= b.material or a.kind ~= b.kind then return false end
+        for _, side in ipairs(SIDES) do
+            if (a.open[side.name] == true) ~= (b.open[side.name] == true) then return false end
+        end
+        return true
+    end
+    local function run_length(t, dx, dy)
+        local n = 1
+        local cur = t
+        while true do
+            local nxt = tiles[key_of(cur.x + dx, cur.y + dy)]
+            if not same(cur, nxt) then break end
+            n = n + 1
+            cur = nxt
+        end
+        return n
+    end
+    for _, t in pairs(tiles) do
+        local hor = run_length(t, 1, 0) + run_length(t, -1, 0) - 1
+        local ver = run_length(t, 0, 1) + run_length(t, 0, -1) - 1
+        t.axis = ver > hor and 'y' or 'x'
+    end
+    local segments = {}
+    local seen = {}
+    local function sides_list(open)
+        local out = {}
+        for _, side in ipairs(SIDES) do if open[side.name] then table.insert(out, side.name) end end
+        return out
+    end
+    for y = y1, y2 do
+        for x = x1, x2 do
+            local t = tiles[key_of(x, y)]
+            if t and not seen[key_of(x, y)] then
+                local dx, dy = t.axis == 'x' and 1 or 0, t.axis == 'y' and 1 or 0
+                local cur, last = t, t
+                seen[key_of(x, y)] = true
+                while true do
+                    local nxt = tiles[key_of(last.x + dx, last.y + dy)]
+                    if not nxt or nxt.axis ~= t.axis or seen[key_of(nxt.x, nxt.y)]
+                        or not same(last, nxt) then break end
+                    seen[key_of(nxt.x, nxt.y)] = true
+                    last = nxt
+                end
+                local length = math.max(last.x - cur.x, last.y - cur.y) + 1
+                table.insert(segments, {
+                    x1 = cur.x, y1 = cur.y, x2 = last.x, y2 = last.y, z = z,
+                    length = length, material = t.material, material_class = t.material_class,
+                    kind = t.kind, open_sides = sides_list(t.open), floor_group = t.group,
+                })
+            end
+        end
+    end
+    table.sort(segments, function(a, b)
+        if a.length ~= b.length then return a.length > b.length end
+        if a.y1 ~= b.y1 then return a.y1 < b.y1 end
+        return a.x1 < b.x1
+    end)
+    local by_material = {}
+    for _, seg in ipairs(segments) do
+        by_material[seg.material] = (by_material[seg.material] or 0) + seg.length
+    end
+    local out = {}
+    for i = 1, math.min(limit, #segments) do out[i] = segments[i] end
+    return {
+        z = z,
+        scanned = {x1 = x1, y1 = y1, x2 = x2, y2 = y2},
+        total_tiles = total_tiles,
+        total_segments = #segments,
+        count = #out,
+        truncated = #segments > #out,
+        segments = out,
+        tiles_by_material = by_material,
+        note = 'a segment is a straight run of wall tiles with the same material, kind, and open sides; '
+            .. 'open_sides says where walkable floor touches it',
     }
 end
 
@@ -427,5 +856,6 @@ function ops()
         ['map.tile'] = {namespace = 'map', handler = tile, needs_map = true},
         ['map.area'] = {namespace = 'map', handler = area, needs_map = true},
         ['map.find_space'] = {namespace = 'map', handler = find_space, needs_map = true},
+        ['map.exposed_walls'] = {namespace = 'map', handler = exposed_walls, needs_map = true},
     }
 end

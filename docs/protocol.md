@@ -322,13 +322,15 @@ Args: none. Result: `present`, and when present `id`, `pos` (centre), `bounds`; 
 
 Args: `x`, `y`, `z`, `limit` (items on the tile, default 25).
 
-Result: `pos`, `hidden`; for a revealed tile also `tiletype`, `caption`, `shape`, `basic_shape` (`Wall`, `Floor`, `Ramp`, `Stair`, `Open`, ...), `material` (tiletype material class), `special`, `walkable`, `walkable_group` (0 is not walkable; equal groups are connected), `passable_low`, `passable_high`, `outside`, `subterranean`, `light`, `liquid` `{type, depth}`, `designation` (`smooth`, `pile`), `dig`, `traffic`, `occupancy` `{building, unit, item}`, `building` `{id, type, name}`, `zones`, `plant` `{id, tree, name}`, `buildable` (flat walkable floor with no building, liquid, or plant), `items` `{entries, total, truncated}`, `units`.
+Result: `pos`, `hidden`; for a revealed tile also `tiletype`, `caption`, `shape`, `basic_shape` (`Wall`, `Floor`, `Ramp`, `Stair`, `Open`, ...), `material` (tiletype material class), `special`, `material_name` (the stone, soil, plant, or construction material: "granite", "yellow sand", "date palm trunk"), `material_class` (`natural_stone`, `mineral_vein`, `soil`, `lava_stone`, `feature_stone`, `ice`, `construction`, `tree`, `other`), `wall_kind` (walls only: `natural`, `smoothed`, `engraved`, `constructed`, `tree`), `construction` `{item_type, material}` for constructed tiles, `engraved`, `smooth` (`smooth` or `engrave` when designated), `walkable`, `walkable_group` (0 is not walkable; equal groups are connected), `passable_low`, `passable_high`, `outside`, `subterranean`, `light`, `liquid` `{type, depth}`, `designation` (`smooth`, `pile`), `dig` (`Default`, `UpStair`, `DownStair`, `UpDownStair`, `Channel`, `Ramp` when designated), `traffic`, `occupancy` `{building, unit, item}`, `building` `{id, type, name}`, `zones`, `plant` `{id, tree, name}`, `buildable` (flat walkable floor with no building, liquid, or plant), `items` `{entries, total, truncated}`, `units`.
+
+Material lookup (plan 11.2, a Lua copy of DFHack's `MapExtras::BlockInfo::getBaseMaterial`): veins from the block's `block_square_event_mineralst` events (last one covering the tile wins), layer stone and soil from `designation.geolayer_index` into the biome's `world_geo_biome.layers` (a stone tile on a soil layer takes the biome's first stone layer, a soil tile on a stone layer its last soil layer), lava stone from the region details, feature stone from the local or global feature's material, constructions from `dfhack.constructions.findAtTile`, trees and roots from the plant raw. Tree trunk tiletypes carry the `SMOOTH` special, so trees are classed before the special is read.
 
 ### `map.area`
 
-Args: `x`, `y`, `z` (top-left origin), `width`, `height` (1-64, default 32).
+Args: `x`, `y`, `z` (top-left origin), `width`, `height` (1-64, default 32), `view` (`shape` default, `material`, `designations`).
 
-Result: `origin`, `width`, `height` (clipped at the map edge), `rows` (strings, one character per tile), `legend` (characters used), `counts`, `walkable_groups` (walkable tiles per group). Legend: `?` hidden, `B` building, `~` water, `%` magma, `T` tree, `#` wall, `^` ramp, `<` `>` `X` stairs, `.` floor, space open air, `*` other.
+Result: `origin`, `width`, `height` (clipped at the map edge), `view`, `rows` (strings, one character per tile), `legend` (characters used), `counts`, `walkable_groups` (walkable tiles per group). Shape legend: `?` hidden, `B` building, `~` water, `%` magma, `T` tree, `#` wall, `^` ramp, `<` `>` `X` stairs, `.` floor, space open air, `*` other. The `material` view replaces `#` with one letter per distinct wall material and kind (`a` through `z`, `A` through `Z`, digits, then `#`), with the legend naming each ("granite wall", "granite wall (smoothed)", "yellow sand wall"); tree trunks show as `T`. The `designations` view draws existing orders over the shape map: `d` mine, `u` up stair, `j` down stair, `i` up/down stair, `h` channel, `r` ramp, `s` smooth, `e` engrave.
 
 ### `map.find_space`
 
@@ -337,6 +339,14 @@ Args: `width`, `height` (1-31, default 3), `z` (default: wagon level, else the s
 Searches outward in square rings for a rectangle where every tile is revealed, flat floor, in one walkable group, with no building, liquid, or plant, and that passes `dfhack.buildings.checkFreeTiles`.
 
 Result: `found`; when true `origin`, `center`, `width`, `height`, `walkable_group`, `distance`, `searched_from`, `checked`; when false `searched_from`, `max_radius`, `checked`, `note`.
+
+### `map.exposed_walls`
+
+Args: `z`; optional `near_x`, `near_y` (together) and `radius` (default 20) to limit the scan to a square, otherwise the whole level; `material` (substring filter on the material name); `limit` (segments, default 25).
+
+Scans the level for revealed wall tiles with no building that have at least one orthogonal neighbour with a non-zero walkable group. Trees, roots, and tiles of class `other` are left out. Tiles are merged into straight runs along x or y (each tile joins the axis on which its run is longer) when material, kind, and open sides match.
+
+Result: `z`, `scanned` `{x1, y1, x2, y2}`, `total_tiles`, `total_segments`, `count`, `truncated`, `segments` `[{x1, y1, x2, y2, z, length, material, material_class, kind, open_sides, floor_group}]` longest first, `tiles_by_material`, `note`.
 
 ### `build.workshop`
 
