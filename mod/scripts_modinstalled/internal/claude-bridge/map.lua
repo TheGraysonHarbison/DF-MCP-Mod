@@ -5,6 +5,7 @@
 --@ module = true
 
 local rpc = reqscript('internal/claude-bridge/rpc')
+local utils = require('utils')
 
 local M = dfhack.maps
 
@@ -19,6 +20,10 @@ DIG_GLYPHS = {Default = 'd', UpStair = 'u', DownStair = 'j', UpDownStair = 'i',
               Channel = 'h', Ramp = 'r'}
 DIG_NAMES = {Default = 'mine', UpStair = 'up_stair', DownStair = 'down_stair',
              UpDownStair = 'up_down_stair', Channel = 'channel', Ramp = 'ramp'}
+DESIGNATION_KINDS = {'mine', 'up_stair', 'down_stair', 'up_down_stair', 'channel', 'ramp',
+                     'smooth', 'engrave'}
+MAX_BOX_SIDE = 64
+MAX_BOX_LEVELS = 32
 
 -- One character per tile in map.area. Order matters: the first match wins.
 LEGEND = {
@@ -568,7 +573,8 @@ local function area(args)
                     end
                     g = letters[key]
                 end
-            elseif view == 'designations' and g ~= '?' then
+            elseif view == 'designations' then
+                -- Orders on hidden tiles are drawn too: the player sees them over the rock.
                 local des = designation_at(p)
                 local dig = des and enum_name(df.tile_dig_designation, des.dig)
                 if dig and DIG_GLYPHS[dig] then
@@ -849,6 +855,151 @@ local function find_space(args)
             note = 'no clear rectangle of walkable floor within the radius; try another z or a larger radius'}
 end
 
+----------------------------------------------------------------------------------------------
+-- designations (plan 11.4, item 6.1)
+
+-- A box from two corners in any order. Every corner must be inside the map.
+function parse_box(args)
+    local c1, err = xyz(args, 'x1', 'y1', 'z1')
+    if err then return nil, err end
+    local c2, err2 = xyz(args, 'x2', 'y2', 'z2')
+    if err2 then return nil, err2 end
+    local box = {
+        x1 = math.min(c1.x, c2.x), x2 = math.max(c1.x, c2.x),
+        y1 = math.min(c1.y, c2.y), y2 = math.max(c1.y, c2.y),
+        z1 = math.min(c1.z, c2.z), z2 = math.max(c1.z, c2.z),
+    }
+    if box.x2 - box.x1 + 1 > MAX_BOX_SIDE or box.y2 - box.y1 + 1 > MAX_BOX_SIDE then
+        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('a box is at most %d by %d tiles per level'):format(MAX_BOX_SIDE, MAX_BOX_SIDE))
+    end
+    if box.z2 - box.z1 + 1 > MAX_BOX_LEVELS then
+        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('a box spans at most %d levels'):format(MAX_BOX_LEVELS))
+    end
+    return box
+end
+
+-- Designation job types to the kind they carry. When a dwarf takes a designation the game
+-- clears the tile's dig or smooth flag and the job holds the order until it is done or
+-- cancelled (verified live 2026-10-13), so taken orders are only visible here.
+JOB_KINDS = {
+    Dig = 'mine', CarveUpwardStaircase = 'up_stair', CarveDownwardStaircase = 'down_stair',
+    CarveUpDownStaircase = 'up_down_stair', DigChannel = 'channel', CarveRamp = 'ramp',
+    RemoveStairs = 'mine', SmoothWall = 'smooth', SmoothFloor = 'smooth',
+    DetailWall = 'engrave', DetailFloor = 'engrave', CarveFortification = 'smooth',
+}
+
+-- Designation jobs in the world keyed by "x,y,z": {id, type, name, kind, worker}.
+function designation_jobs()
+    local index = {}
+    pcall(function()
+        for _, job in utils.listpairs(df.global.world.jobs.list) do
+            local type_name = enum_name(df.job_type, job.job_type)
+            local is_des = safe(function() return df.job_type.attrs[job.job_type].is_designation end)
+            if is_des or JOB_KINDS[type_name or ''] then
+                local worker = safe(dfhack.job.getWorker, job)
+                index[job.pos.x .. ',' .. job.pos.y .. ',' .. job.pos.z] = {
+                    id = job.id,
+                    type = type_name,
+                    name = safe(function() return df.job_type.attrs[job.job_type].caption end),
+                    kind = JOB_KINDS[type_name or ''] or 'other',
+                    pos = {x = job.pos.x, y = job.pos.y, z = job.pos.z},
+                    worker = worker and {id = worker.id,
+                                         name = safe(dfhack.units.getReadableName, worker)} or nil,
+                }
+            end
+        end
+    end)
+    return index
+end
+
+-- The designation kind on a tile from its designation flags, or nil.
+function designation_kind(des)
+    local dig = enum_name(df.tile_dig_designation, des.dig)
+    if dig and DIG_NAMES[dig] then return DIG_NAMES[dig] end
+    if des.smooth == 1 then return 'smooth' end
+    if des.smooth == 2 then return 'engrave' end
+    return nil
+end
+
+local function designations(args)
+    local box, err = parse_box(args)
+    if err then return err end
+    local limit = math.floor(tonumber(args.limit) or DEFAULT_LIMIT)
+    if limit < 1 then return rpc.error_result(rpc.ERR_BAD_REQUEST, '"limit" must be positive') end
+    local wanted = args.kind ~= nil and tostring(args.kind):lower() or nil
+    if wanted ~= nil then
+        local known = false
+        for _, k in ipairs(DESIGNATION_KINDS) do if k == wanted then known = true end end
+        if not known then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST,
+                '"kind" must be one of ' .. table.concat(DESIGNATION_KINDS, ', '))
+        end
+    end
+    local assigned_only = args.assigned_only == true
+    local jobs = designation_jobs()
+    local rows, total, counts, assigned, taken = {}, 0, {}, 0, 0
+    local function add(row)
+        if wanted ~= nil and row.kind ~= wanted then return end
+        if assigned_only and not row.assigned then return end
+        total = total + 1
+        counts[row.kind] = (counts[row.kind] or 0) + 1
+        if row.assigned then assigned = assigned + 1 end
+        if row.job then taken = taken + 1 end
+        if #rows < limit then table.insert(rows, row) end
+    end
+    local function in_box(p)
+        return p.x >= box.x1 and p.x <= box.x2 and p.y >= box.y1 and p.y <= box.y2
+            and p.z >= box.z1 and p.z <= box.z2
+    end
+    -- Pending orders: tiles still carrying a dig or smooth flag.
+    local flagged = {}
+    for z = box.z1, box.z2 do
+        for y = box.y1, box.y2 do
+            for x = box.x1, box.x2 do
+                local p = {x = x, y = y, z = z}
+                local des, occ = designation_at(p)
+                local kind = des and designation_kind(des)
+                if kind then
+                    local key = x .. ',' .. y .. ',' .. z
+                    flagged[key] = true
+                    local job = jobs[key]
+                    add({
+                        pos = p, kind = kind, state = job and 'taken' or 'pending',
+                        marker = safe(function() return occ.dig_marked end) == true,
+                        hidden = des.hidden == true,
+                        job = job, assigned = job ~= nil and job.worker ~= nil,
+                    })
+                end
+            end
+        end
+    end
+    -- Taken orders: jobs in the box whose tile flag the game already cleared.
+    local keys = {}
+    for key in pairs(jobs) do table.insert(keys, key) end
+    table.sort(keys)
+    for _, key in ipairs(keys) do
+        local job = jobs[key]
+        if not flagged[key] and in_box(job.pos) then
+            local des, occ = designation_at(job.pos)
+            add({
+                pos = job.pos, kind = job.kind, state = 'taken',
+                marker = safe(function() return occ.dig_marked end) == true,
+                hidden = des ~= nil and des.hidden == true,
+                job = job, assigned = job.worker ~= nil,
+            })
+        end
+    end
+    return {
+        box = box, total = total, count = #rows, truncated = total > #rows,
+        counts = counts, taken = taken, assigned = assigned, designations = rows,
+        note = 'state pending: the tile still carries the order; taken: a job exists for it '
+            .. '(the game clears the tile flag then), assigned when that job has a worker; '
+            .. 'marker means blueprint mode (not dug until unmarked)',
+    }
+end
+
 function ops()
     return {
         ['map.bounds'] = {namespace = 'map', handler = bounds, needs_map = true},
@@ -857,5 +1008,6 @@ function ops()
         ['map.area'] = {namespace = 'map', handler = area, needs_map = true},
         ['map.find_space'] = {namespace = 'map', handler = find_space, needs_map = true},
         ['map.exposed_walls'] = {namespace = 'map', handler = exposed_walls, needs_map = true},
+        ['map.designations'] = {namespace = 'map', handler = designations, needs_map = true},
     }
 end

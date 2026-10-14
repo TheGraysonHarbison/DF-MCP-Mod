@@ -10,6 +10,16 @@ from df_mcp.tools.core import READ_ONLY
 
 MAX_AREA = 64
 VIEWS = ("shape", "material", "designations")
+DESIGNATION_KINDS = (
+    "mine",
+    "up_stair",
+    "down_stair",
+    "up_down_stair",
+    "channel",
+    "ramp",
+    "smooth",
+    "engrave",
+)
 
 
 def register(mcp: MCPServer, bridge: Bridge) -> None:
@@ -104,6 +114,49 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
                 "near_y": near_y,
                 "radius": radius,
                 "material": material,
+                "limit": limit,
+            },
+        )
+
+    @mcp.tool(name="list_designations", annotations=READ_ONLY)
+    def list_designations(
+        x1: int,
+        y1: int,
+        z1: int,
+        x2: int,
+        y2: int,
+        z2: int,
+        kind: str | None = None,
+        assigned_only: bool = False,
+        limit: int = 25,
+    ) -> dict[str, Any]:
+        """List existing dig, stair, channel, ramp, smooth, and engrave orders in a box.
+
+        Check this before designating so new orders do not land on tiles that already have
+        one. The box is two corners in any order, at most 64 by 64 tiles per level and 32
+        levels. `kind` filters to one of mine, up_stair, down_stair, up_down_stair, channel,
+        ramp, smooth, engrave. Each row has `pos`, `kind`, `state` ("pending": still on the
+        tile; "taken": the game has made a job for it), `marker` (blueprint mode, not dug
+        until unmarked), `hidden`, `assigned` (a dwarf holds the job) and `job` `{id, type,
+        name, worker {id, name}}`. `counts` per kind, `taken` and `assigned` totals,
+        `truncated` at `limit`. `assigned_only` keeps rows with a worker.
+        """
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        if kind is not None and kind not in DESIGNATION_KINDS:
+            raise ValueError(f"kind must be one of {', '.join(DESIGNATION_KINDS)}")
+        return call(
+            bridge,
+            "map.designations",
+            {
+                "x1": x1,
+                "y1": y1,
+                "z1": z1,
+                "x2": x2,
+                "y2": y2,
+                "z2": z2,
+                "kind": kind,
+                "assigned_only": assigned_only,
                 "limit": limit,
             },
         )
