@@ -9,7 +9,7 @@ from df_mcp.bridge import Bridge
 from df_mcp.tools import call
 from df_mcp.tools.core import READ_ONLY, WRITE_SAFE
 
-KINDS = ("mine", "stairs", "channel", "ramp", "remove_stairs")
+KINDS = ("mine", "stairs", "channel", "ramp", "remove_stairs", "smooth", "engrave")
 ERASE_KINDS = (
     "mine",
     "up_stair",
@@ -30,7 +30,9 @@ BOX_DOC = """The box is two corners in any order, every corner inside the map, a
         carves a staircase through every level of the box (down stair on top, up/down
         between, up stair at the bottom; the box must span at least two levels; a 1 by 1
         box makes a stair column); "channel" digs the floor away, leaving a ramp below;
-        "ramp" carves a ramp out of a wall; "remove_stairs" removes carved stairs and ramps.
+        "ramp" carves a ramp out of a wall; "remove_stairs" removes carved stairs and ramps;
+        "smooth" smooths natural rock walls and floors (not soil, not constructions, not
+        hidden rock); "engrave" engraves tiles that are already smooth.
         Tiles that already carry an order or a job are skipped, never overwritten, as are
         constructions, trees, buildings, and the map edge. Unrevealed rock is designated,
         which is how exploratory mining works. Returns `designated`, the skipped counts,
