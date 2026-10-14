@@ -1,6 +1,6 @@
 # Project Plan: DFHack Claude Integration Mod
 
-Status: Phases 0, 1, and 2 (with addendums 2.1 and 2.2) merged and verified in-game on 2026-10-12 against DFHack 53.16-r2. Roadmap for Phases 3 and 4 revised the same day; see section 3. Last updated 2026-10-12.
+Status: Phases 0 through 4 merged and verified in-game on 2026-10-12 against DFHack 53.16-r2. Phases 5 and 6 planned on 2026-10-13; see section 3 and section 11. Last updated 2026-10-13.
 
 This document is the agreed plan for the project. The README describes the idea and current progress for readers; this file describes how we build it. When the two disagree, fix this file first, then the README.
 
@@ -157,7 +157,23 @@ Reads stay under one namespace (`world` or `logistics`, decided in the design pa
 - 4.4 Stockpiles: list them with settings and contents.
 - 4.5 Paint stockpiles.
 
-### Future (after 4.5, not scheduled)
+### Phase 5: Work order fix
+
+- 5.0 Orders created without a material show in the game as "unknown material". Verified live on 2026-10-13: the game has no stone material category, so "any stone" is the generic inorganic material, and an order with no material at all gets that label. Fix: plain-word materials, the game's own label on every order row, and a refusal when the label would say "unknown material". Design in section 11.1.
+
+### Phase 6: Striking the Earth
+
+Reads stay under `map`. Every write in this phase goes under one new namespace, `dig_write`, off by default.
+
+- 6.0 See solid walls: the material at a position (granite, clay, a vein, a construction), and whether a wall is natural, smoothed, engraved, or constructed. Plus a scan for exposed walls, those bordering walkable floor, so hallway planning takes one call instead of a tile walk.
+- 6.1 See digging, staircase, channel, ramp, smoothing, and engraving designations, and whether a dwarf has taken the job.
+- 6.2 Designate mining, staircases, channels, ramps, and stair removal in a box across z-levels, never overwriting an existing designation; erase designations in a box.
+- 6.3 Designate smoothing and engraving.
+- 6.4 Filled circles for mining, channels, ramps, smoothing, engraving, and stockpiles, from a centre and a radius in one call. Not for staircases.
+
+Design for all of Phase 6 in section 11.2 to 11.6.
+
+### Future (after 6.4, not scheduled)
 
 - Event queue (2.3) with `events.poll` and `wait_for_event`; chat overlay with `chat.message` and `chat.say`; autonomy timer; event-kind filters; a documented play loop in `docs/playing.md`. The driver loop design in 2.4 stays as written.
 - Petitions, quickfort blueprints through the quickfort command, military (squads, alerts, stations), labor assignment, zones.
@@ -258,7 +274,7 @@ These are the rules the repo's `CLAUDE.md` carries. Kept here so the rationale s
 6. Python uses uv, ruff, pytest, type hints, Python 3.11. The MCP server logs to stderr only. Reason: stdout is the MCP transport.
 7. DFHack docs are cited by the `stable` URL and the version they were checked against. Do not rely on memory for `df.*` struct fields; look them up or check in-game with `:lua`.
 8. Never read, write, or commit DF save folders or `dfhack-config` beyond the mod's own state file. Never put ports, paths, or credentials in committed files; `.mcp.json` uses relative paths only.
-9. Branch per change, conventional commit messages, PR via `gh`. Do not commit to `main`. Every branch starts from `main`; stacking on another branch needs the owner's explicit permission. Reason: stacked branches make PR diffs and merge order depend on each other.
+9. Branch per change, conventional commit messages, PR via `gh`. Do not commit to `main`. Every branch starts from `main`; stacking on another branch needs the owner's explicit permission. Once the owner has approved a branch's functions, Claude may merge its PR, but only after asking and getting a yes for that specific merge (agreed 2026-10-13). Reason: stacked branches make PR diffs and merge order depend on each other; the merge question keeps the owner in control of what lands on `main`.
 10. When a feature lands, update the README progress section in the same PR. The README is for readers; this file is for builders.
 11. Confirm before anything that affects a running game beyond reads: pausing, running console commands, or changing settings during a test session.
 12. Any list that can grow large is capped at 25 entries by default, with a per-call `limit` to raise it and a `truncated` marker in the response. Reason: one call pauses the game and lands in Claude's context; an uncapped inventory or memory list can be thousands of rows.
@@ -269,7 +285,7 @@ These are the rules the repo's `CLAUDE.md` carries. Kept here so the rationale s
 
 - License choice before the first public push.
 - The `package.loaded` route for `RunLua` is confirmed working in-game (2026-10-12).
-- `gh` is not installed on the dev machine; PRs are opened from the GitHub compare URL until it is.
+- `gh` installed and authenticated on the dev machine on 2026-10-13; PRs and approved merges go through it.
 - Decide whether `.mcp.json` is committed or templated as `.mcp.json.example` once the uv entry point exists.
 - The section 8.6 struct check was done by iteration against the live game on 2026-10-12 instead of `:lua`; findings are in `docs/protocol.md` under `units.sheet`. Still unverified because the test fort had none: squad uniforms and orders, kills, wounds and treatment, memories, occupations, workshop assignments, work animals.
 
@@ -494,6 +510,96 @@ One branch per item from `main`, each verified live: `mod/work-orders`, `mod/wor
 
 ---
 
+## 11. Phases 5 and 6 addendum: work order fix and striking the earth (planned 2026-10-13)
+
+Decisions agreed on 2026-10-13 after a live reproduction of the work order bug and a read of DFHack's quickfort dig module, dig plugin, MapCache, and the df-structures designation fields. Everything cited was checked on 2026-10-13 against the `stable` docs and the `develop` and `master` branches listed in the references.
+
+### 11.1 Phase 5.0: the "unknown material" work order
+
+What the live test showed (DFHack 53.16-r2, 2026-10-13):
+
+| Order created through `orders.create` | Stored as | Work Orders screen label |
+|---|---|---|
+| `material = "INORGANIC"` | `mat_type` 0, `mat_index` -1 (the generic inorganic material, DFHack's `toString` says "rock") | "make rock blocks", as expected |
+| no material, no category | `mat_type` -1, `mat_index` -1 | "make unknown material rock blocks", the bug |
+| `material_category = ["stone"]` | refused: the bitfield has no `stone` flag; valid flags are bone, cloth, horn, leather, pearl, plant, shell, silk, soap, strand, tooth, wood, wood2, yarn | n/a |
+
+So "any stone" is only expressible as the generic inorganic material, and DFHack's own order library (`data/orders/rockstock.json`) stores every rock order that way, with no order-level `item_type`. Our tool description pointed Claude at specific tokens and category flags, so it had no way to say "any stone" and left the material empty.
+
+Decisions:
+
+| Question | Decision |
+|---|---|
+| Material input | `material` accepts plain words as well as tokens. `"any stone"`, `"stone"`, `"rock"` become the generic inorganic material. `"any wood"` and `"wood"` set the `wood` category. Other words resolve against the inorganic raws by id or solid-state name (`"silver"`, `"granite"`, `"plump helmet"` stays a plant token). Tokens such as `INORGANIC:IRON` keep working. An unresolvable word is `BAD_REQUEST` with the closest raw names in the message. |
+| Default | When Claude gives neither a material nor a category, the handler fills the order, asks `dfhack.job.getManagerOrderName` for the label the screen would show, and refuses with `BAD_REQUEST` if that label contains "unknown material", telling Claude to pass `"any stone"`, `"any wood"`, or a specific material. Jobs that genuinely take no material (custom reactions, meals, cheese) pass unchanged because their label has no material slot. |
+| Guidance | The tool description says: order any material for bulk goods (blocks, doors, beds), a specific material when value or function matters (silver goblets, steel picks). |
+| `item_type` | No longer copied from the job's default `item` attribute; vanilla orders leave it unset. It is written only when Claude passes it. Subtype lookup still uses the job's item attribute, as DFHack's orders plugin does. Verified live before merge with a `MakeWeapon` pick order. |
+| Row shape | Every order row gains `label`, the string from `dfhack.job.getManagerOrderName`, so Claude and the player read the same text. `orders.get` also gains `raw` `{mat_type, mat_index, item_type, item_subtype}` for diagnosis. |
+
+Protocol version bumps. Branch `mod/orders-material`. Verified by creating a rock blocks order, a wooden door order, a silver goblet order, and a MakeWeapon pick order and reading the labels off the Work Orders screen.
+
+### 11.2 What DFHack gives us for Phase 6
+
+| Need | Source (checked 2026-10-13) |
+|---|---|
+| Wall vs floor, natural vs smoothed vs constructed | `df.tiletype.attrs[tt]`: `shape` (basic shape `Wall`), `material` (`STONE`, `SOIL`, `MINERAL` for veins, `LAVA_STONE`, `FEATURE`, `FROZEN_LIQUID`, `CONSTRUCTION`), `special` (`SMOOTH`). Engraved tiles are smooth tiles with an entry in `world.engravings` at that position. |
+| Stone name | No Lua helper exists; DFHack does it in C++ `MapCache::BlockInfo::getBaseMaterial`. We replicate it: `MINERAL` reads the block's `block_square_event_mineralst` events and takes the last one whose `tile_bitmask` covers the tile; `STONE` and `SOIL` read `designation.geolayer_index` and look up `df.world_geo_biome.find(region.geo_index).layers[index].mat_index`, where the region comes from `dfhack.maps.getTileBiomeRgn(pos)` and `getRegionBiome`; a stone tile on a soil layer takes the biome's first stone layer and a soil tile on a stone layer its last soil layer; `LAVA_STONE` reads the region details' `lava_stone`, falling back to obsidian; `CONSTRUCTION` reads `dfhack.constructions.findAtTile(pos).mat_type/mat_index`; `FROZEN_LIQUID` is ice. Names come from `dfhack.matinfo.decode(0, index):toString()`. |
+| Verification oracle | DFHack's `probe` command prints the same lookup for the tile under the cursor; allowlisting it for the test session gives a ground truth per tile. |
+| Designations | `tile_designation.dig` (`No`, `Default`, `UpDownStair`, `Channel`, `Ramp`, `DownStair`, `UpStair`), `tile_designation.smooth` (0 none, 1 smooth, 2 engrave), `tile_occupancy.dig_marked` (blueprint marker), priority in the block's `block_square_event_designation_priorityst` (value times 1000, game default 4). df-structures `df.d_basics.xml`. |
+| Waking the miners | Set `dfhack.maps.getTileBlock(pos).flags.designated = true` on every touched block, then `dfhack.job.checkDesignationsNow()`. This is exactly what quickfort's dig module does. |
+| Who is on it | Designation jobs live in `df.global.world.jobs.list` (iterate with `utils.listpairs`), have `is_designation` set on their `job_type` attribute (`Dig`, `CarveUpwardStaircase`, `CarveDownwardStaircase`, `CarveUpDownStaircase`, `DigChannel`, `CarveRamp`, `RemoveStairs`, `SmoothWall`, `SmoothFloor`, `DetailWall`, `DetailFloor`, `CarveFortification`), carry `pos`, and `dfhack.job.getWorker(job)` returns the dwarf. `dfhack.job.removeJob(job)` cancels one. |
+| Eligibility rules | From quickfort `internal/quickfort/dig.lua`: mine, up stair, and ramp need a wall or fortification that is not a construction; channel and down stair also accept floors, ramps, and stairs; up/down stair accepts walls, floors, and up stairs; smooth needs a hard natural material (`STONE`, `MINERAL`, `LAVA_STONE`, `FEATURE`, `FROZEN_LIQUID`) that is a wall or floor and not already smooth; engrave needs a smooth tile with no engraving. Hidden tiles may receive dig designations, which is how exploratory mining works, but never smoothing. Map-edge tiles and tiles under buildings are skipped. |
+| Stair levels | DFHack's `gui/design` convention, matching the game: bottom level up stair, top level down stair (up/down if the tile is already an up stair), every level between up/down. |
+| Circular stockpiles | quickfort `internal/quickfort/place.lua` builds a `room.extents` byte array and passes it in `fields` to `dfhack.buildings.constructBuilding`; we do the same. |
+
+### 11.3 Decisions
+
+| Question | Decision |
+|---|---|
+| Exposed-walls output | Straight segments, not tiles: `{x1, y1, x2, y2, z, length, material, kind, open_sides, floor_group}`, sorted by length, 25 by default. A segment is a run of wall tiles along x or y with the same material and kind, each bordering walkable floor on the same side. Technique note in 11.6 in case natural caves make this too noisy. |
+| Area map | `map.area` gains `view`: `shape` (today's map), `material` (one letter per material with a per-call legend), `designations` (dig and smooth marks over the shape map). |
+| Order kinds | `mine`, `stairs`, `channel`, `ramp`, `remove_stairs`, and in 6.3 `smooth`, `engrave`. Fortifications later. |
+| Overlap | A tile that already carries any designation is skipped and counted; nothing is ever overwritten. The response lists the first 25 skipped positions with the reason. |
+| Priority | Not exposed. Designations take the game's default. Verified live that a tile designated without a priority event is dug at priority 4. |
+| Stairs | The box must span at least two z-levels; a single-level stair request is `BAD_REQUEST` with the reason. A 1 by 1 column is fine. |
+| Circles | Filled only. A tile is inside when `dx*dx + dy*dy <= r*r + r`, radius 1 to 31. Stairs refuse the circle form. |
+| Bounds | Every corner must be inside the map; nothing is clamped. A box is at most 64 by 64 tiles per level and 32 levels. |
+| Erase | Clears dig and smooth designations in the box, optionally only one `kind`, and removes the pending job for each cleared tile with `dfhack.job.removeJob`. Reports counts. |
+| Permissions | One new namespace `dig_write` (group World, off by default, label "Designate digging and smoothing") for everything in 6.2 to 6.4 except circular stockpiles, which stay under `stockpiles_write`. |
+| Hidden tiles | Still reported as hidden and nothing else. Exposed walls are never hidden by construction, so the scan reveals nothing the player cannot see. |
+
+### 11.4 Ops by item
+
+| Item | Ops | Tools |
+|---|---|---|
+| 6.0 | `map.tile` gains `material_name`, `material_class` (`natural_stone`, `mineral_vein`, `soil`, `lava_stone`, `feature_stone`, `ice`, `construction`, `other`), `wall_kind` (`natural`, `smoothed`, `engraved`, `constructed`; only for walls), `construction` `{item_type, material}`, `engraved`. `map.area` gains `view`. New `map.exposed_walls` with `z`, optional `near_x`, `near_y`, `radius`, `material`, `limit`. | `get_tile`, `get_area_map(view=...)`, `find_exposed_walls` |
+| 6.1 | `map.designations` with a box (`x1, y1, z1, x2, y2, z2`), optional `kind`, `assigned_only`, `limit`. Rows `{pos, kind, marker, job: {id, worker: {id, name}}}` plus counts per kind. | `list_designations` |
+| 6.2 | `dig.designate` with `kind` (`mine`, `stairs`, `channel`, `ramp`, `remove_stairs`), a box, optional `dry_run`. `dig.erase` with a box and optional `kind`. | `designate_dig`, `erase_designations` |
+| 6.3 | `dig.designate` accepts `smooth` and `engrave`. | same tools |
+| 6.4 | `dig.designate` and `stockpiles.create` accept `circle` `{x, y, z, radius}` instead of corners. | `designate_dig(circle=...)`, `create_stockpile(circle=...)` |
+
+Every designate response: `{designated, skipped_existing, skipped_unsuitable, skipped_building, skipped_edge, by_level: [...], skipped: [{pos, reason}] (capped), dry_run}`.
+
+### 11.5 In-game checks before implementation
+
+Recorded in `docs/decisions/0004-dig-fields.md` as they are done.
+
+1. `probe` output against our material lookup on a layer stone wall, a vein, a soil wall, a constructed wall, a smoothed wall, an ice wall.
+2. A three-level staircase carved through the game's own UI: the `dig` value on each level.
+3. A tile designated with no priority block event is picked up and dug.
+4. A designation job in `world.jobs.list` has `pos` set and `getWorker` returns the miner once assigned.
+5. Vanilla "rock throne" and "wooden throne" orders made in the UI: `mat_type`, `mat_index`, `material_category`, `item_type` (through the new `raw` field).
+6. `MakeWeapon` pick order with `item_type` left unset still labels as "forge copper pick".
+7. A stockpile with circular extents accepts items and shows as one stockpile in the game.
+
+### 11.6 Delivery and technique notes
+
+One branch per item from `main`, each verified live and updating `docs/protocol.md`, the README progress table, and the smoke test: `mod/orders-material` (5.0), `mod/map-materials` (6.0), `mod/map-designations` (6.1), `mod/dig` (6.2), `mod/dig-smooth` (6.3), `mod/dig-circles` (6.4). Protocol version bumps on each.
+
+Exposed-walls technique, kept for reference in case it needs replacing: scan one z-level by block (`map_block.tiletype` and `map_block.walkable` are 16 by 16 arrays, so a 3 by 3 embark level is about 20,000 tiles and well under a frame of Lua), keep wall tiles that are not hidden and have an orthogonal neighbour with a non-zero walkable group, then merge neighbours into runs along x and along y when material, kind, and open side match, preferring the longer axis. Expected failure mode: natural caverns and irregular dug-outs produce many one- and two-tile segments and hit the cap. Fallbacks, in order: a `segments=false` switch that returns tiles grouped by material with counts; the `material` view of `map.area` over the region of interest; `dfhack.maps.forEachTile` with a `shape_basic = Wall` filter as a native prefilter if the Lua scan is ever too slow.
+
+---
+
 ## References (checked 2026-10-12)
 
 - DFHack releases: https://github.com/DFHack/dfhack/releases (latest 53.16-r2)
@@ -505,5 +611,11 @@ One branch per item from `main`, each verified live: `mod/work-orders`, `mod/wor
 - DF wiki unit profile (tabs and sub-tabs, 53.16): https://dwarffortresswiki.org/index.php/Profile
 - df-structures: https://github.com/DFHack/df-structures (`df.unit.xml`, `df.soul.xml`, `df.personality.xml`, `df.skill_enum.xml`)
 - DFHack unit viewer mood names: https://github.com/DFHack/scripts/blob/master/internal/unit-info-viewer/overall-mood.lua
+- DFHack quickfort dig rules (checked 2026-10-13): https://github.com/DFHack/scripts/blob/master/internal/quickfort/dig.lua
+- DFHack quickfort stockpile extents (checked 2026-10-13): https://github.com/DFHack/scripts/blob/master/internal/quickfort/place.lua
+- DFHack gui/design stair convention (checked 2026-10-13): https://github.com/DFHack/scripts/blob/master/gui/design.lua
+- DFHack MapCache base material lookup (checked 2026-10-13): https://github.com/DFHack/dfhack/blob/develop/library/modules/MapCache.cpp
+- DFHack orders plugin and rock order library (checked 2026-10-13): https://github.com/DFHack/dfhack/blob/develop/plugins/orders.cpp and https://github.com/DFHack/dfhack/blob/develop/data/orders/rockstock.json
+- df-structures tile designation and dig enums (checked 2026-10-13): https://github.com/DFHack/df-structures/blob/master/df.d_basics.xml
 - MCP Python SDK: https://github.com/modelcontextprotocol/python-sdk (mcp 2.3.0, 2026-10-02)
 - Dwarf Fortress wiki: https://dwarffortresswiki.org/

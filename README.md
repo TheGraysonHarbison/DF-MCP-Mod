@@ -70,7 +70,20 @@ making work orders.
 - 4.4 Look at all stockpiles, their settings and contents.
 - 4.5 Paint stockpiles.
 
-**Future plans** (after 4.5, not scheduled):
+**Phase 5: Work order fix.** Orders made without a material showed in the game as "unknown material". Claude can now
+say "any stone" or "any wood" in plain words, and every order reports the label the game shows.
+
+**Phase 6: Striking the Earth.** Claude digs out a fortress.
+
+- 6.0 See solid walls: the material at a position and whether a wall is natural, smoothed, engraved, or constructed.
+  Plus a one-call scan for exposed walls, those bordering walkable floor, so hallway planning does not need a tile walk.
+- 6.1 See digging, staircase, channel, ramp, smoothing, and engraving orders, and whether a dwarf has taken the job.
+- 6.2 Designate mining, staircases, channels, ramps, and stair removal in a box across z-levels, never overwriting
+  existing orders; erase orders in a box. Behind its own permission, off by default.
+- 6.3 Designate smoothing and engraving.
+- 6.4 Filled circles for digging, smoothing, and stockpiles from a centre and a radius in one call.
+
+**Future plans** (after 6.4, not scheduled):
 
 - Event queue, in-game chat window, and an autonomy timer so Claude is prompted by petitions, sieges, deaths, and on a
   schedule.
@@ -105,12 +118,21 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 4.3 | Place workshop blueprints with footprint and material checks, and call for removal (`place_workshop`, `remove_building`, `build_write` permission) | verified in-game 2026-10-12 |
 | 4.4 | Stockpiles: list by category, bounds, settings, links, contents (`list_stockpiles`, `get_stockpile`) | verified in-game 2026-10-12 |
 | 4.5 | Paint a rectangular stockpile, configure categories and presets, rename, delete (`create_stockpile`, `configure_stockpile`, `rename_stockpile`, `delete_stockpile`, `list_stockpile_presets`, `stockpiles_write` permission) | verified in-game 2026-10-12 |
+| 5.0 | Work order materials in plain words, game label on every order, no more "unknown material" orders | planned 2026-10-13; design in [plan section 11.1](docs/ProjectPlan.md#11-phases-5-and-6-addendum-work-order-fix-and-striking-the-earth-planned-2026-10-13) |
+| 6.0 | Wall material and kind on `get_tile`, material view on `get_area_map`, exposed-wall scan (`find_exposed_walls`) | planned 2026-10-13 |
+| 6.1 | List dig, stair, channel, ramp, smooth, and engrave designations with their assigned dwarf (`list_designations`) | planned 2026-10-13 |
+| 6.2 | Designate and erase digging in a box across z-levels (`designate_dig`, `erase_designations`, `dig_write` permission) | planned 2026-10-13 |
+| 6.3 | Designate smoothing and engraving | planned 2026-10-13 |
+| 6.4 | Filled circles for digging, smoothing, and stockpiles | planned 2026-10-13 |
 
 ## Known bugs
 
-None open. Fixed: allowlisting `claude-bridge` used to let the console tool run `claude-bridge perm`, `allow`, and
-`deny`; the console op now refuses those subcommands regardless of the allowlist (only `status`, `help`, `reload`,
-and `test` pass).
+- Open: a work order created without a material shows in the game as "unknown material" (for example "make unknown
+  material rock blocks"). Reproduced 2026-10-13; fix is Phase 5.0. Until then pass `material="INORGANIC"` for any stone.
+
+Fixed: allowlisting `claude-bridge` used to let the console tool run `claude-bridge perm`, `allow`, and `deny`; the
+console op now refuses those subcommands regardless of the allowlist (only `status`, `help`, `reload`, and `test`
+pass).
 
 ## Running it
 
