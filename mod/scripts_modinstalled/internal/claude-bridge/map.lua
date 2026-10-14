@@ -547,6 +547,9 @@ local function area(args)
     local legend = {}
     local letters, next_letter = {}, 1
     local engraved = view == 'material' and engraving_index() or nil
+    local jobs = view == 'designations' and designation_jobs() or nil
+    local KIND_GLYPHS = {mine = 'd', up_stair = 'u', down_stair = 'j', up_down_stair = 'i',
+                         channel = 'h', ramp = 'r', smooth = 's', engrave = 'e'}
     for y = pos.y, y2 do
         local chars = {}
         for x = pos.x, x2 do
@@ -575,17 +578,17 @@ local function area(args)
                 end
             elseif view == 'designations' then
                 -- Orders on hidden tiles are drawn too: the player sees them over the rock.
+                -- Orders the game has already turned into jobs have no tile flag any more,
+                -- so they come from the job index; the glyph is upper-case for those.
                 local des = designation_at(p)
-                local dig = des and enum_name(df.tile_dig_designation, des.dig)
-                if dig and DIG_GLYPHS[dig] then
-                    g = DIG_GLYPHS[dig]
-                    legend[g] = 'designated: ' .. DIG_NAMES[dig]
-                elseif des and des.smooth == 1 then
-                    g = 's'
-                    legend[g] = 'designated: smooth'
-                elseif des and des.smooth == 2 then
-                    g = 'e'
-                    legend[g] = 'designated: engrave'
+                local kind = des and designation_kind(des)
+                local job = jobs[x .. ',' .. y .. ',' .. pos.z]
+                if kind then
+                    g = KIND_GLYPHS[kind]
+                    legend[g] = 'designated: ' .. kind
+                elseif job and KIND_GLYPHS[job.kind] then
+                    g = KIND_GLYPHS[job.kind]:upper()
+                    legend[g] = 'in progress (job taken): ' .. job.kind
                 end
             end
             chars[#chars + 1] = g

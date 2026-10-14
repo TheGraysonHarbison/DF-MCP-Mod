@@ -68,7 +68,8 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         hidden. `view` "material": each wall gets a letter per material and kind, e.g. "a:
         granite wall", "b: clay loam wall", "c: granite wall (smoothed)". `view`
         "designations": existing orders drawn over the shape map, `d` mine, `u` up stair, `j`
-        down stair, `i` up/down stair, `h` channel, `r` ramp, `s` smooth, `e` engrave.
+        down stair, `i` up/down stair, `h` channel, `r` ramp, `s` smooth, `e` engrave; the
+        upper-case letter means the game has already made a job for that order.
         `walkable_groups` counts walkable tiles per connectivity group.
         """
         if not (1 <= width <= MAX_AREA and 1 <= height <= MAX_AREA):
