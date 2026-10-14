@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **5**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **6**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -58,10 +58,10 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `stocks_true` | on | no ops; a toggle. Off puts the stocks ops in bookkeeper view. |
 | `orders` | on | `orders.list`, `orders.get`, `orders.jobs` |
 | `orders_write` | off | `orders.create`, `orders.edit`, `orders.delete` |
-| `workshops` | on | `workshops.list`, `workshops.get` |
+| `workshops` | on | `workshops.list`, `workshops.get`, `build.plan_construction` |
 | `dig_write` | off | `dig.designate`, `dig.erase` (`dig.plan` is under `map`) |
 | `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space` |
-| `build_write` | off | `build.workshop`, `build.remove` |
+| `build_write` | off | `build.workshop`, `build.remove`, `build.construct` |
 | `stockpiles` | on | `stockpiles.list`, `stockpiles.get`, `stockpiles.presets` |
 | `stockpiles_write` | off | `stockpiles.create`, `stockpiles.configure`, `stockpiles.rename`, `stockpiles.delete` |
 | `console` | off | `console.run` (plus a per-command allowlist) |
@@ -416,6 +416,20 @@ Args: `form` (optional: `blocks`, `boulders`, `logs`, `bars`), `material` (optio
 Walks `world.items.other.IN_PLAY` once, keeping blocks, boulders, logs, and metal bars that are not forbidden, dumped, melting, in a job, built, held by traders, or hostile, and groups them by material and form. Heat safety uses DFHack's thresholds (every heat point above 11000 for fire safe, 12000 for magma safe, cold damage at 60001 or below the limit). `economic` marks boulders of stone the player's economic list reserves.
 
 Result: `total_items`, `groups`, `count`, `limit`, `truncated`, `materials` `[{material, form, class, count, fire_safe, magma_safe, economic, token}]` sorted by count, `by_class`, `by_form`, `filter`, `note`.
+
+### `build.plan_construction`
+
+Args: `kind` (`wall`, `floor`, `ramp`, `stairs`, `fortification`, `bridge`, `paved_road`, `dirt_road`, `support`); a shape: the box (`x1, y1, z1, x2, y2, z2`, the dig limits), `circle` `{x, y, z, radius}`, or `line` `{x1, y1, x2, y2, z}`; `hollow` (box perimeter or circle ring), `thick` (lines, default true: every diagonal step also gets the orthogonal tile), `material` (a word from the Materials section), `direction` (bridges: `retracting`, `raise_north`, `raise_south`, `raise_east`, `raise_west`). Needs a map and `workshops`. Computes what `build.construct` would do and changes nothing.
+
+Per-tile kinds place one `Construction` building per tile with the subtype `Wall`, `Floor`, `Ramp`, `Fortification`, or for `stairs` the level's subtype: `UpStair` at the bottom, `DownStair` on top, `UpDownStair` between, and `UpDownStair` where the bottom tile is already a down stair or the top tile an up stair (buildingplan's convention). Stairs take a box of at least two levels. A z range repeats the shape per level. Per tile, in order: no map block; map edge; hidden, a building, magma, or water deeper than 1 (quickfort's base rule); then the shape must be `EMPTY`, `FLOOR`, `BOULDER`, `PEBBLES`, `RAMP_TOP`, `BROOK_TOP`, `TWIG`, `SAPLING`, `SHRUB`, or `RAMP`; a constructed tile already of the kind's shape (floor on floor, ramp on ramp, an existing stair of the level's type) is `skipped_existing`. A tile is `unsupported` when it is open air with no non-open tile among its eight neighbours on the level and no wall below; it is still placed. Materials: `needed` is the tile count, `available` the count for the kind's filter (plus the spec's class and form), and when `available < needed` the status is `no_materials` and nothing is placed.
+
+Single buildings take a box on one level, at most 31 by 31. `bridge`: every tile must pass; the anchor edge (the side named by `direction`) cannot sit on a ramp, other tiles may be ramps or stairs; `direction` sets `building_bridgest.direction`; `has_support` comes from `dfhack.buildings.hasSupport`. `paved_road` and `dirt_road`: bad tiles are cut out of the room extents, at least one must remain; dirt roads need soil or grass floor and take no material. `support`: one tile. Material count for bridges and paved roads is `floor(tiles / 4) + 1` (DFHack's `computeMaterialAmount`).
+
+Result (per-tile kinds): `kind`, `shape`, `box` (line endpoints under `line`, circle centre and radius), `hollow`, `thick`, `dry_run`, `applied`, `status` (`plan`, `placed`, `no_materials`, `nothing_to_place`), `placed`, `skipped_existing`, `skipped_unsuitable`, `skipped_building`, `skipped_edge`, `unsupported`, `unsupported_tiles` (first 25), `skipped` `[{pos, reason}]` (first 25), `skipped_truncated`, `by_level`, `materials` `{needed, available, filter}`, `buildings` (first 25 ids), `buildings_truncated`, `warnings`, `note`. Single buildings: `status` (`plan`, `placed`, `no_materials`, `invalid_space` with `blocked_at` and `reason`), `width`, `height`, `tiles`, `direction`, `has_support` (bridges), `materials`, `building` `{id, kind, bounds, material_amount}`.
+
+### `build.construct`
+
+Args and result as `build.plan_construction`. Needs a map and `build_write`. Places each construction with `dfhack.buildings.constructBuilding` and fresh filters per building; a placement DFHack refuses is added to `skipped` as `placement failed`.
 
 ### `build.remove`
 

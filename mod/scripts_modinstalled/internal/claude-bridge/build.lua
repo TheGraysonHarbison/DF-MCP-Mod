@@ -146,7 +146,7 @@ local function describe_filter(filter)
     return out
 end
 
-local function free_filters(filters)
+function free_filters(filters)
     for _, f in ipairs(filters or {}) do pcall(function() f:delete() end) end
 end
 

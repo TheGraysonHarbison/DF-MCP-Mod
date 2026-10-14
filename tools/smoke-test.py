@@ -49,6 +49,7 @@ def main() -> int:
         ("time.now", {}),
         ("time.set_pause", {"paused": True}),
         ("build.materials", {"limit": 5}),
+        ("build.plan_construction", {"kind": "wall", "line": {"x1": 2, "y1": 2, "x2": 6, "y2": 2, "z": 0}}),
         ("units.list", {"limit": 5}),
         ("units.list", {"bucket": "citizen", "limit": 3}),
         ("units.list", {"bucket": "domesticated", "limit": 3}),

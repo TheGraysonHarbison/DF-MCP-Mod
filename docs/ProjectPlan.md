@@ -604,7 +604,7 @@ Every designate response: `{designated, skipped_existing, skipped_unsuitable, sk
 
 Recorded in `docs/decisions/0004-dig-fields.md` as they are done.
 
-1. `probe` output against our material lookup on a layer stone wall, a vein, a soil wall, a constructed wall, a smoothed wall, an ice wall. Done 2026-10-13 without `probe` (it needs an in-game keyboard cursor): the owner confirmed soil by eye, and the 6.2 dig exposed sandstone (layer), kaolinite, bituminous coal, and turquoise (veins) that read back by name. Smoothed walls and floors checked 2026-10-13 after the 6.3 test (`StoneWallSmoothRD`, `MineralFloorSmooth` read back as smoothed). Constructed and ice walls remain unchecked.
+1. `probe` output against our material lookup on a layer stone wall, a vein, a soil wall, a constructed wall, a smoothed wall, an ice wall. Done 2026-10-13 without `probe` (it needs an in-game keyboard cursor): the owner confirmed soil by eye, and the 6.2 dig exposed sandstone (layer), kaolinite, bituminous coal, and turquoise (veins) that read back by name. Smoothed walls and floors checked 2026-10-13 after the 6.3 test (`StoneWallSmoothRD`, `MineralFloorSmooth` read back as smoothed). Constructed walls checked 2026-10-14 during the 7.1 test (`WALL`, material `plum wood`, `wall_kind` `constructed`, `construction {item_type WOOD}`). Ice walls remain unchecked.
 2. A three-level staircase carved through the game's own UI: the `dig` value on each level. Superseded 2026-10-13: our own six-level column (up/down on an existing up stair, up/down between, up stair at the bottom) was carved by the miner into a working staircase.
 3. A tile designated with no priority block event is picked up and dug. Done 2026-10-13: all 102 tiles were taken and dug with no priority written.
 4. A designation job in `world.jobs.list` has `pos` set and `getWorker` returns the miner once assigned. Done 2026-10-13, with a twist: creating the job clears the tile's dig flag, so pending and taken orders are two sources that `map.designations` merges; the game queues jobs ahead of the miners, so taken does not imply assigned.
@@ -690,12 +690,12 @@ Every placement response: `{placed, skipped_existing, skipped_unsuitable, skippe
 Recorded in `docs/decisions/0005-building-fields.md` as they are done.
 
 1. A wall placed with a `flags3.stone` filter and one with `item_type=BLOCKS` are both built from matching items; a `mat_index` filter still works for constructions. Fallback if the class flags are ignored: pick the items and pass `items`. Partly done 2026-10-14 on workshops: a `mat_index` filter (plum wood) was honoured, the builder fetched a plum log; the `wood` class bit placed and built fine but with only wood in stock it proves nothing yet. The construction test in 7.1 settles the class bits.
-2. Whether the game refuses an unsupported construction at placement or only at build time, by placing one floor tile over open air through the UI.
+2. Whether the game refuses an unsupported construction at placement or only at build time, by placing one floor tile over open air through the UI. Partly answered 2026-10-14: the down stair placed in open air above a planned up stair was accepted and built once the stair below existed.
 3. A door placed through the UI next to one wall; a door with no adjacent wall (expected: refused by the UI).
 4. A pit and a pond placed through the UI: `keep_filled` on each; an archery range with each shooting direction: `dir_x`, `dir_y`.
 5. A pasture with an animal assigned through the UI: the unit's general refs and `assigned_units`.
 6. A bedroom with an owner assigned through the UI: `assigned_unit_id` and `getOwner`.
-7. The stair subtype written by the UI on each level of a three-level constructed stairwell.
+7. The stair subtype written by the UI on each level of a three-level constructed stairwell. Superseded 2026-10-14: our own two-level stairwell (up stair at the bottom, down stair on top) was built by the dwarves and reads back as `STAIR_UP` under `STAIR_DOWN`, both walkable.
 8. A bridge placed through the UI with a raise direction: `direction` and `material_amount`.
 9. `SetPauseState(false)` from the RPC call leaves the game running after the call returns. Done 2026-10-14: the frame counter advanced 202 frames in two seconds and stopped on the pause call.
 

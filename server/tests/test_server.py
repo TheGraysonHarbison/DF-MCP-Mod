@@ -49,6 +49,8 @@ def test_server_registers_expected_tools():
         "erase_designations",
         "place_workshop",
         "list_building_materials",
+        "plan_construction",
+        "place_construction",
         "remove_building",
         "list_stockpiles",
         "get_stockpile",
