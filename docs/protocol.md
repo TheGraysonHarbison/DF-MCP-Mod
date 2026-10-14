@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **3**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **4**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -49,6 +49,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `core` | always allowed | `core.ping` |
 | `settings` | on | `settings.get` |
 | `time` | on | `time.now` |
+| `pause_write` | off | `time.set_pause` |
 | `units` | on | `units.list`, `units.find`, `units.get`, `units.sheet`, `units.full_sheet` |
 | `units_write` | off | `units.set_nickname` |
 | `nobles` | on | `nobles.list` |
@@ -85,6 +86,14 @@ Result: `groups` (display order: General, Units, Items, Commands), `permissions`
 Args: none. Needs a map.
 
 Result: `year`, `month` (1-12), `month_name`, `day` (1-28), `day_of_year`, `season` (spring, summer, autumn, winter), `season_day` (1-84), `hour`, `minute`, `year_tick`, `frame`, `paused`, `weather` (`None`, `Rain`, `Snow`, or null), `fort_name`, `unsaved_seconds`, `date_string`.
+
+### `time.set_pause`
+
+Args: `paused` (boolean, required). Needs a map and `pause_write`.
+
+Calls `dfhack.world.SetPauseState(paused)`. `ReadPauseState` before and after gives the result; it also reports true while the player is single-stepping. The RPC call suspends the core only for its own duration, so the new state holds once the call returns.
+
+Result: `paused_before`, `paused` (state after the call), `changed`, `frame`, `note`.
 
 ### Units
 

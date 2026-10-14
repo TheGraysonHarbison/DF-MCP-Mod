@@ -12,6 +12,7 @@ def test_server_registers_expected_tools():
         "ping",
         "get_permissions",
         "get_time",
+        "set_paused",
         "list_units",
         "list_citizens",
         "list_domesticated",

@@ -6,7 +6,7 @@ local scriptmanager = require('script-manager')
 
 MOD_ID = 'claude-bridge'
 MOD_VERSION = '0.3.0'
-PROTOCOL_VERSION = 3
+PROTOCOL_VERSION = 4
 
 -- Settings groups, in display order.
 GROUPS = {'General', 'Units', 'Items', 'Logistics', 'World', 'Commands'}
@@ -19,6 +19,8 @@ NAMESPACES = {
      label = 'Read date, time and weather'},
     {key = 'settings', group = 'General',  hotkey = 'CUSTOM_S', default = true,
      label = 'Read these settings'},
+    {key = 'pause_write', group = 'General', hotkey = 'CUSTOM_H', default = false,
+     label = 'Pause and unpause the game'},
     {key = 'units',    group = 'Units',    hotkey = 'CUSTOM_U', default = true,
      label = 'Read units'},
     {key = 'units_write', group = 'Units', hotkey = 'CUSTOM_N', default = false,
