@@ -47,6 +47,7 @@ def main() -> int:
         ("core.ping", {}),
         ("settings.get", {}),
         ("time.now", {}),
+        ("time.set_pause", {"paused": True}),
         ("units.list", {"limit": 5}),
         ("units.list", {"bucket": "citizen", "limit": 3}),
         ("units.list", {"bucket": "domesticated", "limit": 3}),
@@ -62,7 +63,9 @@ def main() -> int:
                 first = result["units"][0]["id"]
                 show(f"units.get {first}", bridge.call("units.get", {"id": first}))
         except BridgeError as exc:
-            expected = op == "nope.nothing" or (op == "console.run" and exc.code == "NOT_ALLOWED")
+            expected = op == "nope.nothing" or (
+                op in ("console.run", "time.set_pause") and exc.code == "NOT_ALLOWED"
+            )
             print(f"== {op} {op_args}\n{'expected ' if expected else ''}error {exc.code}: {exc.message}")
             if not expected:
                 failures += 1

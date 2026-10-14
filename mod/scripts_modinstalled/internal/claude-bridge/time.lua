@@ -1,5 +1,7 @@
--- Date, time of day, season, weather, pause state.
+-- Date, time of day, season, weather, pause state, and pausing. Plan section 12, item 9.0.
 --@ module = true
+
+local rpc = reqscript('internal/claude-bridge/rpc')
 
 TICKS_PER_DAY = 1200
 DAYS_PER_MONTH = 28
@@ -66,8 +68,28 @@ local function now(args)
     }
 end
 
+-- Pause or unpause the simulation. ReadPauseState also counts single-stepping as paused,
+-- so `paused_before` can be true for a frame the player is stepping through. The RPC call
+-- suspends the core only for its own duration; the new state holds once it returns.
+local function set_pause(args)
+    if type(args.paused) ~= 'boolean' then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"paused" must be true or false')
+    end
+    local before = dfhack.world.ReadPauseState()
+    dfhack.world.SetPauseState(args.paused)
+    local after = dfhack.world.ReadPauseState()
+    return {
+        paused_before = before,
+        paused = after,
+        changed = before ~= after,
+        frame = df.global.world.frame_counter,
+        note = after and 'the game is paused' or 'the game is running; call again with paused=true to stop it',
+    }
+end
+
 function ops()
     return {
         ['time.now'] = {namespace = 'time', handler = now, needs_map = true},
+        ['time.set_pause'] = {namespace = 'pause_write', handler = set_pause, needs_map = true},
     }
 end

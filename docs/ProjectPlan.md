@@ -697,7 +697,7 @@ Recorded in `docs/decisions/0005-building-fields.md` as they are done.
 6. A bedroom with an owner assigned through the UI: `assigned_unit_id` and `getOwner`.
 7. The stair subtype written by the UI on each level of a three-level constructed stairwell.
 8. A bridge placed through the UI with a raise direction: `direction` and `material_amount`.
-9. `SetPauseState(false)` from the RPC call leaves the game running after the call returns.
+9. `SetPauseState(false)` from the RPC call leaves the game running after the call returns. Done 2026-10-14: the frame counter advanced 202 frames in two seconds and stopped on the pause call.
 
 ### 12.5 Delivery
 
