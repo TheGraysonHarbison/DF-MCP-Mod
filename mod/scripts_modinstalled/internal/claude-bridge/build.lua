@@ -11,6 +11,7 @@ local materials = reqscript('internal/claude-bridge/materials')
 DEFAULT_LIMIT = 25
 
 local B = dfhack.buildings
+local M = dfhack.maps
 
 local function safe(fn, ...)
     local ok, value = pcall(fn, ...)
@@ -231,32 +232,36 @@ local function workshop(args)
     }
 end
 
-local function building_summary(b)
-    return {
-        id = b.id,
-        kind = enum_name(df.building_type, b:getType()),
-        type = (function()
-            if df.building_workshopst:is_instance(b) then return enum_name(df.workshop_type, b.type) end
-            if df.building_furnacest:is_instance(b) then return enum_name(df.furnace_type, b.type) end
-            return nil
-        end)(),
-        name = safe(function() return b.name ~= '' and b.name or nil end),
-        pos = {x = b.centerx, y = b.centery, z = b.z},
-    }
+-- Plain names for building types, the reverse of furniture.TYPES plus the rest.
+PLAIN_KINDS = {
+    Workshop = 'workshop', Furnace = 'furnace', Construction = 'construction', Door = 'door',
+    Floodgate = 'floodgate', Hatch = 'hatch', GrateWall = 'wall_grate', GrateFloor = 'floor_grate',
+    BarsVertical = 'vertical_bars', BarsFloor = 'floor_bars', WindowGlass = 'glass_window',
+    WindowGem = 'gem_window', Bed = 'bed', Table = 'table', Chair = 'chair', Cabinet = 'cabinet',
+    Box = 'chest', Armorstand = 'armor_stand', Weaponrack = 'weapon_rack', Statue = 'statue',
+    Slab = 'slab', Coffin = 'coffin', Cage = 'cage', Chain = 'restraint', Well = 'well',
+    ArcheryTarget = 'archery_target', TractionBench = 'traction_bench', NestBox = 'nest_box',
+    Hive = 'hive', Bookcase = 'bookcase', DisplayFurniture = 'display_case',
+    OfferingPlace = 'offering_place', Instrument = 'instrument', AnimalTrap = 'animal_trap',
+    Bridge = 'bridge', RoadPaved = 'paved_road', RoadDirt = 'dirt_road', Support = 'support',
+    Trap = 'trap', Weapon = 'spike', SiegeEngine = 'siege_engine', TradeDepot = 'trade_depot',
+    FarmPlot = 'farm_plot', ScrewPump = 'screw_pump', WaterWheel = 'water_wheel',
+    Windmill = 'windmill', GearAssembly = 'gear_assembly', AxleHorizontal = 'horizontal_axle',
+    AxleVertical = 'vertical_axle', Rollers = 'rollers', Wagon = 'wagon', Stockpile = 'stockpile',
+    Civzone = 'zone',
+}
+
+local function subtype_name(b)
+    if df.building_workshopst:is_instance(b) then return enum_name(df.workshop_type, b.type) end
+    if df.building_furnacest:is_instance(b) then return enum_name(df.furnace_type, b.type) end
+    if df.building_constructionst:is_instance(b) then return enum_name(df.construction_type, b.type) end
+    if df.building_trapst:is_instance(b) then return enum_name(df.trap_type, b.trap_type) end
+    if df.building_siegeenginest:is_instance(b) then return enum_name(df.siegeengine_type, b.type) end
+    if df.building_civzonest:is_instance(b) then return enum_name(df.civzone_type, b.type) end
+    return nil
 end
 
--- Ask for a building to be removed. A finished building gets a deconstruction job for the
--- dwarves; an unfinished blueprint is cancelled on the spot. Workshops and furnaces only.
-local function remove(args)
-    local id = tonumber(args.id)
-    if not id then return rpc.error_result(rpc.ERR_BAD_REQUEST, '"id" must be a building id') end
-    local b = df.building.find(id)
-    if not b then return rpc.error_result(rpc.ERR_NOT_FOUND, 'no building with id ' .. id) end
-    if not df.building_workshopst:is_instance(b) and not df.building_furnacest:is_instance(b) then
-        return rpc.error_result(rpc.ERR_BAD_REQUEST,
-            ('building %d is a %s; only workshops and furnaces can be removed here'):format(
-                id, enum_name(df.building_type, b:getType()) or '?'))
-    end
+local function has_mood(b)
     local mood = false
     pcall(function()
         for _, job in ipairs(b.jobs) do
@@ -265,16 +270,110 @@ local function remove(args)
             end
         end
     end)
-    if mood then
+    return mood
+end
+
+-- One row for any building: identity, place, build state, the construction job, and
+-- how many of its items are attached.
+function building_summary(b)
+    local token = enum_name(df.building_type, b:getType())
+    local stage = safe(function() return b:getBuildStage() end)
+    local max_stage = safe(function() return b:getMaxBuildStage() end)
+    local row = {
+        id = b.id,
+        kind = PLAIN_KINDS[token or ''] or (token and token:lower()) or '?',
+        building_type = token,
+        type = subtype_name(b),
+        name = safe(function() return b.name ~= '' and b.name or nil end),
+        pos = {x = b.centerx, y = b.centery, z = b.z},
+        bounds = {x1 = b.x1, y1 = b.y1, x2 = b.x2, y2 = b.y2, z = b.z},
+        stage = stage, max_stage = max_stage,
+        built = stage ~= nil and max_stage ~= nil and stage >= max_stage,
+        planned = stage == 0,
+        marked_for_removal = safe(B.markedForRemoval, b) == true,
+        strange_mood = has_mood(b),
+    }
+    pcall(function()
+        local job = b.jobs[0]
+        if not job then return end
+        local worker = safe(dfhack.job.getWorker, job)
+        row.job = {
+            id = job.id, type = enum_name(df.job_type, job.job_type),
+            suspended = job.flags.suspend == true, do_now = job.flags.do_now == true,
+            worker = worker and {id = worker.id, name = dfhack.units.getReadableName(worker)} or nil,
+        }
+        row.suspended = job.flags.suspend == true
+        local needed = 0
+        for _, ji in ipairs(job.job_items.elements) do needed = needed + math.max(ji.quantity, 0) end
+        row.materials = {attached = #job.items, still_needed = needed}
+    end)
+    return row
+end
+
+-- Every building in play but stockpiles and zones (they have their own ops), with filters.
+local function list(args)
+    local kind = args.kind ~= nil and tostring(args.kind):lower() or nil
+    local planned_only = args.planned_only == true
+    local z = tonumber(args.z)
+    local box = nil
+    if args.x1 ~= nil then
+        local parsed, err = map.parse_box(args)
+        if err then return err end
+        box = parsed
+    end
+    local limit = tonumber(args.limit) or DEFAULT_LIMIT
+    if limit < 1 then limit = DEFAULT_LIMIT end
+    local offset = tonumber(args.offset) or 0
+    local rows, counts = {}, {}
+    for _, b in ipairs(df.global.world.buildings.all) do
+        local btype = b:getType()
+        if btype ~= df.building_type.Stockpile and btype ~= df.building_type.Civzone then
+            local row = building_summary(b)
+            local keep = true
+            if kind and row.kind ~= kind and (row.building_type or ''):lower() ~= kind
+                and (row.type or ''):lower() ~= kind then keep = false end
+            if keep and planned_only and row.built then keep = false end
+            if keep and z and b.z ~= z then keep = false end
+            if keep and box and (b.z < box.z1 or b.z > box.z2 or b.x2 < box.x1 or b.x1 > box.x2
+                or b.y2 < box.y1 or b.y1 > box.y2) then keep = false end
+            if keep then
+                table.insert(rows, row)
+                counts[row.kind] = (counts[row.kind] or 0) + 1
+            end
+        end
+    end
+    table.sort(rows, function(a, c) return a.id < c.id end)
+    local out = {}
+    for i = offset + 1, math.min(#rows, offset + limit) do table.insert(out, rows[i]) end
+    return {total = #rows, count = #out, offset = offset, limit = limit, truncated = offset + #out < #rows,
+            buildings = out, counts_by_kind = counts,
+            filter = {kind = kind, planned_only = planned_only or nil, z = z, box = box}}
+end
+
+-- Ask for a building to be removed. A finished building gets a deconstruction job for the
+-- dwarves; an unfinished blueprint is cancelled on the spot. Stockpiles and zones have
+-- their own ops; a strange mood claim refuses.
+local function remove(args)
+    local id = tonumber(args.id)
+    if not id then return rpc.error_result(rpc.ERR_BAD_REQUEST, '"id" must be a building id') end
+    local b = df.building.find(id)
+    if not b then return rpc.error_result(rpc.ERR_NOT_FOUND, 'no building with id ' .. id) end
+    local btype = b:getType()
+    if btype == df.building_type.Stockpile then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('building %d is a stockpile; use stockpiles.delete'):format(id))
+    end
+    if btype == df.building_type.Civzone then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('building %d is a zone; use zones.delete'):format(id))
+    end
+    if has_mood(b) then
         return rpc.error_result(rpc.ERR_BAD_REQUEST,
             ('building %d is claimed by a strange mood; removing it would ruin the mood'):format(id))
     end
     if safe(B.markedForRemoval, b) then
         return {status = 'already_queued', building = building_summary(b)}
     end
-    local stage = safe(function() return b:getBuildStage() end)
-    local max_stage = safe(function() return b:getMaxBuildStage() end)
-    local finished = stage ~= nil and max_stage ~= nil and stage >= max_stage
     local summary = building_summary(b)
     -- deconstruct returns true when it destroyed the building on the spot and false when it
     -- queued a DestroyBuilding job for a finished one (checked against Buildings.cpp,
@@ -285,14 +384,103 @@ local function remove(args)
     end
     local remaining = df.building.find(id)
     if remaining == nil then
-        return {status = finished and 'removed' or 'blueprint_cancelled', building = summary,
-                note = 'the building is gone'}
+        return {status = summary.built and 'removed' or 'blueprint_cancelled', building = summary,
+                note = summary.built and 'the building is gone' or 'the blueprint is cancelled; nothing was built'}
     end
     if safe(B.markedForRemoval, remaining) then
         return {status = 'removal_queued', building = summary,
-                note = 'a dwarf will deconstruct it; materials are returned to the ground'}
+                note = 'a dwarf will take it apart; its items drop on the ground'}
     end
     return rpc.error_result(rpc.ERR_INTERNAL, 'DFHack neither removed nor queued the building')
+end
+
+-- Suspend or resume the construction job of an unbuilt building.
+local function suspend(args)
+    local id = tonumber(args.id)
+    if not id then return rpc.error_result(rpc.ERR_BAD_REQUEST, '"id" must be a building id') end
+    if type(args.suspended) ~= 'boolean' then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"suspended" must be true or false')
+    end
+    local b = df.building.find(id)
+    if not b then return rpc.error_result(rpc.ERR_NOT_FOUND, 'no building with id ' .. id) end
+    local summary = building_summary(b)
+    if summary.built or not summary.job then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('building %d has no construction job to suspend (it is %s)'):format(
+                id, summary.built and 'built' or 'without a job'))
+    end
+    local before = summary.suspended
+    local ok, err = pcall(function() b.jobs[0].flags.suspend = args.suspended end)
+    if not ok then return rpc.error_result(rpc.ERR_INTERNAL, tostring(err)) end
+    pcall(dfhack.job.checkBuildingsNow)
+    return {changed = before ~= args.suspended, suspended = args.suspended, building = building_summary(b)}
+end
+
+-- Remove constructions in a box or circle: planned ones are cancelled at once, finished
+-- ones are designated for removal by a miner (dfhack.constructions.designateRemove).
+local function remove_constructions(args)
+    local dig = reqscript('internal/claude-bridge/dig')
+    local box, berr, inside
+    if args.circle ~= nil then
+        box, berr, inside = dig.parse_circle(args)
+    else
+        box, berr = map.parse_box(args)
+    end
+    if berr then return berr end
+    local apply = args.dry_run ~= true
+    local counts = {cancelled = 0, designated = 0, already_designated = 0, skipped = 0}
+    local tiles, skipped = {}, {}
+    for z = box.z1, box.z2 do
+        for y = box.y1, box.y2 do
+            for x = box.x1, box.x2 do
+                if inside == nil or inside(x, y) then
+                    local pos = {x = x, y = y, z = z}
+                    local built = safe(dfhack.constructions.findAtTile, pos)
+                    -- The tile above a constructed wall carries a construction record of its
+                    -- own (top_of_wall); it goes with the wall, not on its own.
+                    if built and safe(function() return built.flags.top_of_wall end) then built = nil end
+                    local planned = nil
+                    if not built then
+                        local bld = safe(B.findAtTile, pos)
+                        if bld and bld:getType() == df.building_type.Construction then planned = bld end
+                    end
+                    if built then
+                        local des = M.getTileFlags(pos)
+                        if des and des.dig ~= df.tile_dig_designation.No then
+                            counts.already_designated = counts.already_designated + 1
+                        else
+                            counts.designated = counts.designated + 1
+                            if #tiles < DEFAULT_LIMIT then
+                                table.insert(tiles, {pos = pos, action = 'designated',
+                                    material = safe(function()
+                                        return dfhack.matinfo.decode(built.mat_type, built.mat_index):toString()
+                                    end)})
+                            end
+                            if apply then pcall(dfhack.constructions.designateRemove, pos) end
+                        end
+                    elseif planned then
+                        counts.cancelled = counts.cancelled + 1
+                        if #tiles < DEFAULT_LIMIT then
+                            table.insert(tiles, {pos = pos, action = 'cancelled', building = planned.id})
+                        end
+                        if apply and not has_mood(planned) then pcall(B.deconstruct, planned) end
+                    else
+                        counts.skipped = counts.skipped + 1
+                        if #skipped < DEFAULT_LIMIT then table.insert(skipped, pos) end
+                    end
+                end
+            end
+        end
+    end
+    if apply and counts.designated > 0 then pcall(dfhack.job.checkDesignationsNow) end
+    return {box = box, shape = inside and 'circle' or 'box', dry_run = not apply,
+            applied = apply and (counts.cancelled + counts.designated) > 0,
+            cancelled = counts.cancelled, designated = counts.designated,
+            already_designated = counts.already_designated, skipped = counts.skipped,
+            tiles = tiles, skipped_tiles = skipped,
+            note = apply and 'planned constructions cancelled; built ones wait for a miner to remove them, '
+                .. 'which leaves the material on the ground'
+                or 'nothing was changed; call build.remove_constructions with dry_run=false to do it'}
 end
 
 -- Usable building materials in play, grouped by material and form (plan 12, item 7.0).
@@ -334,5 +522,9 @@ function ops()
         ['build.workshop'] = {namespace = 'build_write', handler = workshop, needs_map = true},
         ['build.remove'] = {namespace = 'build_write', handler = remove, needs_map = true},
         ['build.materials'] = {namespace = 'stocks', handler = list_materials, needs_map = true},
+        ['build.list'] = {namespace = 'workshops', handler = list, needs_map = true},
+        ['build.suspend'] = {namespace = 'build_write', handler = suspend, needs_map = true},
+        ['build.remove_constructions'] = {namespace = 'build_write', handler = remove_constructions,
+                                          needs_map = true},
     }
 end

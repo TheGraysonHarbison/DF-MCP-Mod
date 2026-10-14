@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **7**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **8**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -58,10 +58,10 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `stocks_true` | on | no ops; a toggle. Off puts the stocks ops in bookkeeper view. |
 | `orders` | on | `orders.list`, `orders.get`, `orders.jobs` |
 | `orders_write` | off | `orders.create`, `orders.edit`, `orders.delete` |
-| `workshops` | on | `workshops.list`, `workshops.get`, `build.plan_construction`, `build.plan_furniture` |
+| `workshops` | on | `workshops.list`, `workshops.get`, `build.plan_construction`, `build.plan_furniture`, `build.list` |
 | `dig_write` | off | `dig.designate`, `dig.erase` (`dig.plan` is under `map`) |
 | `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space` |
-| `build_write` | off | `build.workshop`, `build.remove`, `build.construct`, `build.place` |
+| `build_write` | off | `build.workshop`, `build.remove`, `build.construct`, `build.place`, `build.suspend`, `build.remove_constructions` |
 | `stockpiles` | on | `stockpiles.list`, `stockpiles.get`, `stockpiles.presets` |
 | `stockpiles_write` | off | `stockpiles.create`, `stockpiles.configure`, `stockpiles.rename`, `stockpiles.delete` |
 | `console` | off | `console.run` (plus a per-command allowlist) |
@@ -443,13 +443,35 @@ Result: `type`, `building_type`, `box`, `dry_run`, `applied`, `status` (`plan`, 
 
 Args and result as `build.plan_furniture`. Needs a map and `build_write`. One `constructBuilding` per tile with fresh filters.
 
+### `build.list`
+
+Args: `kind` (optional: a plain name such as `door`, `bed`, `workshop`, `construction`, a `building_type` token, or a subtype such as `Masons` or `Wall`), `planned_only`, `z`, an optional box (`x1..z2`, buildings whose bounds touch it), `limit` (default 25), `offset`. Needs a map and `workshops`.
+
+Walks `world.buildings.all`, leaving out stockpiles and zones. Row: `id`, `kind`, `building_type`, `type` (workshop, furnace, construction, trap, siege engine subtype), `name`, `pos`, `bounds`, `stage`, `max_stage`, `built`, `planned` (stage 0), `marked_for_removal`, `strange_mood`, and when a construction job exists `job` `{id, type, suspended, do_now, worker}`, `suspended`, `materials` `{attached, still_needed}`.
+
+Result: `total`, `count`, `offset`, `limit`, `truncated`, `buildings` (by id), `counts_by_kind`, `filter`.
+
 ### `build.remove`
 
-Args: `id` (building id). Needs a map and `build_write`. Only workshops and furnaces; anything else is `BAD_REQUEST`, as is a building claimed by a strange mood.
+Args: `id` (building id). Needs a map and `build_write`. Every building type but stockpiles and zones (each is `BAD_REQUEST` pointing at its own op); a building claimed by a strange mood is refused.
 
 Calls `dfhack.buildings.deconstruct`: a finished building gets a deconstruction job for the dwarves, an unfinished blueprint is removed at once.
 
-Result: `status` (`removal_queued`, `blueprint_cancelled`, `removed`, or `already_queued`), `building` `{id, kind, type, name, pos}`, `note`.
+Result: `status` (`removal_queued`, `blueprint_cancelled`, `removed`, or `already_queued`), `building` (a `build.list` row), `note`.
+
+### `build.suspend`
+
+Args: `id`, `suspended` (boolean). Needs a map and `build_write`. Sets `jobs[0].flags.suspend` on an unbuilt building and calls `checkBuildingsNow`; a built building or one without a job is `BAD_REQUEST`.
+
+Result: `changed`, `suspended`, `building`.
+
+### `build.remove_constructions`
+
+Args: the box or `circle` `{x, y, z, radius}`, `dry_run` (default false on the wire; the tool defaults it to true). Needs a map and `build_write`.
+
+Per tile: a finished construction (`dfhack.constructions.findAtTile`, ignoring the `top_of_wall` records above constructed walls) is designated for removal with `designateRemove` unless the tile already carries a dig designation; a planned construction building is removed at once with `deconstruct` (unless a strange mood holds it); other tiles are skipped. `checkDesignationsNow` runs when anything was designated.
+
+Result: `box`, `shape`, `dry_run`, `applied`, `cancelled`, `designated`, `already_designated`, `skipped`, `tiles` `[{pos, action, material | building}]` (first 25), `skipped_tiles` (first 25), `note`.
 
 ### `stockpiles.list`
 
