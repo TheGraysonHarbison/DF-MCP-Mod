@@ -45,6 +45,8 @@ NAMESPACES = {
      label = 'Paint, configure, delete stockpiles'},
     {key = 'map',      group = 'World',    hotkey = 'CUSTOM_P', default = true,
      label = 'Read map tiles'},
+    {key = 'dig_write', group = 'World',   hotkey = 'CUSTOM_G', default = false,
+     label = 'Designate digging and smoothing'},
     {key = 'console',  group = 'Commands', hotkey = 'CUSTOM_C', default = false,
      label = 'Run allowlisted console cmds'},
     {key = 'lua_eval', group = 'Commands', hotkey = 'CUSTOM_L', default = false,

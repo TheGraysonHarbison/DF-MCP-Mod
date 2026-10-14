@@ -584,9 +584,9 @@ Every designate response: `{designated, skipped_existing, skipped_unsuitable, sk
 
 Recorded in `docs/decisions/0004-dig-fields.md` as they are done.
 
-1. `probe` output against our material lookup on a layer stone wall, a vein, a soil wall, a constructed wall, a smoothed wall, an ice wall.
-2. A three-level staircase carved through the game's own UI: the `dig` value on each level.
-3. A tile designated with no priority block event is picked up and dug.
+1. `probe` output against our material lookup on a layer stone wall, a vein, a soil wall, a constructed wall, a smoothed wall, an ice wall. Done 2026-10-13 without `probe` (it needs an in-game keyboard cursor): the owner confirmed soil by eye, and the 6.2 dig exposed sandstone (layer), kaolinite, bituminous coal, and turquoise (veins) that read back by name. Constructed, smoothed, and ice walls remain unchecked.
+2. A three-level staircase carved through the game's own UI: the `dig` value on each level. Superseded 2026-10-13: our own six-level column (up/down on an existing up stair, up/down between, up stair at the bottom) was carved by the miner into a working staircase.
+3. A tile designated with no priority block event is picked up and dug. Done 2026-10-13: all 102 tiles were taken and dug with no priority written.
 4. A designation job in `world.jobs.list` has `pos` set and `getWorker` returns the miner once assigned. Done 2026-10-13, with a twist: creating the job clears the tile's dig flag, so pending and taken orders are two sources that `map.designations` merges; the game queues jobs ahead of the miners, so taken does not imply assigned.
 5. Vanilla "rock throne" and "wooden throne" orders made in the UI: `mat_type`, `mat_index`, `material_category`, `item_type` (through the new `raw` field).
 6. `MakeWeapon` pick order with `item_type` left unset still labels as "forge copper pick".

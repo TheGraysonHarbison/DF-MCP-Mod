@@ -58,6 +58,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `orders` | on | `orders.list`, `orders.get`, `orders.jobs` |
 | `orders_write` | off | `orders.create`, `orders.edit`, `orders.delete` |
 | `workshops` | on | `workshops.list`, `workshops.get` |
+| `dig_write` | off | `dig.designate`, `dig.erase` (`dig.plan` is under `map`) |
 | `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space` |
 | `build_write` | off | `build.workshop`, `build.remove` |
 | `stockpiles` | on | `stockpiles.list`, `stockpiles.get`, `stockpiles.presets` |
@@ -355,6 +356,30 @@ Args: `x1`, `y1`, `z1`, `x2`, `y2`, `z2` (two corners in any order; every corner
 Two sources are merged (verified live 2026-10-13). Pending orders are tiles whose `tile_designation.dig` (`Default` is `mine`) or `tile_designation.smooth` (1 smooth, 2 engrave) is set. Taken orders are the entries of `world.jobs.list` whose job type has the `is_designation` attribute (`Dig`, `CarveUpwardStaircase`, `CarveDownwardStaircase`, `CarveUpDownStaircase`, `DigChannel`, `CarveRamp`, `RemoveStairs`, `SmoothWall`, `SmoothFloor`, `DetailWall`, `DetailFloor`, `CarveFortification`), keyed by their `pos`: when the game creates such a job it clears the tile's flag, so a taken order is only visible in the job list, and it reappears as a tile flag if the job is cancelled. The game queues jobs ahead of the miners, so a taken order may have no worker yet; `assigned` means `dfhack.job.getWorker` returned a dwarf.
 
 Result: `box`, `total`, `count`, `truncated`, `counts` (per kind), `taken` (rows with a job), `assigned` (rows with a worker), `designations` `[{pos, kind, state (pending or taken), marker (blueprint mode), hidden, assigned, job {id, type, name, kind, pos, worker {id, name}}}]`, `note`.
+
+### Digging
+
+Namespace `dig_write` (off by default) for the writes; `dig.plan` is a read under `map`. Rules follow DFHack's quickfort dig module (checked 2026-10-13). A box is two corners in any order (`x1, y1, z1, x2, y2, z2`), every corner inside the map, at most 64 by 64 tiles per level and 32 levels.
+
+### `dig.plan`
+
+Args: `kind` (`mine`, `stairs`, `channel`, `ramp`, `remove_stairs`), the box. Needs a map and `map`.
+
+Computes what `dig.designate` would do and changes nothing. Per tile, in order: no map block, map edge, an existing order or designation job (never overwritten), a building, then the kind's rule. `mine` and `ramp` need a wall or fortification that is not a construction or tree. `channel` takes walls, floors, boulders, pebbles, ramps, stairs, shrubs, and saplings. `remove_stairs` takes carved stairs and ramps. `stairs` needs a box of at least two levels: the top level gets a down stair (up/down if the tile is already an up stair), the bottom an up stair (solid rock only), the levels between up/down stairs. Hidden tiles are designated without a shape check, as the game allows.
+
+Result: `kind`, `box`, `dry_run`, `applied`, `designated`, `skipped_existing`, `skipped_unsuitable`, `skipped_building`, `skipped_edge`, `by_level` `[{z, designated, skipped, dig}]`, `skipped` `[{pos, reason}]` (first 25), `skipped_truncated`, `blocks_marked`, `note`.
+
+### `dig.designate`
+
+Args and result as `dig.plan`. Needs a map and `dig_write`. Sets `tile_designation.dig` on each accepted tile, sets `designated` on every touched map block, then calls `dfhack.job.checkDesignationsNow()`. No priority is written; the game's default (4) applies.
+
+### `dig.erase`
+
+Args: the box, `kind` (optional: `mine`, `up_stair`, `down_stair`, `up_down_stair`, `channel`, `ramp`, `smooth`, `engrave`). Needs a map and `dig_write`.
+
+Clears the dig and smooth flags and the blueprint marker on matching tiles, and removes the queued designation job for each with `dfhack.job.removeJob`. Dug tiles stay dug.
+
+Result: `box`, `kind`, `cleared`, `jobs_removed`, `counts` (per kind), `note`.
 
 ### `build.workshop`
 
