@@ -34,7 +34,10 @@ BOX_DOC = """The box is two corners in any order, every corner inside the map, a
         Tiles that already carry an order or a job are skipped, never overwritten, as are
         constructions, trees, buildings, and the map edge. Unrevealed rock is designated,
         which is how exploratory mining works. Returns `designated`, the skipped counts,
-        `by_level`, and the first 25 skipped tiles with reasons."""
+        `by_level`, and the first 25 skipped tiles with reasons. Layout rule: dwarves move
+        diagonally, so a room needs a fully solid border including its corners; leave at
+        least one wall tile between rooms and between a room and a corridor, and connect
+        them only through deliberate doorways. Two rooms whose corners touch are one room."""
 
 
 def _box(x1: int, y1: int, z1: int, x2: int, y2: int, z2: int, kind: str | None) -> dict[str, Any]:

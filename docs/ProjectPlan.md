@@ -596,6 +596,8 @@ Recorded in `docs/decisions/0004-dig-fields.md` as they are done.
 
 One branch per item from `main`, each verified live and updating `docs/protocol.md`, the README progress table, and the smoke test: `mod/orders-material` (5.0), `mod/map-materials` (6.0), `mod/map-designations` (6.1), `mod/dig` (6.2), `mod/dig-smooth` (6.3), `mod/dig-circles` (6.4). Protocol version bumps on each.
 
+Room layout rule (owner's note, 2026-10-13): dwarves move diagonally, so a mined room needs a fully solid border including its corners. Leave at least one wall tile between rooms and between a room and a corridor, and join them only through deliberate doorways; rooms whose corners touch are one room. The first 6.2 test placed three chambers whose corners met the hall, which the owner flagged. This rule is in the `designate_dig` tool description so Claude applies it when planning.
+
 Exposed-walls technique, kept for reference in case it needs replacing: scan one z-level by block (`map_block.tiletype` and `map_block.walkable` are 16 by 16 arrays, so a 3 by 3 embark level is about 20,000 tiles and well under a frame of Lua), keep wall tiles that are not hidden and have an orthogonal neighbour with a non-zero walkable group, then merge neighbours into runs along x and along y when material, kind, and open side match, preferring the longer axis. Expected failure mode: natural caverns and irregular dug-outs produce many one- and two-tile segments and hit the cap. Fallbacks, in order: a `segments=false` switch that returns tiles grouped by material with counts; the `material` view of `map.area` over the region of interest; `dfhack.maps.forEachTile` with a `shape_basic = Wall` filter as a native prefilter if the Lua scan is ever too slow.
 
 ---
