@@ -56,7 +56,20 @@ local function unpublish_rpc()
     package.loaded[RPC_MODULE_NAME] = nil
 end
 
+-- Drop every cached internal module so a reload re-runs helpers (materials, map) that
+-- op modules captured as locals, not only the files that changed since the last load.
+local function forget_internal_modules()
+    pcall(function()
+        for path in pairs(dfhack.internal.scripts) do
+            if path:find('internal/claude%-bridge/') then
+                dfhack.internal.scripts[path] = nil
+            end
+        end
+    end)
+end
+
 local function register_ops()
+    forget_internal_modules()
     state = reqscript('internal/claude-bridge/state')
     rpc = reqscript('internal/claude-bridge/rpc')
     rpc.reset()

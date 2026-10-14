@@ -7,6 +7,7 @@
 --@ module = true
 
 local rpc = reqscript('internal/claude-bridge/rpc')
+local materials = reqscript('internal/claude-bridge/materials')
 
 DEFAULT_LIMIT = 25
 
@@ -337,67 +338,22 @@ local function resolve_subtype(item_type, name)
     return nil, ('no %s subtype named "%s"'):format(df.item_type[item_type]:lower(), name)
 end
 
--- Words that mean the generic inorganic material ("any stone"), and words that mean a job
--- material category flag. "any " and "wooden" style prefixes are normalised first.
-local STONE_WORDS = {stone = true, rock = true, ['any stone'] = true, ['any rock'] = true,
-                     inorganic = true}
-local CATEGORY_WORDS = {wood = 'wood', wooden = 'wood', log = 'wood', logs = 'wood',
-                        bone = 'bone', bones = 'bone', shell = 'shell', leather = 'leather',
-                        cloth = 'cloth', silk = 'silk', yarn = 'yarn', wool = 'yarn',
-                        horn = 'horn', pearl = 'pearl', tooth = 'tooth', ivory = 'tooth',
-                        plant = 'plant', ['plant fiber'] = 'cloth', soap = 'soap',
-                        strand = 'strand'}
-
-local function normalise_word(name)
-    local word = tostring(name):lower():gsub('^%s+', ''):gsub('%s+$', ''):gsub('%s+', ' ')
-    word = word:gsub('^any ', '')
-    return word
-end
-
--- Resolve a material argument. Returns {mat_type, mat_index} or {category = flag} or nil, err.
+-- Material words come from the shared materials module (plan 12, 7.0). A work order takes
+-- the material part only: stone words mean the generic inorganic material, wood and the
+-- other organic words a material category flag, anything else a specific material.
 local function resolve_material(name)
-    if name == nil then return nil end
-    local raw = tostring(name)
-    local word = normalise_word(raw)
-    if word == '' or word == 'any' or word == 'none' then return nil end
-    if STONE_WORDS[word] then return {mat_type = 0, mat_index = -1} end
-    if CATEGORY_WORDS[word] then return {category = CATEGORY_WORDS[word]} end
-    -- Tokens: as given, then upper-cased with spaces as underscores (GRANITE, INORGANIC:IRON).
-    for _, candidate in ipairs({raw, raw:upper():gsub('%s+', '_')}) do
-        local info = safe(dfhack.matinfo.find, candidate)
-        if info then return {mat_type = info.type, mat_index = info.index} end
+    local spec, why = materials.resolve(name)
+    if why then return nil, why end
+    if spec == nil then return nil end
+    if spec.form then
+        return nil, ('"material" %s names an item form; a work order takes a material such as '
+            .. '"any stone", "any wood", or "granite"'):format(tostring(name))
     end
-    -- Plain names from the inorganic raws: "granite", "silver", "native gold".
-    local near, seen = {}, {}
-    local found = nil
-    pcall(function()
-        for index, inorganic in ipairs(df.global.world.raws.inorganics.all) do
-            local display = safe(function() return inorganic.material.state_name.Solid end)
-            local names = {
-                safe(function() return inorganic.id end),
-                display,
-                safe(function() return inorganic.material.state_adj.Solid end),
-            }
-            for _, candidate in ipairs(names) do
-                local lowered = type(candidate) == 'string' and candidate:lower() or nil
-                if lowered == word then
-                    found = index
-                    return
-                end
-                local shown = type(display) == 'string' and display:lower() or lowered
-                if lowered and shown and #near < 5 and not seen[shown]
-                    and lowered:find(word, 1, true) then
-                    seen[shown] = true
-                    table.insert(near, shown)
-                end
-            end
-        end
-    end)
-    if found then return {mat_type = 0, mat_index = found} end
-    local hint = #near > 0 and ('; close matches: ' .. table.concat(near, ', ')) or ''
-    return nil, ('unknown "material" %s; use "any stone", "any wood", a stone or metal name such as '
-        .. '"granite" or "silver", or a token such as INORGANIC:IRON or PLANT:PLUMP_HELMET:DRINK%s')
-        :format(raw, hint)
+    if spec.generic_inorganic then return {mat_type = 0, mat_index = -1} end
+    if spec.category then return {category = spec.category} end
+    if spec.mat_type ~= nil then return {mat_type = spec.mat_type, mat_index = spec.mat_index} end
+    return nil, ('"material" %s is a building material class; a work order takes "any stone", '
+        .. '"any wood", or a specific material'):format(tostring(name))
 end
 
 local function resolve_frequency(name)
@@ -475,11 +431,11 @@ local function create(args)
         local list = type(args.material_category) == 'table' and args.material_category
             or {args.material_category}
         for _, name in ipairs(list) do
-            local word = normalise_word(name)
-            if STONE_WORDS[word] and mat_type < 0 then
+            local word = tostring(name):lower():gsub('^%s+', ''):gsub('%s+$', ''):gsub('^any ', '')
+            if materials.STONE_WORDS[word] and mat_type < 0 then
                 mat_type, mat_index = 0, -1
             else
-                table.insert(categories, CATEGORY_WORDS[word] or tostring(name))
+                table.insert(categories, materials.CATEGORY_WORDS[word] or tostring(name))
             end
         end
     end

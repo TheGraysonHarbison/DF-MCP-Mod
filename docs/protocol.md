@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **4**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **5**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -54,7 +54,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `units_write` | off | `units.set_nickname` |
 | `nobles` | on | `nobles.list` |
 | `nobles_write` | off | `nobles.assign` |
-| `stocks` | on | `stocks.bar`, `stocks.list`, `stocks.find`, `stocks.artifacts`, `stocks.status` |
+| `stocks` | on | `stocks.bar`, `stocks.list`, `stocks.find`, `stocks.artifacts`, `stocks.status`, `build.materials` |
 | `stocks_true` | on | no ops; a toggle. Off puts the stocks ops in bookkeeper view. |
 | `orders` | on | `orders.list`, `orders.get`, `orders.jobs` |
 | `orders_write` | off | `orders.create`, `orders.edit`, `orders.delete` |
@@ -392,11 +392,30 @@ Result: `box`, `kind`, `cleared`, `jobs_removed`, `counts` (per kind), `note`.
 
 ### `build.workshop`
 
-Args: `type` (a `workshop_type` or `furnace_type` token such as `Masons` or `Smelter`, or a custom building code or name), `x`, `y`, `z` (top-left corner of the footprint, as `map.find_space` returns in `origin`), `material` (optional `dfhack.matinfo.find` token). Needs a map and `build_write`.
+Args: `type` (a `workshop_type` or `furnace_type` token such as `Masons` or `Smelter`, or a custom building code or name), `x`, `y`, `z` (top-left corner of the footprint, as `map.find_space` returns in `origin`), `material` (optional, see Materials below). Needs a map and `build_write`.
+
+#### Materials
+
+Shared by `build.workshop`, `orders.create`, and the Phase 7 placement ops (module `materials`, plan 12.2). A material word is normalised (lower case, a leading "any " dropped) and resolved to a spec:
+
+- a form word (`blocks`, `boulders`, `logs`, `bars`), alone or trailing another word ("granite blocks", "wooden logs"), sets `item_type`;
+- a stone word (`stone`, `rock`, `inorganic`) is the class `stone` for buildings and the generic inorganic material (`mat_type` 0, `mat_index` -1) for work orders;
+- `wood`, `metal`, `gem` set the class bit on `job_item.flags3` for buildings; `wood` and the organic words (`bone`, `shell`, `leather`, `cloth`, `silk`, `yarn`, `horn`, `pearl`, `tooth`, `plant`, `soap`, `strand`) are material category flags for work orders;
+- anything else is a `dfhack.matinfo.find` token (as given, or upper-cased with underscores), an inorganic raw matched by id, solid name, or solid adjective, or a plant material matched by its solid name or adjective ("plum wood", "ash") or by the plant's name with " tree" dropped ("plum"), giving `mat_type` and `mat_index`.
+
+An unknown word is `BAD_REQUEST` with up to five close inorganic names. A work order refuses a form word. For buildings the spec is merged into the filter's material slot (`getFiltersByType`'s `material` argument); a specific material clears `non_economic` as DFHack does. DFHack's `isSuitableMaterial` ignores the class bits, so the bridge's own count applies the class and form test itself (`materials.item_matches`); whether the game honours the class bit on a construction job is checked live in 7.1.
 
 Steps, in order: resolve the type and its size with `getCorrectSize`; scan the footprint with the same rules as `map.find_space` and then `checkFreeTiles`; build the game's default job item filters with `getFiltersByType` (restricted to `material` when given) and count usable items in play that satisfy each (`isSuitableItem` and `isSuitableMaterial`, skipping forbidden, dumped, melting, in-job, built, trader, and hostile items); then `constructBuilding` with those filters, which queues the construction job. The building is never completed by the bridge.
 
 Result: `status` of `placed` (with `building` `{id, kind, pos, bounds}`, `requirements`), `invalid_space` (with `footprint`, `blocked_at`, `reason`), or `no_materials` (with `requirements` `[{item_type, quantity, material, flags, available}]` and `missing`). An unknown type is `NOT_FOUND` with the known types listed.
+
+### `build.materials`
+
+Args: `form` (optional: `blocks`, `boulders`, `logs`, `bars`), `material` (optional word as above), `fire_safe`, `magma_safe` (booleans), `limit` (default 25). Needs a map and `stocks`.
+
+Walks `world.items.other.IN_PLAY` once, keeping blocks, boulders, logs, and metal bars that are not forbidden, dumped, melting, in a job, built, held by traders, or hostile, and groups them by material and form. Heat safety uses DFHack's thresholds (every heat point above 11000 for fire safe, 12000 for magma safe, cold damage at 60001 or below the limit). `economic` marks boulders of stone the player's economic list reserves.
+
+Result: `total_items`, `groups`, `count`, `limit`, `truncated`, `materials` `[{material, form, class, count, fire_safe, magma_safe, economic, token}]` sorted by count, `by_class`, `by_form`, `filter`, `note`.
 
 ### `build.remove`
 

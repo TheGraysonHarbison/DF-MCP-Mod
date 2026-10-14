@@ -1,10 +1,14 @@
 -- Placing workshop blueprints. The building is queued for construction with the game's
 -- default material filters; dwarves fetch the closest suitable material. Nothing is ever
--- completed instantly. Plan section 10, item 4.3.
+-- completed instantly. Plan section 10, item 4.3. Material words and the usable material
+-- list (build.materials) are plan section 12, item 7.0.
 --@ module = true
 
 local rpc = reqscript('internal/claude-bridge/rpc')
 local map = reqscript('internal/claude-bridge/map')
+local materials = reqscript('internal/claude-bridge/materials')
+
+DEFAULT_LIMIT = 25
 
 local B = dfhack.buildings
 
@@ -93,28 +97,21 @@ local function first_blocker(x1, y1, z, w, h)
     return nil
 end
 
-local EXCLUDE_ITEM_FLAGS = {'forbid', 'in_job', 'in_building', 'trader', 'hostile',
-                            'garbage_collect', 'removed', 'construction', 'dump', 'melt'}
-
-local function item_usable(item)
-    for _, flag in ipairs(EXCLUDE_ITEM_FLAGS) do
-        if safe(function() return item.flags[flag] end) then return false end
-    end
-    return true
-end
-
--- Count items in play that satisfy one job item filter. nil when DFHack cannot judge.
-local function count_suitable(filter)
+-- Count items in play that satisfy one job item filter, and the material spec's class and
+-- form (which DFHack's check ignores). nil when DFHack cannot judge.
+function count_suitable(filter, spec)
     if not dfhack.job.isSuitableItem or not dfhack.job.isSuitableMaterial then return nil end
     local count = 0
     for _, item in ipairs(df.global.world.items.other.IN_PLAY) do
-        if item_usable(item) then
+        if materials.item_usable(item) then
             local itype, isub = item:getType(), item:getSubtype()
             local ok_item = safe(dfhack.job.isSuitableItem, filter, itype, isub)
             if ok_item then
                 local ok_mat = safe(dfhack.job.isSuitableMaterial, filter,
                     item:getMaterial(), item:getMaterialIndex(), itype)
-                if ok_mat then count = count + 1 end
+                if ok_mat and (spec == nil or materials.item_matches(item, spec)) then
+                    count = count + (safe(function() return item:getStackSize() end) or 1)
+                end
             end
         end
     end
@@ -182,25 +179,22 @@ local function workshop(args)
     end
 
     local filter_args = {}
-    if args.material ~= nil then
-        local info = safe(dfhack.matinfo.find, tostring(args.material))
-        if not info then
-            return rpc.error_result(rpc.ERR_BAD_REQUEST,
-                ('unknown "material" %s (use a token such as INORGANIC:GRANITE or PLANT:OAK:WOOD)')
-                    :format(tostring(args.material)))
-        end
-        filter_args.material = info
-    end
+    local spec, why = materials.resolve(args.material)
+    if why then return rpc.error_result(rpc.ERR_BAD_REQUEST, why) end
+    if spec then filter_args.material = materials.job_item_fields(spec) end
     local filters = safe(B.getFiltersByType, filter_args, btype, subtype, custom)
     if not filters then
         return rpc.error_result(rpc.ERR_INTERNAL, 'DFHack has no material filters for this type')
     end
     local requirements, shortage = {}, nil
-    local restricted = filter_args.material and safe(function() return filter_args.material:toString() end)
     for _, filter in ipairs(filters) do
         local need = describe_filter(filter)
-        if restricted and need.material == 'any' then need.material = restricted end
-        need.available = count_suitable(filter)
+        -- The spec applies to the "material" slot only: the one with no fixed item type,
+        -- or the one whose item type the form names.
+        local applies = spec ~= nil and (need.item_type == 'any'
+            or (spec.form ~= nil and need.item_type == spec.form))
+        if applies then need.material = spec.label end
+        need.available = count_suitable(filter, applies and spec or nil)
         table.insert(requirements, need)
         if need.available ~= nil and need.available < (need.quantity or 1) then
             shortage = need
@@ -301,9 +295,44 @@ local function remove(args)
     return rpc.error_result(rpc.ERR_INTERNAL, 'DFHack neither removed nor queued the building')
 end
 
+-- Usable building materials in play, grouped by material and form (plan 12, item 7.0).
+local function list_materials(args)
+    local form = nil
+    if args.form ~= nil then
+        form = materials.FORMS[tostring(args.form):lower()]
+        if not form then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST,
+                '"form" must be one of blocks, boulders, logs, bars')
+        end
+    end
+    local spec, why = materials.resolve(args.material)
+    if why then return rpc.error_result(rpc.ERR_BAD_REQUEST, why) end
+    local limit = tonumber(args.limit) or DEFAULT_LIMIT
+    if limit < 1 then limit = DEFAULT_LIMIT end
+    local rows, total = materials.scan({form = form, material = spec,
+                                        fire_safe = args.fire_safe == true,
+                                        magma_safe = args.magma_safe == true})
+    local out, by_class, by_form = {}, {}, {}
+    for i, row in ipairs(rows) do
+        if i <= limit then table.insert(out, row) end
+        by_class[row.class] = (by_class[row.class] or 0) + row.count
+        by_form[row.form] = (by_form[row.form] or 0) + row.count
+    end
+    return {
+        total_items = total, groups = #rows, count = #out, limit = limit,
+        truncated = #rows > #out, materials = out, by_class = by_class, by_form = by_form,
+        filter = {form = form and materials.FORM_WORDS[form] or nil,
+                  material = spec and spec.label or nil,
+                  fire_safe = args.fire_safe == true, magma_safe = args.magma_safe == true},
+        note = 'counts exclude forbidden, dumped, melting, in-use, built, and trader items; '
+            .. 'economic boulders (ore, flux) are not used for building unless the player allows it',
+    }
+end
+
 function ops()
     return {
         ['build.workshop'] = {namespace = 'build_write', handler = workshop, needs_map = true},
         ['build.remove'] = {namespace = 'build_write', handler = remove, needs_map = true},
+        ['build.materials'] = {namespace = 'stocks', handler = list_materials, needs_map = true},
     }
 end
