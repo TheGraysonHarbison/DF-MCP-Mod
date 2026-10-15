@@ -6,7 +6,7 @@ local scriptmanager = require('script-manager')
 
 MOD_ID = 'claude-bridge'
 MOD_VERSION = '0.3.0'
-PROTOCOL_VERSION = 13
+PROTOCOL_VERSION = 14
 
 -- Settings groups, in display order.
 GROUPS = {'General', 'Units', 'Items', 'Logistics', 'World', 'Commands'}
@@ -29,6 +29,10 @@ NAMESPACES = {
      label = 'Read noble positions'},
     {key = 'nobles_write', group = 'Units', hotkey = 'CUSTOM_M', default = false,
      label = 'Assign noble positions'},
+    {key = 'military', group = 'Units',    hotkey = 'CUSTOM_Q', default = true,
+     label = 'Read squads'},
+    {key = 'military_write', group = 'Units', hotkey = 'CUSTOM_V', default = false,
+     label = 'Create, edit, disband squads'},
     {key = 'stocks',   group = 'Items',    hotkey = 'CUSTOM_I', default = true,
      label = 'Read stocks and artifacts'},
     {key = 'stocks_true', group = 'Items', hotkey = 'CUSTOM_R', default = true, toggle = true,

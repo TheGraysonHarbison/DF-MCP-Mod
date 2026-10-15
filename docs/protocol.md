@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **13**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **14**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -54,6 +54,8 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `units_write` | off | `units.set_nickname` |
 | `nobles` | on | `nobles.list` |
 | `nobles_write` | off | `nobles.assign` |
+| `military` | on | `military.list`, `military.get` |
+| `military_write` | off | `military.create`, `military.rename`, `military.set_symbol`, `military.add`, `military.remove`, `military.set_leader`, `military.disband` |
 | `stocks` | on | `stocks.bar`, `stocks.list`, `stocks.find`, `stocks.artifacts`, `stocks.status`, `build.materials`, `kitchen.list` |
 | `kitchen_write` | off | `kitchen.set` |
 | `stocks_true` | on | no ops; a toggle. Off puts the stocks ops in bookkeeper view. |
@@ -208,6 +210,60 @@ Refused with `BAD_REQUEST` when the position is military (`squad_size` above zer
 The change mirrors what DFHack's `make-monarch` does: the assignment's `histfig` is swapped, the previous holder's position link is removed from their historical figure, and a new position link is added to the appointee. `histfig2` records the previous holder. No former-position record is written for the previous holder.
 
 Result: `changed`, `previous` (holder object or absent), `position` (as in `nobles.list`, after the change).
+
+### Military
+
+Squads are `df.squad` records listed by id in the fort entity's `squads` vector. DFHack's military module (`dfhack.military.makeSquad`, `addToSquad`, `removeFromSquad`, `getSquadName`, `updateRoomAssignments`; checked 2026-10-15 against Military.cpp) covers creation and membership; the leader slot and disbanding are the mod's own, mirroring the inverse paths in that code.
+
+### `military.list`
+
+Args: `limit` (default 25). Needs a map. Namespace `military`.
+
+Result: `count`, `total`, `truncated`, `squads` `[{id, name (nickname, else the translated name, else "Squad n"), nickname, kind (melee, crossbow, unarmed: from the weapon slot specs; a ranged weapon or ranged individual choice makes crossbow), members, slots, leader {id, name, hist_figure_id}, routine (name of plotinfo.alerts.routines[cur_routine_idx]), training, orders, symbol, foreground, background}]`, `vacant_positions` `[{assignment_id, position (code), name, squad_size, holder, guard}]` (fort position assignments with `squad_size` above zero and `squad_id` -1; militia seats sort before the captain of the guard), `routines` `[{index, id, name}]`, `presets` `[{id, name, type, slots}]` from the fort entity's `uniforms`, `note`.
+
+### `military.get`
+
+Args: `id`. Needs a map. Namespace `military`.
+
+Result: the list row plus `positions` `[{slot, leader, unit, uniform {body, head, pants, gloves, shoes, shield, weapon: [{item_type, item, material_class, material, individual_choice, specific_item, assigned}]}, exact_matches, replace_clothing, assigned_items}]`, `ammunition` `[{item, material_class, amount, combat, training, assigned}]`, `rooms` `[{zone_id, modes}]`, `supplies` `{carry_food, carry_water}`.
+
+### `military.create`
+
+Args: `name` (nickname, optional), `kind` (`melee` or `crossbow`, optional), `preset` (a uniform preset name, optional; overrides `kind`), `position` (a position code such as `MILITIA_COMMANDER`, `MILITIA_CAPTAIN`, `CAPTAIN_OF_THE_GUARD`, or an assignment id; optional). Needs a map and `military_write`.
+
+Picks the first vacant militia seat (or the named one); when no militia seat is free, or `MILITIA_CAPTAIN` is asked for, a new militia captain assignment is allocated from the entity's `next_assignment_id` the way the game adds one per extra squad. Calls `makeSquad` on it, sets `alias`, copies the preset into every slot (the preset for a kind is the first fort uniform whose name contains "metal armor", "armor", or "leather" for melee, "archer", "ranged", or "crossbow" for crossbow; the vanilla names are "Melee, leather armor", "Melee, metal armor", "Crossbows, leather armor", "Crossbows, metal armor"), adds 100 bolts for combat and training to a crossbow squad, and sets the equipment update flags. A seat the game already appointed a dwarf to (`holder`) makes that dwarf the leader. Refused with `BAD_REQUEST` when no seat is free.
+
+Result: the list row plus `position`, `preset`, `warnings`, `note`. Verified in-game 2026-10-15.
+
+### `military.rename`
+
+Args: `id`, `name` (empty clears). Needs a map and `military_write`. Sets `squad.alias`. Result: the list row plus `previous`.
+
+### `military.set_symbol`
+
+Args: `id`, `symbol` (0 to 22, the index on the vanilla squad symbol sheet, row-wise; graphics mode only), `foreground` and `background` (`[r, g, b]`, 0 to 255); at least one. Needs a map and `military_write`. Writes `squad.symbol` and the `foreground_*` and `background_*` bytes and nothing else: the squad's cached badge textures (`solid_texpos`, `blended_texpos`) are never touched because resetting them crashed the game (2026-10-15, rule 13), so the badge on screen may keep its old look until the game redraws it. The list row carries `symbol`, `foreground`, `background`. Result: the list row plus `previous`, `note`.
+
+### `military.add`
+
+Args: `id`, `unit_id` (a living adult citizen not in a squad), `slot` (optional, 0 to slots-1). Needs a map and `military_write`.
+
+`addToSquad` with the slot or -1 (first free slot after the leader's). Slot 0, or any add to a squad with no leader, goes through `military.set_leader` instead. Result: the list row plus `added`, `slot`.
+
+### `military.remove`
+
+Args: `id`, `unit_id`. Needs a map and `military_write`. `removeFromSquad`: for the leader this also vacates the seat's holder and archives the position link. Result: the list row plus `removed`, `was_leader`.
+
+### `military.set_leader`
+
+Args: `id`, `unit_id`. Needs a map and `military_write`.
+
+The current leader (if another dwarf) is removed through `removeFromSquad`; a member moving up leaves their slot first. Then: slot 0 `occupant`, the unit's `military.squad_id` and `squad_position`, a `histfig_entity_link_squadst` at position 0 on the historical figure, the leading assignment's `histfig` (previous holder to `histfig2`), and a `histfig_entity_link_positionst` for that assignment unless the figure already carries one (a dwarf the game appointed keeps theirs), plus the equipment update flags. Result: the list row plus `changed`, `previous_leader`, `assignment_updated`. Verified in-game 2026-10-15: the new leader's name reads "militia commander" afterwards.
+
+### `military.disband`
+
+Args: `id`. Needs a map and `military_write`.
+
+Every member is removed through `removeFromSquad` (the leader last, which vacates the seat), barracks links are dropped with `updateRoomAssignments(squad, zone, {})`, the assignment's `squad_id` is cleared, the id is erased from the fort entity's `squads` and the squad from `world.squads.all`, and the record deleted. Result: `{id, name, disbanded, members_removed, rooms_detached}`.
 
 ### `stocks.bar`
 

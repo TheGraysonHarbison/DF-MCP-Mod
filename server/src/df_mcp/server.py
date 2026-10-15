@@ -20,6 +20,7 @@ from df_mcp.tools import (
     furniture,
     kitchen,
     map,
+    military,
     nobles,
     orders,
     plants,
@@ -39,6 +40,8 @@ Observe with `get_time`, the unit lists (`list_units`, `list_citizens`, `list_do
 `get_unit_sheet` or `get_unit_full_sheet` for its profile tabs. `set_unit_nickname` is the
 only unit tool that changes the game and needs its own permission. `list_nobles` shows the
 fort's positions and holders; `assign_noble` appoints a citizen and needs `nobles_write`.
+Squads: `list_squads`, `get_squad`, and with `military_write` `create_squad`, `rename_squad`,
+`add_to_squad`, `remove_from_squad`, `set_squad_leader`, `disband_squad`.
 `get_stock_bar`, `list_stocks`, `find_items`, and `list_artifacts` cover what the fort owns;
 `get_fort_status` gives wealth, rank, and population. Work orders: `list_work_orders`,
 `find_job_types`, and with `orders_write` `create_work_order`, `edit_work_order`,
@@ -63,6 +66,7 @@ TOOL_MODULES = (
     time,
     units,
     nobles,
+    military,
     stocks,
     orders,
     workshops,
