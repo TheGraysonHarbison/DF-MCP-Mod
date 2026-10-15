@@ -106,12 +106,55 @@ say "any stone" or "any wood" in plain words, and every order reports the label 
 
 - 9.0 See the pause state and pause or unpause the game, behind its own permission.
 
-**Future plans** (after 9.0, not scheduled):
+**Phase 10: Kitchen, farms, chop and gather.** Planned 2026-10-15, design in
+[plan section 13](docs/ProjectPlan.md#13-phases-10-to-18-addendum-farming-military-events-autonomy-trade-planned-2026-10-15).
 
-- Event queue, in-game chat window, and an autonomy timer so Claude is prompted by petitions, sieges, deaths, and on a
-  schedule.
-- Petitions, quickfort blueprints, military (squads, alerts, stations, barracks and archery assignment), labor
-  assignment, locations (taverns, temples, libraries), traps and levers, tracks and minecarts.
+- 10.0 See and change kitchen preferences: which ingredients in stock may be cooked and which brewed.
+- 10.1 Farm plots: read a plot's soil (type, mud, above or below ground, cavern), place and remove plots, set the crop
+  for each season and the fertilize flag. Plots go on soil floors or floors with mud. The crop list follows DFHack
+  autofarm's rule, which approximates the game's.
+- 10.2 Chop and gather orders in boxes and circles, and a list of trees and shrubs in a box.
+
+**Phase 11: Military.** Squads: list, create (melee or crossbow by uniform, or a game preset), nickname, add and remove
+members, set the leader, disband (11.0). Orders: station, kill, patrol a route, cancel, and training through the
+squad's routine (11.1). Equipment: see uniforms, worn gear, and ammunition; set uniform slots by item type and material
+class, and ammunition (11.2). Where DFHack has no API the mod ships its own.
+
+**Phase 12: Dev tools.** `dev_spawn_unit`, `dev_create_item`, and `dev_exterminate` build the console lines for
+`modtools/create-unit`, `modtools/create-item`, and `exterminate`; the console allowlist still decides.
+
+**Phase 13: Events.** The mod collects announcements and polled changes (minerals, caverns, adamantine, artifacts,
+strange moods, thefts, missing and dead citizens, ghosts, caravans, diplomats, monsters, invaders, seasons, fights,
+petitions) into two-second batches of at most 50 and the server pushes each batch to Claude Code as a channel
+notification, delivered when Claude is idle. Each kind has its own toggle; mineral discovered, units fighting, and
+petition are on by default.
+
+- 13.1 Read petitions and accept or reject them.
+
+**Phase 14: Plans, goals, messages.** The mod keeps `claude-df/goals.md` and `claude-df/plan.md` in the save. Claude
+reads and writes its plan; the player edits goals and the goal prompt in a `claude-bridge goals` window and sends them
+with a button (14.0). No server-side buffer: Claude Code's channel queue is the buffer (14.1). `send_message` posts a
+short message as an in-game announcement on the left side, in light red, with optional click-to-zoom (14.2).
+
+**Phase 15: Prompt timer.** Every N in-game days, every month, or every N real minutes, a configurable prompt is sent
+so Claude can play on its own. Resets whenever the mod sends Claude an event batch; pauses with the game.
+
+**Phase 16: Traps and military buildings.** Levers, pressure plates with trigger settings, cage, stone-fall, and
+weapon traps, upright spikes, catapults, ballistae, and the trade depot through `place_furniture`. Lever linking is an
+open issue.
+
+**Phase 17: Trade.** See caravans, the depot, and the broker; request the broker; bring goods to the depot; perform the
+trade through a mod-side API (17.0). See diplomats and the trade agreement, set next year's requests, hold the
+meeting (17.1).
+
+**Phase 18: Mods.** The active Dwarf Fortress mods and loaded DFHack plugins.
+
+**Future plans** (after 18, not scheduled):
+
+- Burrows and defend-burrow orders, per-month squad schedules, lever linking and pulling, multi-weapon traps, siege
+  engine aiming.
+- Quickfort blueprints, labor assignment, locations (taverns, temples, libraries), tracks and minecarts, door and hatch
+  toggles.
 - Push transport, a headless Python conductor, Steam Workshop packaging, legends and adventure mode.
 
 ## Progress
@@ -156,9 +199,36 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 8.0 | Zones: list and inspect (`list_zones`, `get_zone`, `zones` permission) | verified in-game 2026-10-14 against the player's gather zone and pasture: tiles, settings (gather toggles, pen occupants flag), filters by type alias, name, and active state; owner, animal, and squad fields are exercised by 8.1 |
 | 8.1 | Zones: paint, edit, assign, delete (`create_zone`, `edit_zone`, `assign_zone`, `unassign_zone`, `delete_zone`, `zones_write` permission) | verified in-game 2026-10-14: the roofed room became an office zone with the chair listed inside it, the expedition leader and manager was assigned as owner and the office appeared on his rooms tab, a dog was refused as owner, and rename, grow by a tile, shrink, deactivate, reactivate, and a wrong-type setting all behaved; delete and animal assignment are covered by unit tests and the same code paths, not yet exercised live |
 
-## Known bugs
+| 10.0 | Kitchen preferences: list and set (`list_kitchen`, `set_kitchen`, `kitchen_write` permission) | planned 2026-10-15 |
+| 10.1 | Farm plots: soil report, crops per season, place, remove, set crops (`list_farms`, `get_farm`, `set_farm_crops`, `place_furniture(type=farm_plot)`) | planned 2026-10-15 |
+| 10.2 | Chop and gather designations, tree and shrub list (`list_plants`, `designate_dig` kinds `chop` and `gather`) | planned 2026-10-15 |
+| 11.0 | Squads: list, create, rename, members, leader, disband (`list_squads`, `get_squad`, `create_squad`, `rename_squad`, `add_to_squad`, `remove_from_squad`, `set_squad_leader`, `disband_squad`, `military` and `military_write` permissions) | planned 2026-10-15 |
+| 11.1 | Squad orders and routines (`order_squad`, `set_squad_routine`, `list_routes`, `create_route`) | planned 2026-10-15 |
+| 11.2 | Squad equipment (`get_squad_equipment`, `set_squad_uniform`, `set_squad_ammo`) | planned 2026-10-15 |
+| 12 | Dev tools (`dev_spawn_unit`, `dev_create_item`, `dev_exterminate`, via the console allowlist) | planned 2026-10-15 |
+| 13 | Events batched and pushed through a Claude Code channel, per-kind toggles (`list_event_kinds`, `events` permission) | planned 2026-10-15 |
+| 13.1 | Petitions: list and answer (`list_petitions`, `answer_petition`, `petitions_write` permission) | planned 2026-10-15 |
+| 14.0 | Plan and goals files in the save, goals window with Send (`read_plan`, `write_plan`, `append_plan`, `read_goals`, `plan` permission) | planned 2026-10-15 |
+| 14.1 | No server buffer; the channel queue holds batches until Claude is idle | planned 2026-10-15, delivered with 13 |
+| 14.2 | In-game messages from Claude (`send_message`) | planned 2026-10-15 |
+| 15 | Prompt timer (settings only) | planned 2026-10-15 |
+| 16 | Traps, siege engines, trade depot (`place_furniture` new types) | planned 2026-10-15 |
+| 17.0 | Trade: caravans, depot, broker, bring goods, offer (`list_caravans`, `get_trade_depot`, `get_broker`, `request_broker`, `bring_to_depot`, `cancel_bring`, `offer_trade`, `trade` and `trade_write` permissions) | planned 2026-10-15 |
+| 17.1 | Diplomats: list, set requests, hold the meeting (`list_diplomats`, `set_trade_requests`, `hold_meeting`) | planned 2026-10-15 |
+| 18 | Active mods and plugins (`list_mods`) | planned 2026-10-15 |
 
-None open.
+## Known bugs and open issues
+
+No bugs open.
+
+Open issues (features skipped on 2026-10-15 because DFHack has no API and the game offers only mouse-driven UI; see
+plan section 13):
+
+- Lever linking and pulling (Phase 16): the link job has no DFHack reference outside adventure-mode code.
+- Multi-weapon weapon traps (Phase 16): DFHack's input table models one weapon per trap.
+- Siege engine aiming: DFHack's siege-engine plugin is unavailable on 53.16-r2.
+- The trade itself (17.0), the diplomat meeting (17.1), and answering petitions (13.1) are built as mod-side APIs;
+  any of them that the game refuses to honour headlessly moves to this list with its reads kept.
 
 Fixed 2026-10-13: a work order created without a material showed in the game as "unknown material" (for example
 "make unknown material rock blocks") because "any stone" was not expressible; `create_work_order` now takes plain
@@ -173,3 +243,7 @@ pass).
 1. `tools/link-mod.sh <Dwarf Fortress folder>` once, then `enable claude-bridge` in the DFHack console.
 2. Open Claude Code in this repository. The `.mcp.json` here starts the server with `uv run --project server df-mcp`.
 3. Ask Claude to `ping`.
+4. For events, goals, and the prompt timer (Phases 13 to 15) the server must be loaded as a channel: an org Owner
+   enables Channels under Organization settings > Claude Code, and the session is started with
+   `claude --dangerously-load-development-channels server:dfhack` while custom channels are in research preview.
+   `docs/playing.md` (Phase 13) walks through a play session.
