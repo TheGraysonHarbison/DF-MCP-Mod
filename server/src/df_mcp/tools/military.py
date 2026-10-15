@@ -10,6 +10,7 @@ from df_mcp.tools import call
 from df_mcp.tools.core import READ_ONLY, WRITE_SAFE
 
 KINDS = ("melee", "crossbow")
+ORDER_KINDS = ("station", "kill", "patrol", "cancel")
 
 DISBAND = ToolAnnotations(
     read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=False
@@ -134,3 +135,65 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         freed, and the squad deleted. Needs `military_write`. Cannot be undone.
         """
         return call(bridge, "military.disband", {"id": squad_id})
+
+    @mcp.tool(name="order_squad", annotations=WRITE_SAFE)
+    def order_squad(
+        squad_id: int,
+        kind: str,
+        x: int | None = None,
+        y: int | None = None,
+        z: int | None = None,
+        unit_ids: list[int] | None = None,
+        route_id: int | None = None,
+        title: str | None = None,
+    ) -> dict[str, Any]:
+        """Give a squad an order, replacing any current order. Needs `military_write`.
+
+        `kind` "station" moves the squad to a walkable tile (x, y, z); "kill" sends it
+        after `unit_ids` (non-citizens), with an optional `title`; "patrol" walks a route
+        from `list_routes` (`route_id`); "cancel" clears orders so the squad returns to its
+        routine. Soldiers follow when they can; `get_squad` lists the active orders.
+        """
+        if kind not in ORDER_KINDS:
+            raise ValueError(f"kind must be one of {', '.join(ORDER_KINDS)}")
+        args: dict[str, Any] = {"id": squad_id, "kind": kind}
+        if kind == "station":
+            if x is None or y is None or z is None:
+                raise ValueError("a station order needs x, y, z")
+            args.update({"x": x, "y": y, "z": z})
+        elif kind == "kill":
+            if not unit_ids:
+                raise ValueError("a kill order needs unit_ids")
+            args["unit_ids"] = unit_ids
+            if title is not None:
+                args["title"] = title
+        elif kind == "patrol":
+            if route_id is None:
+                raise ValueError("a patrol order needs route_id")
+            args["route_id"] = route_id
+        return call(bridge, "military.order", args)
+
+    @mcp.tool(name="set_squad_routine", annotations=WRITE_SAFE)
+    def set_squad_routine(squad_id: int, routine: str) -> dict[str, Any]:
+        """Switch a squad's schedule to one of the fort's routines by name or index (see
+        `list_squads`: Off duty, Staggered training, Constant training, Ready). Training
+        needs a barracks zone assigned to the squad. Needs `military_write`.
+        """
+        return call(bridge, "military.set_routine", {"id": squad_id, "routine": routine})
+
+    @mcp.tool(name="list_routes", annotations=READ_ONLY)
+    def list_routes() -> dict[str, Any]:
+        """List the fort's patrol routes with their waypoints."""
+        return call(bridge, "military.routes")
+
+    @mcp.tool(name="create_route", annotations=WRITE_SAFE)
+    def create_route(points: list[list[int]], name: str | None = None) -> dict[str, Any]:
+        """Create a patrol route from a list of at least two walkable [x, y, z] points, in
+        order. Needs `military_write`. Returns the route id for `order_squad(kind="patrol")`.
+        """
+        if len(points) < 2 or any(len(p) != 3 for p in points):
+            raise ValueError("points must be at least two [x, y, z] entries")
+        args: dict[str, Any] = {"points": [{"x": p[0], "y": p[1], "z": p[2]} for p in points]}
+        if name is not None:
+            args["name"] = name
+        return call(bridge, "military.create_route", args)
