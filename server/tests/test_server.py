@@ -94,6 +94,8 @@ def test_server_registers_expected_tools():
         "rename_stockpile",
         "delete_stockpile",
         "run_console_command",
+        "dev_create_item",
+        "dev_exterminate",
     }
     by_name = {t.name: t for t in tools}
     assert by_name["list_units"].annotations.read_only_hint is True

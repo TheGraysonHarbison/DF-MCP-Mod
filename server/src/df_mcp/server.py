@@ -15,6 +15,7 @@ from df_mcp.tools import (
     console,
     construct,
     core,
+    dev,
     dig,
     farms,
     furniture,
@@ -57,7 +58,11 @@ Digging: `find_exposed_walls` finds reachable rock, `list_designations` shows ex
 `plan_dig` previews a box, and with `dig_write` `designate_dig` places mining, staircase,
 channel, ramp, chop, and gather orders and `erase_designations` removes them; `list_plants`
 shows the trees and shrubs in a box.
-`run_console_command` only runs commands the player has allowlisted in-game. Every call pauses
+`run_console_command` only runs commands the player has allowlisted in-game. For dev testing,
+`dev_create_item` and `dev_exterminate` build `modtools/create-item` and `exterminate` lines
+and run them the same way; they change the game outside its rules, so use them only when the
+player asks for a test setup, and never exterminate with include_friendly unless the player
+names the exact units. Unit spawning is unavailable on this DFHack build. Every call pauses
 the game briefly, so batch what you can.
 """
 
@@ -81,6 +86,7 @@ TOOL_MODULES = (
     zones,
     kitchen,
     console,
+    dev,
 )
 
 
