@@ -6,7 +6,7 @@ local scriptmanager = require('script-manager')
 
 MOD_ID = 'claude-bridge'
 MOD_VERSION = '0.3.0'
-PROTOCOL_VERSION = 16
+PROTOCOL_VERSION = 17
 
 -- Settings groups, in display order.
 GROUPS = {'General', 'Units', 'Items', 'Logistics', 'World', 'Commands'}
@@ -21,6 +21,8 @@ NAMESPACES = {
      label = 'Read these settings'},
     {key = 'pause_write', group = 'General', hotkey = 'CUSTOM_H', default = false,
      label = 'Pause and unpause the game'},
+    {key = 'events',   group = 'General',  hotkey = 'CUSTOM_X', default = true,
+     label = 'Send in-game events (per kind, Events tab)'},
     {key = 'units',    group = 'Units',    hotkey = 'CUSTOM_U', default = true,
      label = 'Read units'},
     {key = 'units_write', group = 'Units', hotkey = 'CUSTOM_N', default = false,
@@ -108,7 +110,7 @@ local function defaults()
     for _, ns in ipairs(NAMESPACES) do
         permissions[ns.key] = ns.default
     end
-    return {permissions = permissions, console_allow = {}}
+    return {permissions = permissions, console_allow = {}, events = {}}
 end
 
 local function read_file(path)
@@ -150,6 +152,11 @@ function load_settings()
                     end
                 end
             end
+            if type(data.events) == 'table' then
+                for key, value in pairs(data.events) do
+                    if type(key) == 'string' then loaded.events[key] = value and true or false end
+                end
+            end
         else
             dfhack.printerr('claude-bridge: settings.json is not valid JSON, using defaults')
         end
@@ -184,6 +191,21 @@ function set_permission(namespace, value)
     s.permissions[namespace] = value and true or false
     save_settings()
     return true
+end
+
+-- Event kinds: enabled per kind, defaulting to the kind's own default (events module).
+function is_event_enabled(kind)
+    local s = get_settings()
+    if s.events[kind] ~= nil then return s.events[kind] == true end
+    local events = reqscript('internal/claude-bridge/events')
+    local spec = events.kind_spec(kind)
+    return spec ~= nil and spec.default == true
+end
+
+function set_event_enabled(kind, value)
+    local s = get_settings()
+    s.events[kind] = value and true or false
+    save_settings()
 end
 
 function console_allowed(command_name)

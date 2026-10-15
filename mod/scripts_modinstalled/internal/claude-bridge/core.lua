@@ -33,10 +33,15 @@ local function settings_get(args)
             toggle = ns.toggle == true,
         }
     end
+    local events = {}
+    for _, k in ipairs(reqscript('internal/claude-bridge/events').KINDS) do
+        events[k.key] = state.is_event_enabled(k.key)
+    end
     return {
         groups = state.GROUPS,
         permissions = permissions,
         console_allow = s.console_allow,
+        events = events,
         ops = rpc.list_ops(),
     }
 end

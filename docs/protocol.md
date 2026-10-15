@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **16**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **17**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -50,6 +50,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `settings` | on | `settings.get` |
 | `time` | on | `time.now` |
 | `pause_write` | off | `time.set_pause` |
+| `events` | on | `events.kinds`, `events.poll`, `events.emit` |
 | `units` | on | `units.list`, `units.find`, `units.get`, `units.sheet`, `units.full_sheet` |
 | `units_write` | off | `units.set_nickname` |
 | `nobles` | on | `nobles.list` |
@@ -74,6 +75,28 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 
 ## Ops
 
+### Events
+
+The mod queues in-game events (plan section 13, Phase 13) and the server pushes them to Claude Code as channel notifications (`notifications/claude/channel`, declared through the experimental `claude/channel` capability at the handshake). The queue is a ring of 200 entries; `events.poll` hands out a batch once the newest waiting event is two seconds old or 50 are waiting. Each kind has a player toggle (settings window, Events tab, or `claude-bridge event <kind> on|off`); defaults on: `mineral_discovered`, `units_fighting`, `petition`.
+
+Sources: `eventful.onReport` (announcements mapped by `announcement_type` to kinds; continuation lines skipped; units standing on the report's position are attached), `onUnitDeath` (citizens, `citizen_dead`), `onInvasion` (`invaders_arrived`), `onUnitAttack` (`units_fighting`, or `sparring` when both units are fort-controlled; one event per unit pair per ten seconds), and a poller every 100 ticks for `petition` (new ids in `plotinfo.petitions`), `ghost_appeared` and `ghost_rested` (the set of ghost units), `mood_item_missing` (citizens whose strange-mood job stalled waiting for an item), `artifact_found` (artifact items on the map whose tile became revealed), and `season_changed` (`cur_season`). The poller's first run only records a baseline. Hooks are installed on enable and reload and removed on disable; the queue is cleared on map unload.
+
+### `events.kinds`
+
+Args: none. Namespace `events`.
+
+Result: `kinds` `[{key, label, enabled, default, source (announcement, hook, attack hook, poll), announcement_types, missing_types (names this build lacks)}]`, `running`, `queued`, `next_seq`, `dropped`.
+
+### `events.poll`
+
+Args: `after_seq` (the last sequence the caller has; omit to learn `next_seq` without taking anything), `limit` (default 50), `force` (return what is waiting without the quiet window). Namespace `events`.
+
+Result: `next_seq`, `dropped`, `now_ms`, `running`, `tick`, `waiting`, `events` `[{seq, kind, tick, text, pos, unit_ids, building_id, item_id, extra}]` (empty with `quiet_ms_left` while the window runs), `last_seq`, `remaining`. Verified in-game 2026-10-15.
+
+### `events.emit`
+
+Args: `kind` (an event kind, or `test`), `text`, `pos`. Namespace `events`. Queues one event by hand (disabled kinds are refused with `queued: false`); used by tests and by the goals and timer features. Result: `queued`, `seq`.
+
 ### `core.ping`
 
 Args: none. Works without a world.
@@ -81,6 +104,8 @@ Args: none. Works without a world.
 Result: `mod_version`, `protocol_version`, `dfhack_version`, `df_version`, `world_loaded`, `map_loaded`, `fortress_mode`, `paused` (only with a map), `frame`.
 
 ### `settings.get`
+
+Also returns `events`: every event kind with its enabled state.
 
 Args: none.
 
