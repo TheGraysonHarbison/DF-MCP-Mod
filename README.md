@@ -120,8 +120,8 @@ members, set the leader, disband (11.0). Orders: station, kill, patrol a route, 
 squad's routine (11.1). Equipment: see uniforms, worn gear, and ammunition; set uniform slots by item type and material
 class, and ammunition (11.2). Where DFHack has no API the mod ships its own.
 
-**Phase 12: Dev tools.** `dev_spawn_unit`, `dev_create_item`, and `dev_exterminate` build the console lines for
-`modtools/create-unit`, `modtools/create-item`, and `exterminate`; the console allowlist still decides.
+**Phase 12: Dev tools.** `dev_create_item` and `dev_exterminate` build the console lines for
+`modtools/create-item` and `exterminate`; the console allowlist still decides. Unit spawning is an open issue.
 
 **Phase 13: Events.** The mod collects announcements and polled changes (minerals, caverns, adamantine, artifacts,
 strange moods, thefts, missing and dead citizens, ghosts, caravans, diplomats, monsters, invaders, seasons, fights,
@@ -205,7 +205,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 11.0 | Squads: list, create, rename, symbol, members, leader, disband (`list_squads`, `get_squad`, `create_squad`, `rename_squad`, `set_squad_symbol`, `add_to_squad`, `remove_from_squad`, `set_squad_leader`, `disband_squad`, `military` and `military_write` permissions) | verified in-game 2026-10-15: the seats, routines, and four vanilla presets read back; "Test Squad" was created on the militia commander seat with the metal armor preset in all ten slots, the commander set as leader, two dwarves added and one removed, the mason made leader (the game then titled him militia commander), symbol and colours written, and a half-made squad disbanded. The badge on screen does not redraw at once; forcing it crashed the game, hence rule 13 |
 | 11.1 | Squad orders and routines (`order_squad`, `set_squad_routine`, `list_routes`, `create_route`) | verified in-game 2026-10-15: a station order moved both soldiers to the tiles beside the target within twenty seconds, a two-point patrol route was created and patrolled, a kill order on a barn owl was written and cancelled before any fight, a kill order on a citizen was refused, cancel cleared the orders, and the routine switched to Constant training and back with an unknown name refused |
 | 11.2 | Squad equipment (`get_squad_equipment`, `set_squad_uniform`, `set_squad_ammo`) | verified in-game 2026-10-15 on a crossbow test squad: the read showed the leather crossbow preset, 100 bolts, and the leader's carried clothes and axe; a metal breastplate and a metal crossbow replaced their slots, a buckler was added beside the shield, unknown items and material classes were refused with the known names, and metal combat-only bolts replaced the ammunition |
-| 12 | Dev tools (`dev_spawn_unit`, `dev_create_item`, `dev_exterminate`, via the console allowlist) | planned 2026-10-15 |
+| 12 | Dev tools (`dev_create_item`, `dev_exterminate`, via the console allowlist) | verified in-game 2026-10-15: five granite boulders created at a tile and read back; `exterminate list` reported the map's wildlife; a race the fort owns was refused without `include_friendly`. Unit spawning dropped: `modtools/create-unit` fails on 53.16-r2 (open issue) |
 | 13 | Events batched and pushed through a Claude Code channel, per-kind toggles (`list_event_kinds`, `events` permission) | planned 2026-10-15 |
 | 13.1 | Petitions: list and answer (`list_petitions`, `answer_petition`, `petitions_write` permission) | planned 2026-10-15 |
 | 14.0 | Plan and goals files in the save, goals window with Send (`read_plan`, `write_plan`, `append_plan`, `read_goals`, `plan` permission) | planned 2026-10-15 |
@@ -224,6 +224,9 @@ No bugs open.
 Open issues (features skipped on 2026-10-15 because DFHack has no API and the game offers only mouse-driven UI; see
 plan section 13):
 
+- Unit spawning for dev tests (Phase 12): `spawnunit` and `modtools/create-unit` are experimental (tagged
+  "unavailable") on DFHack 53.16-r2 and stop with "Cannot read field world.arena_spawn". `gui/sandbox` spawns through
+  the mouse-driven arena UI only. Revisit when DFHack validates the script for this build.
 - Lever linking and pulling (Phase 16): the link job has no DFHack reference outside adventure-mode code.
 - Multi-weapon weapon traps (Phase 16): DFHack's input table models one weapon per trap.
 - Siege engine aiming: DFHack's siege-engine plugin is unavailable on 53.16-r2.
