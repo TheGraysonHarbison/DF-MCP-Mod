@@ -29,6 +29,8 @@ def test_server_registers_expected_tools():
         "find_items",
         "list_artifacts",
         "get_fort_status",
+        "list_kitchen",
+        "set_kitchen",
         "list_work_orders",
         "get_work_order",
         "find_job_types",

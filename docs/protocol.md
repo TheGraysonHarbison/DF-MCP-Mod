@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **10**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **11**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -54,7 +54,8 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `units_write` | off | `units.set_nickname` |
 | `nobles` | on | `nobles.list` |
 | `nobles_write` | off | `nobles.assign` |
-| `stocks` | on | `stocks.bar`, `stocks.list`, `stocks.find`, `stocks.artifacts`, `stocks.status`, `build.materials` |
+| `stocks` | on | `stocks.bar`, `stocks.list`, `stocks.find`, `stocks.artifacts`, `stocks.status`, `build.materials`, `kitchen.list` |
+| `kitchen_write` | off | `kitchen.set` |
 | `stocks_true` | on | no ops; a toggle. Off puts the stocks ops in bookkeeper view. |
 | `orders` | on | `orders.list`, `orders.get`, `orders.jobs` |
 | `orders_write` | off | `orders.create`, `orders.edit`, `orders.delete` |
@@ -245,6 +246,22 @@ Result: `count`, `elsewhere`, `artifacts` `{id, name, name_english, item_id, des
 Args: none. Needs a map. Not affected by `stocks_true`.
 
 Result: `site` `{id, name, name_english}`, `civilization` `{id, name}`, `government` `{id, name}` (the site government), `rank` `{index, name, next {name, population, created_wealth, exported_wealth}, thresholds_note}` (0 outpost to 5 metropolis; `next` absent at metropolis; thresholds are the wiki defaults, the next rank needs the population or either wealth figure), `progress` `{population, trade, production}` (the game's three ratings), `wealth` `{total, weapons, armor, furniture, other, architecture, displayed, held, imported, exported, offered}` (`total` is created wealth), `population` `{citizens, recorded, potential_soldiers, trained_animals, other_animals, carnivores, omnivores, migrant_waves}` (`citizens` is a live count, `recorded` the game's last tally), `counts` `{num_artifacts, total_deaths, total_executions, total_insanities, invaders_repelled, excavated_tiles, combat_aptitude, discovered_*_features}`.
+
+### `kitchen.list`
+
+Args: `category` (optional: `plants`, `seeds`, `drinks`, `other`), `query` (optional substring matched against name, material token, and item type), `banned_only` (default false), `limit` (rows per category, default 25). Needs a map. Namespace `stocks`; not affected by `stocks_true`.
+
+Walks `world.items.other.IN_PLAY`, skipping items flagged dump, forbid, garbage_collect, hostile, on_fire, rotten, trader, in_building, construction, artifact, removed, owned, encased, or spider_web, and keys each item by (item type, subtype, material). Growths carry their growth index as the subtype; creature-caste items (fish, eggs) key on race and caste. A row is listed when its material can be cooked (`EDIBLE_COOKED`) or brewed (a `DRINK_MAT` reaction product), or when the item is a plant, growth, seed, or drink. Only ingredients in stock are listed, as the game's Kitchen screen does. `cook_banned` and `brew_banned` come from `dfhack.kitchen.findExclusion` over `plotinfo.kitchen`; the game bans cooking of every seed type by default, which reads back as `cook_banned`.
+
+Result: `count`, `exclusions` (rows in `plotinfo.kitchen`), `truncated` (categories that hit `limit`), `note`, `categories` keyed by tab, each `{row_count, truncated, rows}` with rows `{key, item_type, subtype, material, name, category, cookable, brewable, cook, brew, cook_banned, brew_banned, count, quantity}` sorted by quantity. `key` is `ITEM_TYPE:subtype:mat_type:mat_index`. Verified in-game 2026-10-15.
+
+### `kitchen.set`
+
+Args: either `key` (from `kitchen.list`) or `item_type` (token such as `PLANT`, `SEEDS`, `DRINK`, `PLANT_GROWTH`, `MEAT`) with `material` (a material token such as `PLANT_MAT:MUSHROOM_HELMET_PLUMP:STRUCTURAL`, or a plant name such as "plump helmet", which resolves to the plant's structural, seed, or drink material to match the item type) and optional `subtype` (growth index, default -1); plus `cook` and/or `brew` as booleans (true allows, false bans; absent leaves it). Needs a map. Namespace `kitchen_write`.
+
+Each flag is applied through `dfhack.kitchen.addExclusion` or `removeExclusion`; a no-op (already banned or already allowed) is not listed in `changed`. Allowing cooking or brewing of an ingredient the game never cooks or brews succeeds with a warning. An unparseable key or unknown item type is `BAD_REQUEST`; an unknown material is `NOT_FOUND`.
+
+Result: `changed` (subset of `cook`, `brew`), `before` and `after` (the row without counts), `warnings`. Verified in-game 2026-10-15.
 
 ### Work orders
 

@@ -6,7 +6,7 @@ local scriptmanager = require('script-manager')
 
 MOD_ID = 'claude-bridge'
 MOD_VERSION = '0.3.0'
-PROTOCOL_VERSION = 10
+PROTOCOL_VERSION = 11
 
 -- Settings groups, in display order.
 GROUPS = {'General', 'Units', 'Items', 'Logistics', 'World', 'Commands'}
@@ -33,6 +33,8 @@ NAMESPACES = {
      label = 'Read stocks and artifacts'},
     {key = 'stocks_true', group = 'Items', hotkey = 'CUSTOM_R', default = true, toggle = true,
      label = 'True stock counts (off: bookkeeper view)'},
+    {key = 'kitchen_write', group = 'Items', hotkey = 'CUSTOM_J', default = false,
+     label = 'Change kitchen cook and brew settings'},
     {key = 'orders',   group = 'Logistics', hotkey = 'CUSTOM_O', default = true,
      label = 'Read work orders'},
     {key = 'orders_write', group = 'Logistics', hotkey = 'CUSTOM_W', default = false,
