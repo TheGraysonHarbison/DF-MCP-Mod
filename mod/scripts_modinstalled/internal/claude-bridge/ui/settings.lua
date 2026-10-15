@@ -8,7 +8,7 @@ local state = reqscript('internal/claude-bridge/state')
 SettingsWindow = defclass(SettingsWindow, widgets.Window)
 SettingsWindow.ATTRS{
     frame_title = 'Claude Bridge settings',
-    frame = {w = 58, h = 43},
+    frame = {w = 58, h = 44},
     resizable = true,
     resize_min = {w = 44, h = 18},
 }

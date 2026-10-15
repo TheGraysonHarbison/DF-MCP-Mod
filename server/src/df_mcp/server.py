@@ -17,6 +17,7 @@ from df_mcp.tools import (
     core,
     dig,
     furniture,
+    kitchen,
     map,
     nobles,
     orders,
@@ -44,6 +45,8 @@ fort's positions and holders; `assign_noble` appoints a citizen and needs `noble
 first, then `get_wagon`, `get_tile`, `get_area_map`, and `find_build_space`. `place_workshop`
 (needs `build_write`) queues a blueprint at a spot `find_build_space` returned.
 `list_stockpiles` and `get_stockpile` show where goods are stored and what each pile accepts.
+`list_kitchen` shows which ingredients in stock may be cooked or brewed; `set_kitchen` changes
+that (needs `kitchen_write`).
 Digging: `find_exposed_walls` finds reachable rock, `list_designations` shows existing orders,
 `plan_dig` previews a box, and with `dig_write` `designate_dig` places mining, staircase,
 channel, and ramp orders and `erase_designations` removes them.
@@ -66,6 +69,7 @@ TOOL_MODULES = (
     construct,
     furniture,
     zones,
+    kitchen,
     console,
 )
 
