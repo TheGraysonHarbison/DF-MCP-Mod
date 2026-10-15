@@ -6,7 +6,7 @@ local scriptmanager = require('script-manager')
 
 MOD_ID = 'claude-bridge'
 MOD_VERSION = '0.3.0'
-PROTOCOL_VERSION = 14
+PROTOCOL_VERSION = 15
 
 -- Settings groups, in display order.
 GROUPS = {'General', 'Units', 'Items', 'Logistics', 'World', 'Commands'}

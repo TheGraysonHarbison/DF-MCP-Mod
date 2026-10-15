@@ -57,3 +57,37 @@ def test_membership_ops():
     run(mcp, "disband_squad", squad_id=3)
     assert last_request(holder)["op"] == "military.disband"
     assert last_request(holder)["args"] == {"id": 3}
+
+
+def test_orders_and_routes():
+    mcp, holder = make()
+    run(mcp, "order_squad", squad_id=3, kind="station", x=10, y=11, z=12)
+    assert last_request(holder)["op"] == "military.order"
+    assert last_request(holder)["args"] == {"id": 3, "kind": "station", "x": 10, "y": 11, "z": 12}
+    run(mcp, "order_squad", squad_id=3, kind="kill", unit_ids=[900, 901], title="Goblins")
+    assert last_request(holder)["args"] == {
+        "id": 3,
+        "kind": "kill",
+        "unit_ids": [900, 901],
+        "title": "Goblins",
+    }
+    run(mcp, "order_squad", squad_id=3, kind="patrol", route_id=2)
+    assert last_request(holder)["args"] == {"id": 3, "kind": "patrol", "route_id": 2}
+    run(mcp, "order_squad", squad_id=3, kind="cancel")
+    assert last_request(holder)["args"] == {"id": 3, "kind": "cancel"}
+    with pytest.raises(Exception):  # noqa: B017
+        run(mcp, "order_squad", squad_id=3, kind="station", x=1)
+    with pytest.raises(Exception):  # noqa: B017
+        run(mcp, "order_squad", squad_id=3, kind="kill")
+    run(mcp, "set_squad_routine", squad_id=3, routine="Ready")
+    assert last_request(holder)["args"] == {"id": 3, "routine": "Ready"}
+    run(mcp, "list_routes")
+    assert last_request(holder)["op"] == "military.routes"
+    call(mcp, "create_route", name="Walls", points=[[1, 2, 3], [4, 5, 3]])
+    assert last_request(holder)["op"] == "military.create_route"
+    assert last_request(holder)["args"] == {
+        "name": "Walls",
+        "points": [{"x": 1, "y": 2, "z": 3}, {"x": 4, "y": 5, "z": 3}],
+    }
+    with pytest.raises(Exception):  # noqa: B017
+        run(mcp, "create_route", points=[[1, 2, 3]])

@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **14**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **15**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -54,8 +54,8 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `units_write` | off | `units.set_nickname` |
 | `nobles` | on | `nobles.list` |
 | `nobles_write` | off | `nobles.assign` |
-| `military` | on | `military.list`, `military.get` |
-| `military_write` | off | `military.create`, `military.rename`, `military.set_symbol`, `military.add`, `military.remove`, `military.set_leader`, `military.disband` |
+| `military` | on | `military.list`, `military.get`, `military.routes` |
+| `military_write` | off | `military.create`, `military.rename`, `military.set_symbol`, `military.add`, `military.remove`, `military.set_leader`, `military.disband`, `military.order`, `military.set_routine`, `military.create_route` |
 | `stocks` | on | `stocks.bar`, `stocks.list`, `stocks.find`, `stocks.artifacts`, `stocks.status`, `build.materials`, `kitchen.list` |
 | `kitchen_write` | off | `kitchen.set` |
 | `stocks_true` | on | no ops; a toggle. Off puts the stocks ops in bookkeeper view. |
@@ -264,6 +264,26 @@ The current leader (if another dwarf) is removed through `removeFromSquad`; a me
 Args: `id`. Needs a map and `military_write`.
 
 Every member is removed through `removeFromSquad` (the leader last, which vacates the seat), barracks links are dropped with `updateRoomAssignments(squad, zone, {})`, the assignment's `squad_id` is cleared, the id is erased from the fort entity's `squads` and the squad from `world.squads.all`, and the record deleted. Result: `{id, name, disbanded, members_removed, rooms_detached}`.
+
+### `military.order`
+
+Args: `id`, `kind` (`station` with `x`, `y`, `z` on a walkable tile; `kill` with `unit_ids` (non-citizens) and optional `title`; `patrol` with `route_id`; `cancel`). Needs a map and `military_write`.
+
+No DFHack code issues squad orders; this writes what the game's squad screen writes: every existing order in `squad.orders` and each position's `orders` is erased, then one new `squad_order_movest` (`pos`, `point_id` -1), `squad_order_kill_listst` (`units`, `histfigs`, `title`), or `squad_order_patrol_routest` (`route_id`) is appended to `squad.orders` with `issuer_hf` and `recipient_hf` -1, `year`, `year_tick`, and `origin_army_controller` -1. A squad with no members is refused for anything but `cancel`.
+
+Result: the list row plus `kind`, `cancelled` (orders removed), `orders` (`[{kind, type, pos | units | route_id, title, year, year_tick, complete}]`, also on `military.get`), `note`. Verified in-game 2026-10-15: a station order moved both soldiers to the tiles beside the target within twenty seconds of play; a patrol order along a two-point route moved them likewise.
+
+### `military.set_routine`
+
+Args: `id`, `routine` (a name or index from `military.list`). Needs a map and `military_write`. Sets `squad.cur_routine_idx`; training routines need a barracks. Result: the list row plus `previous`.
+
+### `military.routes`
+
+Args: none. Needs a map. Namespace `military`. Result: `count`, `routes` `[{id, name, points [{id, name, pos}]}]` from `plotinfo.waypoints`.
+
+### `military.create_route`
+
+Args: `name` (optional), `points` (at least two `{x, y, z}` on walkable tiles). Needs a map and `military_write`. Appends a `pointst` per point (ids from `next_point_id`, tile `X`, white on black, named after the route) and a `routest` (id from `next_route_id`) listing them. Result: `{id, name, points, count}`.
 
 ### `stocks.bar`
 

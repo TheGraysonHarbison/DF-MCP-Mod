@@ -306,6 +306,7 @@ local function get(args)
         })
     end
     out.ammunition = ammo_of(squad)
+    out.orders = orders_of(squad)
     out.rooms = rooms_of(squad)
     out.supplies = {
         carry_food = safe(function() return squad.supplies.carry_food end),
@@ -796,6 +797,237 @@ local function disband(args)
     return {id = id, name = name, disbanded = erased, members_removed = removed, rooms_detached = rooms}
 end
 
+
+----------------------------------------------------------------------------------------------
+-- orders, routines, routes (11.1). No DFHack code issues squad orders; these write the
+-- order records the game's own squad screen creates: one squad_order_* object appended to
+-- squad.orders with the issue date, and nothing else. Verified live before merge.
+
+ORDER_KINDS = {'station', 'kill', 'patrol', 'cancel'}
+
+local function describe_order(o)
+    local row = {
+        type = enum_name(df.squad_order_type, safe(function() return o:getType() end)),
+        year = o.year, year_tick = o.year_tick,
+        complete = safe(function() return o.flags.reported_as_complete end) == true,
+    }
+    if df.squad_order_movest:is_instance(o) then
+        row.kind = 'station'
+        row.pos = {x = o.pos.x, y = o.pos.y, z = o.pos.z}
+    elseif df.squad_order_kill_listst:is_instance(o) then
+        row.kind = 'kill'
+        row.title = o.title
+        row.units = {}
+        for _, id in ipairs(o.units) do table.insert(row.units, unit_ref(id)) end
+    elseif df.squad_order_patrol_routest:is_instance(o) then
+        row.kind = 'patrol'
+        row.route_id = o.route_id
+    elseif df.squad_order_trainst:is_instance(o) then
+        row.kind = 'train'
+    elseif df.squad_order_defend_burrowsst:is_instance(o) then
+        row.kind = 'defend_burrow'
+    else
+        row.kind = 'other'
+    end
+    return row
+end
+
+function orders_of(squad)
+    local out = {}
+    pcall(function()
+        for _, o in ipairs(squad.orders) do table.insert(out, describe_order(o)) end
+    end)
+    return out
+end
+
+local function stamp(o)
+    o.issuer_hf = -1
+    o.recipient_hf = -1
+    o.year = df.global.cur_year
+    o.year_tick = df.global.cur_year_tick
+    o.origin_army_controller = -1
+end
+
+local function clear_orders(squad)
+    local n = 0
+    local function wipe(vec)
+        for i = #vec - 1, 0, -1 do
+            local o = vec[i]
+            vec:erase(i)
+            pcall(function() o:delete() end)
+            n = n + 1
+        end
+    end
+    wipe(squad.orders)
+    for _, position in ipairs(squad.positions) do wipe(position.orders) end
+    return n
+end
+
+local function find_route(id)
+    local found = nil
+    pcall(function()
+        for _, r in ipairs(df.global.plotinfo.waypoints.routes) do
+            if r.id == id then found = r end
+        end
+    end)
+    return found
+end
+
+local function order(args)
+    local squad, err = squad_for(args)
+    if not squad then return err end
+    local kind = args.kind ~= nil and tostring(args.kind):lower() or nil
+    local known = false
+    for _, k in ipairs(ORDER_KINDS) do if k == kind then known = true end end
+    if not known then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"kind" must be one of ' .. table.concat(ORDER_KINDS, ', '))
+    end
+    local _, members = members_of(squad)
+    if kind ~= 'cancel' and members == 0 then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, 'squad ' .. squad.id .. ' has no members')
+    end
+    local new_order = nil
+    if kind == 'station' then
+        local x, y, z = tonumber(args.x), tonumber(args.y), tonumber(args.z)
+        if not (x and y and z) then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST, 'a station order needs "x", "y", "z"')
+        end
+        local pos = {x = math.floor(x), y = math.floor(y), z = math.floor(z)}
+        if not dfhack.maps.isValidTilePos(pos) then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST, 'the position is outside the map')
+        end
+        if dfhack.maps.getWalkableGroup(pos) == 0 then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST, 'the position is not walkable')
+        end
+        new_order = df.squad_order_movest:new()
+        stamp(new_order)
+        new_order.pos.x, new_order.pos.y, new_order.pos.z = pos.x, pos.y, pos.z
+        new_order.point_id = -1
+    elseif kind == 'kill' then
+        if type(args.unit_ids) ~= 'table' or #args.unit_ids == 0 then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST, 'a kill order needs "unit_ids" (a non-empty list)')
+        end
+        new_order = df.squad_order_kill_listst:new()
+        stamp(new_order)
+        local names = {}
+        for _, raw in ipairs(args.unit_ids) do
+            local id = tonumber(raw)
+            local unit = id and df.unit.find(math.floor(id))
+            if not unit then
+                pcall(function() new_order:delete() end)
+                return rpc.error_result(rpc.ERR_NOT_FOUND, 'no unit with id ' .. tostring(raw))
+            end
+            if safe(dfhack.units.isCitizen, unit, true) then
+                pcall(function() new_order:delete() end)
+                return rpc.error_result(rpc.ERR_BAD_REQUEST, 'unit ' .. unit.id .. ' is a citizen')
+            end
+            new_order.units:insert('#', unit.id)
+            if unit.hist_figure_id >= 0 then new_order.histfigs:insert('#', unit.hist_figure_id) end
+            table.insert(names, safe(dfhack.units.getReadableName, unit) or tostring(unit.id))
+        end
+        new_order.title = dfhack.utf2df(args.title or ('Kill ' .. table.concat(names, ', ')))
+    elseif kind == 'patrol' then
+        local route_id = tonumber(args.route_id)
+        if not route_id or not find_route(math.floor(route_id)) then
+            return rpc.error_result(rpc.ERR_NOT_FOUND, 'no patrol route with id ' .. tostring(args.route_id))
+        end
+        new_order = df.squad_order_patrol_routest:new()
+        stamp(new_order)
+        new_order.route_id = math.floor(route_id)
+    end
+    -- Only a valid order replaces the current ones; a refused request leaves them alone.
+    local cleared = clear_orders(squad)
+    if new_order then squad.orders:insert('#', new_order) end
+    local out = summary(squad)
+    out.kind = kind
+    out.cancelled = cleared
+    out.orders = orders_of(squad)
+    out.note = kind == 'cancel' and 'orders cleared; the squad follows its routine again'
+        or 'order issued; soldiers follow it when they can (check reason in get_squad if they do not move)'
+    return out
+end
+
+local function set_routine(args)
+    local squad, err = squad_for(args)
+    if not squad then return err end
+    local list = routines()
+    local chosen = nil
+    if args.routine == nil then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, 'pass "routine" (a name or index from list_squads)')
+    end
+    local wanted = tostring(args.routine):lower()
+    for _, r in ipairs(list) do
+        if r.name:lower() == wanted or tostring(r.index) == wanted then chosen = r end
+    end
+    if not chosen then
+        local names = {}
+        for _, r in ipairs(list) do table.insert(names, r.name) end
+        return rpc.error_result(rpc.ERR_NOT_FOUND,
+            ('no routine "%s"; known: %s'):format(tostring(args.routine), table.concat(names, ', ')))
+    end
+    local before = routine_name(squad)
+    squad.cur_routine_idx = chosen.index
+    local out = summary(squad)
+    out.previous = before
+    return out
+end
+
+local function routes(args)
+    local out = {}
+    pcall(function()
+        local points = {}
+        for _, pt in ipairs(df.global.plotinfo.waypoints.points) do points[pt.id] = pt end
+        for _, r in ipairs(df.global.plotinfo.waypoints.routes) do
+            local pts = {}
+            for _, id in ipairs(r.points) do
+                local pt = points[id]
+                table.insert(pts, pt and {id = id, name = pt.name, pos = {x = pt.pos.x, y = pt.pos.y, z = pt.pos.z}}
+                    or {id = id})
+            end
+            table.insert(out, {id = r.id, name = r.name, points = pts})
+        end
+    end)
+    return {count = #out, routes = out}
+end
+
+local function create_route(args)
+    if type(args.points) ~= 'table' or #args.points < 2 then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"points" must be a list of at least two {x, y, z}')
+    end
+    local parsed = {}
+    for i, pt in ipairs(args.points) do
+        local x, y, z = tonumber(pt.x), tonumber(pt.y), tonumber(pt.z)
+        if not (x and y and z) then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST, ('point %d needs x, y, z'):format(i))
+        end
+        local pos = {x = math.floor(x), y = math.floor(y), z = math.floor(z)}
+        if not dfhack.maps.isValidTilePos(pos) or dfhack.maps.getWalkableGroup(pos) == 0 then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST, ('point %d is not a walkable map tile'):format(i))
+        end
+        table.insert(parsed, pos)
+    end
+    local wp = df.global.plotinfo.waypoints
+    local name = type(args.name) == 'string' and args.name or ('Route ' .. (wp.next_route_id + 1))
+    local ids = {}
+    for i, pos in ipairs(parsed) do
+        local id = wp.next_point_id
+        wp.points:insert('#', {
+            new = df.pointst, id = id, tile = 88, fg_color = 7, bg_color = 0,
+            name = dfhack.utf2df(name .. ' ' .. i), comment = '',
+        })
+        local pt = wp.points[#wp.points - 1]
+        pt.pos.x, pt.pos.y, pt.pos.z = pos.x, pos.y, pos.z
+        wp.next_point_id = id + 1
+        table.insert(ids, id)
+    end
+    local route_id = wp.next_route_id
+    wp.routes:insert('#', {new = df.routest, id = route_id, name = dfhack.utf2df(name)})
+    local route = wp.routes[#wp.routes - 1]
+    for _, id in ipairs(ids) do route.points:insert('#', id) end
+    wp.next_route_id = route_id + 1
+    return {id = route_id, name = name, points = ids, count = #ids}
+end
+
 function ops()
     return {
         ['military.list'] = {namespace = 'military', handler = list, needs_map = true},
@@ -807,5 +1039,9 @@ function ops()
         ['military.remove'] = {namespace = 'military_write', handler = remove, needs_map = true},
         ['military.set_leader'] = {namespace = 'military_write', handler = set_leader, needs_map = true},
         ['military.disband'] = {namespace = 'military_write', handler = disband, needs_map = true},
+        ['military.order'] = {namespace = 'military_write', handler = order, needs_map = true},
+        ['military.set_routine'] = {namespace = 'military_write', handler = set_routine, needs_map = true},
+        ['military.routes'] = {namespace = 'military', handler = routes, needs_map = true},
+        ['military.create_route'] = {namespace = 'military_write', handler = create_route, needs_map = true},
     }
 end
