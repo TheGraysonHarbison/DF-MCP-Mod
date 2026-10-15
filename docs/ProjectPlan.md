@@ -1,6 +1,6 @@
 # Project Plan: DFHack Claude Integration Mod
 
-Status: Phases 0 through 9 merged and verified in-game against DFHack 53.16-r2; Phases 7 to 9 (building, zoning, pause) were planned, built, and verified on 2026-10-14 (PRs #28 to #35), design in section 12. Nothing is scheduled beyond them; see Future in section 3. Last updated 2026-10-14.
+Status: Phases 0 through 9 merged and verified in-game against DFHack 53.16-r2 (Phases 7 to 9 on 2026-10-14, PRs #28 to #35, design in section 12). Phases 10 to 18 (farming, military, dev tools, events, plans and goals, prompt timer, traps, trade, mods) were planned on 2026-10-15, design in section 13; none is built yet. Last updated 2026-10-15.
 
 This document is the agreed plan for the project. The README describes the idea and current progress for readers; this file describes how we build it. When the two disagree, fix this file first, then the README.
 
@@ -78,31 +78,30 @@ The module name must satisfy DFHack's `RunLua` filter (`rpc.*`). Mod scripts are
 
 ### 2.3 Events
 
-DFHack has no petition event, and `eventful` covers only some of what we need. Lua keeps a bounded event queue (default 200 entries, oldest dropped) fed by:
+DFHack has no petition event, and `eventful` covers only some of what we need. Lua keeps a bounded event queue (200 entries, oldest dropped) fed by:
 
-- `eventful` hooks: `onUnitDeath`, `onInvasion`, `onReport` (filtered to announcement types we care about), `onJobCompleted` for artifact creation.
-- `repeat-util` pollers at a low frequency (default every 100 ticks): pending petitions, new visitors, siege flag, weather change, season change.
-- The in-game chat window, which appends `chat.message` events.
-- The autonomy timer, which appends `timer.fired` events.
+- `eventful` hooks: `onReport` filtered to the announcement types of the enabled kinds, `onUnitDeath`, `onInvasion`, `onUnitAttack` for fights.
+- Pollers for what the game never announces: pending petitions, ghosts, moody dwarves that cannot find an item, artifacts dug up.
+- The goals window's Send button, which appends a `goals` batch.
+- The autonomy timer, which appends a `timer` batch.
 
-Each event: `{"seq": n, "kind": "petition.new", "tick": ..., "data": {...}}`. The server drains with `events.poll(after_seq)`. Nothing is removed on poll; the queue is a ring, so a client that falls behind loses old events rather than blocking the game.
+Each event: `{"seq": n, "kind": "petition", "tick": ..., "text": ..., "pos": ..., "unit_ids": [...]}`. The server drains with `events.poll(after_seq)`, which returns only events older than the two-second quiet window or everything once 50 are queued. Nothing is removed on poll; the queue is a ring, so a client that falls behind loses old events rather than blocking the game. Event kinds are enabled per kind in the settings window (section 13).
 
 ### 2.4 Driver loop
 
-Chosen: a Claude Code session with a blocking `wait_for_event` tool.
+Chosen (2026-10-15): Claude Code channels. The MCP server declares the channel capability, polls `events.poll` every two seconds from a background task, and pushes each batch to Claude Code as a `notifications/claude/channel` notification. Claude Code starts a turn on it when Claude is idle and queues batches until the current turn ends when it is busy, so the server keeps no buffer of its own. Petitions, goal updates, and the autonomy timer are just batch kinds, so one channel handles event response, goals, and autonomy. Claude talks back through the ordinary tools, including `send_message` for in-game announcements.
 
-The MCP server exposes `wait_for_event(timeout_seconds)`, which polls `events.poll` on a short interval until an event arrives or the timeout passes. Claude runs a loop: wait, act, wait. The in-game chat and the autonomy timer are just event kinds, so one loop handles all three README features (event response, chat, autonomy).
-
-Why: no second runtime, uses the Team seat, and the whole system is observable from one terminal. A Python conductor using the Agent SDK remains a future candidate if running without a terminal matters.
+Why: no second runtime, uses the Team seat, and the whole system is observable from one terminal. The session must be started with the development-channels flag while channels are in research preview, and the org must allow channels; the README and `docs/playing.md` say how. The earlier design (a blocking `wait_for_event` tool driven by `/loop`) and a Stop hook that re-prompts Claude when the queue is non-empty remain documented fallbacks in section 13.1 if channels are unavailable.
 
 ### 2.5 Permissions
 
 The settings panel (a DFHack overlay window) owns a permission table stored under `scriptmanager.getModStatePath("claude-bridge")`:
 
-- Per-namespace toggles: `time`, `units`, `units_write`, `console`, `events`, `petitions`, `build`, `orders`, `military`.
+- Per-namespace toggles, one per read namespace and one per write namespace (the full list is in `docs/protocol.md`).
 - Console allowlist: explicit command names allowed via `console.run`, with a deny-all default. Wildcard only by explicit player choice.
-- Autonomy timer: off, or one of in-game days, months, seasons, or real seconds, with the interval. Paused when DF is paused.
-- Event hooks: per-kind enable.
+- Autonomy timer: off, or every N in-game days, every month change, or every N real minutes, with the prompt text. Paused when DF is paused (section 13).
+- Event kinds: per-kind enable (section 13).
+- Goals and the goal prompt, on their own tab (section 13).
 
 Enforcement happens in Lua at dispatch, not in Python. The Python server mirrors the table for tool descriptions only, so a misbehaving server cannot bypass it.
 
@@ -193,10 +192,61 @@ Namespace `zones` (read, on) and `zones_write` (off), both in the World group. D
 
 - 9.0 See the pause state (already in `time.now`) and set it, behind a new `pause_write` toggle, off by default. Delivered first because every live test benefits.
 
-### Future (after 9.0, not scheduled)
+### Phase 10: Kitchen, farms, chop and gather
 
-- Event queue (2.3) with `events.poll` and `wait_for_event`; chat overlay with `chat.message` and `chat.say`; autonomy timer; event-kind filters; a documented play loop in `docs/playing.md`. The driver loop design in 2.4 stays as written.
-- Petitions, quickfort blueprints through the quickfort command, military (squads, alerts, stations, barracks and archery range assignment), labor assignment, locations (8.2), traps and levers, tracks and minecarts, door and hatch toggles.
+Design in section 13. Reads under `stocks` and `map`; writes under a new `kitchen_write` toggle for the kitchen and the existing `build_write` and `dig_write` toggles for the rest.
+
+- 10.0 Kitchen: see every ingredient the fort has in stock (plants, seeds, drinks, other) with whether cooking and brewing are allowed, and allow or ban each; tokens for ingredients not yet in stock.
+- 10.1 Farm plots: read a plot's soil report (soil type, mud, above or below ground, cavern, biome) and its crop per season; place and remove plots; set the crop for each season and the fertilize flag. Crop availability follows DFHack autofarm's rule, documented as an approximation of the game's.
+- 10.2 Chop and gather: `chop` and `gather` as designation kinds in boxes and circles, plus a read listing trees and shrubs in a box with species and marked state.
+
+### Phase 11: Military
+
+Namespaces `military` (read, on) and `military_write` (off). Where DFHack has no API (squad leader, disband, orders) the mod ships its own, written from the df-structures definitions and DFHack's inverse code paths, and verified live before merge.
+
+- 11.0 Squads: list and inspect squads; create one with a kind (`melee`, `crossbow`) that applies a uniform template, or a named game preset; nickname it; add and remove members; set the leader; disband.
+- 11.1 Orders: station, kill, patrol a route (with route creation from waypoints), cancel, and training through the squad's routine (off duty, staggered training, constant training, ready).
+- 11.2 Equipment: read each slot's uniform spec, what each soldier actually wears, and ammunition; set uniform slots by item type and material class with the exact-match and replace-clothing flags, and ammunition counts.
+
+### Phase 12: Dev tools
+
+Three MCP tools (`dev_spawn_unit`, `dev_create_item`, `dev_exterminate`) that build a console line for `modtools/create-unit`, `modtools/create-item`, and `exterminate` and run it through the console op, so the allowlist still decides. `exterminate` keeps `--include-friendly` as an explicit argument.
+
+### Phase 13: Events
+
+Namespace `events` (read, on) with a per-kind toggle for each event the player allows. The mod collects announcements and polled state changes into a queue and batches them (two-second quiet window, at most 50 per batch); the server polls every two seconds and pushes each batch to Claude Code as a channel notification, which Claude Code queues until Claude is idle. Defaults on: mineral discovered, units fighting, petition.
+
+- 13.1 Petitions: read pending petitions with the applicant, kind, and obligation; accept or reject through a mod-side API behind `petitions_write`.
+
+### Phase 14: Plans, goals, messages
+
+- 14.0 The mod creates `claude-df/goals.md` and `claude-df/plan.md` inside the current save when it enables. Claude reads, replaces, and appends to its plan; the player edits goals and the goal prompt in a `claude-bridge goals` window whose Send button (and only that button) delivers the goals to Claude.
+- 14.1 No server-side buffer: Claude Code's channel queue is the only buffer, and the server forwards every batch as soon as its poll sees it.
+- 14.2 `send_message`: Claude posts a message of up to 200 characters as an in-game announcement in the left-side alert stack, in light red (the closest palette colour to orange), with an optional position for click-to-zoom. No permission needed.
+
+### Phase 15: Prompt timer
+
+A timer in settings: every N in-game days, every month change, or every N real minutes, with an editable prompt. It fires through the channel, resets whenever the mod hands Claude an event batch, pauses with the game, and never stacks two pending prompts. Off by default; 7 in-game days when turned on.
+
+### Phase 16: Traps and military buildings
+
+Placement only, through `place_furniture`: lever, pressure plate with its trigger settings, cage trap, stone-fall trap, weapon trap, upright spike, catapult, ballista, trade depot. Lever linking is skipped (see the README open issues).
+
+### Phase 17: Trade
+
+Namespaces `trade` (read, on) and `trade_write` (off).
+
+- 17.0 See caravans and their state, the depot, and whether the broker is at the depot; request the broker; bring goods to the depot; perform the trade through a mod-side API (headless drive of the game's trade screen first, the mod's own exchange as the fallback).
+- 17.1 Diplomats: see the pending meeting, the trade agreement and price list; set next year's import requests; drive the meeting and the land-holder choice through a mod-side API where the game allows it.
+
+### Phase 18: Mods
+
+List the active Dwarf Fortress mods (id, name, version, source) and loaded DFHack plugins with their enabled state, under `settings`.
+
+### Future (after 18, not scheduled)
+
+- Burrows and defend-burrow orders, per-month squad schedule editing, lever linking and pulling, multi-weapon traps, siege engine aiming.
+- Quickfort blueprints, labor assignment, locations (8.2), tracks and minecarts, door and hatch toggles.
 - Luasocket push transport, a headless Python conductor using the Agent SDK, Steam Workshop packaging, legends and adventure mode.
 
 ---
@@ -213,7 +263,7 @@ DF-MCP-Mod/
   docs/
     ProjectPlan.md          this file
     protocol.md             every RPC op, request and response shapes, error codes
-    playing.md              how to run a play session (future)
+    playing.md              how to run a play session with channels (Phase 13)
     decisions/              short ADRs, numbered, one decision each
   mod/                      the DFHack mod, installable as-is
     info.txt                ID claude-bridge, versions, author, description
@@ -226,10 +276,13 @@ DF-MCP-Mod/
         time.lua            time and weather ops
         units.lua           unit listing and detail ops
         console.lua         console allowlist and execution
-        events.lua          event queue, eventful hooks, pollers
+        kitchen.lua, farms.lua, military.lua, petitions.lua, plan.lua, messages.lua, trade.lua, mods.lua
+                            op modules added by Phases 10 to 18 (plus plants in map/dig)
+        events.lua          event queue, eventful hooks, pollers, batching
         timer.lua           autonomy timer
-        ui/settings.lua     settings overlay window
-        ui/chat.lua         chat overlay window (future)
+        ui/settings.lua     settings window (tabs: Permissions, Events, Timer, Goals)
+        ui/goals.lua        goals and goal-prompt editor with the Send button
+    assets/icon.png         the owner's 32 by 32 icon, kept for a later overlay
   server/                   the Python MCP server
     pyproject.toml          uv project, package df_mcp, entry point df-mcp
     src/df_mcp/
@@ -239,6 +292,7 @@ DF-MCP-Mod/
       bridge.py             call(op, args) -> result, error mapping, reconnect
       server.py             MCPServer construction and transport
       tools/                one module per namespace, registers tools
+      channel.py            event poller and channel notifications (Phase 13)
     tests/
       test_wire.py          codec round trips
       test_dfhack_rpc.py    framing tests against a scripted fake socket
@@ -293,7 +347,7 @@ These are the rules the repo's `CLAUDE.md` carries. Kept here so the rationale s
 5. Lua follows DFHack script conventions: `--@ module = true` header on every module, module-level functions are the exports and everything else is `local`, internal modules load with `reqscript('internal/claude-bridge/<name>')`, 4-space indent, snake_case, the control script returns early on `dfhack_flags.module`. Use `dfhack.*` helpers over raw `df.global` walks when one exists, and wrap uncertain struct access in `pcall` so one missing field cannot take down an op.
 6. Python uses uv, ruff, pytest, type hints, Python 3.11. The MCP server logs to stderr only. Reason: stdout is the MCP transport.
 7. DFHack docs are cited by the `stable` URL and the version they were checked against. Do not rely on memory for `df.*` struct fields; look them up or check in-game with `:lua`.
-8. Never read, write, or commit DF save folders or `dfhack-config` beyond the mod's own state file. Never put ports, paths, or credentials in committed files; `.mcp.json` uses relative paths only.
+8. Never read, write, or commit DF save folders or `dfhack-config` beyond the mod's own state file and the mod's own `claude-df/` working folder inside the current save (`goals.md` and `plan.md`, Phase 14), which the mod creates and owns. Never put ports, paths, or credentials in committed files; `.mcp.json` uses relative paths only. (Amended 2026-10-15.)
 9. Branch per change, conventional commit messages, PR via `gh`. Do not commit to `main`. Every branch starts from `main`; stacking on another branch needs the owner's explicit permission. Once the owner has approved a branch's functions, Claude may merge its PR, but only after asking and getting a yes for that specific merge (agreed 2026-10-13). Reason: stacked branches make PR diffs and merge order depend on each other; the merge question keeps the owner in control of what lands on `main`.
 10. When a feature lands, update the README progress section in the same PR. The README is for readers; this file is for builders.
 11. Confirm before anything that affects a running game beyond reads: pausing, running console commands, or changing settings during a test session.
@@ -307,6 +361,8 @@ These are the rules the repo's `CLAUDE.md` carries. Kept here so the rationale s
 - The `package.loaded` route for `RunLua` is confirmed working in-game (2026-10-12).
 - `gh` installed and authenticated on the dev machine on 2026-10-13; PRs and approved merges go through it.
 - Decide whether `.mcp.json` is committed or templated as `.mcp.json.example` once the uv entry point exists.
+- Channels (section 13) need the org Owner to enable Channels under Organization settings > Claude Code, and each session started with the development-channels flag until custom channels leave research preview.
+- `icon.png` sits untracked at the repo root; the 14.2 branch moves it to `mod/assets/`.
 - The section 8.6 struct check was done by iteration against the live game on 2026-10-12 instead of `:lua`; findings are in `docs/protocol.md` under `units.sheet`. Still unverified because the test fort had none: squad uniforms and orders, kills, wounds and treatment, memories, occupations, workshop assignments, work animals.
 
 ---
@@ -707,6 +763,104 @@ Delivered 2026-10-14 in that order as PRs #29 to #35, protocol versions 4 to 10.
 
 ---
 
+## 13. Phases 10 to 18 addendum: farming, military, events, autonomy, trade (planned 2026-10-15)
+
+Decisions agreed on 2026-10-15 after reading the DFHack 53.16-r2 install on the dev machine (the shipped Lua API text, `dfhack/buildings.lua`, the quickfort, caravan, notify, journal, petitions, ban-cooking, archery-practice, lever, and advfort scripts, the eventful and overlay plugin Lua), the df-structures `master` XML as of 2026-10-10, DFHack `master` C++ for Military, Items, Gui, EventManager, Persistence, Designations, autofarm, and createitem, the Claude Code docs on channels, hooks, and scheduled tasks, and the DF wiki pages named in the references. Rule of thumb from the owner: where DFHack has no API, the mod ships its own; where that proves impossible, the feature is skipped and listed under README open issues.
+
+### 13.1 What DFHack and Claude Code give us
+
+| Need | Source (checked 2026-10-15) |
+|---|---|
+| Push to Claude | Claude Code channels: an MCP server declares `capabilities.experimental["claude/channel"] = {}` and emits `notifications/claude/channel` with `content` (string) and `meta` (string map; keys become attributes of the `<channel source="dfhack" ...>` tag Claude sees). Events start a turn when Claude is idle and are queued and delivered together on the next turn when it is busy. Prerequisites: claude.ai or Console auth (not Bedrock or Vertex); a Team or Enterprise Owner enables Channels under Organization settings > Claude Code; the session is started with `claude --dangerously-load-development-channels server:dfhack` during the research preview (custom servers are not on the `--channels` allowlist) and confirms a warning dialog; the flag is ignored under `-p`. Events are dropped silently when the server is not loaded as a channel, and only arrive while the session is open. No acknowledgement, no documented queue limit. The Python `mcp` SDK 2.3.0 in `server/` negotiates the handshake versions Claude Code sends and exposes `outbound.notify(method, params)` on the connection; the server emits the notification as a JSON-RPC message on the stdio write stream from a background poll task. |
+| Fallbacks (documented, not built) | A Stop hook can block the end of a turn with a reason when a queue is non-empty (eight consecutive blocks cap); `/loop` self-paces wakeups; `claude -p --resume <id> "<prompt>"` sends a prompt to a running session. |
+| Kitchen | `dfhack.kitchen.findExclusion`, `addExclusion`, `removeExclusion(type, item_type, item_subtype, mat_type, mat_index)`, `type` one of `{Cook=true}` or `{Brew=true}` (Lua API 2645-2662), over `plotinfo.kitchen`'s parallel vectors (`df.plotinfo.xml:874-884`). Everything is allowed unless a row exists. Keys as `ban-cooking` uses them: seeds `(SEEDS, -1, seed material)`, plants `(PLANT, -1, basic material)`, growths with the growth index as subtype, drinks `(DRINK, -1, material)`. The vanilla screen lists only ingredients in stock. Cookable: material flag `EDIBLE_COOKED`; brewable: a `DRINK_MAT` reaction product on the material. |
+| Farm plots | `building_farmplotst`: `plant_id[season]` (plant raw index, -1 fallow), `farm_flags.seasonal_fertilize`, `current_fertilization`, `max_fertilization`; no stored fertility. Placement (quickfort `build.lua:65-104`): tiletype material `SOIL` or any `GRASS_*` or `PLANT` with a floor-like shape, or any floor whose block has a solid `MUD` spatter event; sand, clay, loam, silt, peat are all `SOIL`. Above or below ground is the tile designation `subterranean` bit. Crop rule (autofarm.cpp 84-156): plant has the `SEED` flag and not `TREE`, carries the season flag for the current season and every season the crop spans, and a `BIOME_*` flag matching `dfhack.maps.getTileBiomeRgn` plus `getBiomeType` for surface plots or `BIOME_SUBTERRANEAN_WATER` below ground; seeds in `world.items.other.SEEDS`. Setting the crop is a direct write of `plant_id[season]` on a built plot (autofarm.cpp 197-207). `constructBuilding{type=FarmPlot, pos, width, height}` takes no items, any size, and queues a build job for a planter; `fields={farm_flags={seasonal_fertilize=true}}`. |
+| Chop and gather | One designation value: `tile_dig_designation.Default` means dig, gather, or fell depending on the tile (`df.d_basics.xml:11025`); jobs `FellTree` and `GatherPlants` are designation jobs with `pos`. quickfort: trees through `dfhack.maps.getPlantAtTile` and the undocumented `dfhack.designations.markPlant(plant)` (which marks the south-east trunk tile at the base and sets the block flag), shrubs by setting `dig = Default` on `SHRUB` tiles; `isPlantMarked`, `unmarkPlant` also exist. Plants in `world.plants.all` with `material` (plant raw), `pos`, `tree_info` (nil for saplings), `damage_flags`. Saplings are neither chopped nor gathered. |
+| Squads | `dfhack.military.makeSquad(assignment_id)` (needs a fort position assignment with `squad_id == -1`; creates `squad_size` empty positions and one schedule per routine in `plotinfo.alerts.routines`, no leader, uniforms, or ammo), `addToSquad(unit_id, squad_id, pos)` (refuses position 0 and occupied slots; `-1` picks the first free non-leader slot; sets the equipment update flags), `removeFromSquad(unit_id)` (handles the leader's assignment and position links), `updateRoomAssignments(squad_id, civzone_id, flags)`, `getSquadName` (Lua API 1973-1993, Military.cpp). No API for the leader slot, disbanding, or orders. `df.squad`: `alias` (display nickname), `positions[].occupant` (historical figure id; the unit is `df.historical_figure.find(id).unit_id`), `positions[].equipment.uniform[category]` of `squad_uniform_spec` (`item_type`, `item_subtype`, `material_class`, `mattype`, `matindex`, `indiv_choice`), `equipment.flags.replace_clothing`, `exact_matches`, `orders[]`, `schedule.routine[]`, `cur_routine_idx`, `ammo.ammunition[]` (`squad_ammo_spec` with `amount`, `use_combat`, `use_training`), `entity_id`, `leader_position`, `leader_assignment`. Orders: `squad_order_movest{pos}`, `squad_order_kill_listst{units, histfigs}`, `squad_order_patrol_routest{route_id}` over `plotinfo.waypoints`, `squad_order_trainst`, base fields `issuer_hf`, `recipient_hf`, `year`, `year_tick`. Routines are the four names Military.cpp knows (Off duty, Staggered training, Constant training, Ready). Presets live in `fortress_entity.uniforms[]`. Crossbow: `itemdef_weaponst.ranged_ammo ~= ""`. Only `addToSquad` sets `plotinfo.equipment.update`; the mod sets it after every uniform or ammo write. |
+| Dev commands | `exterminate [list | undead | all[:caste] | <race>[:caste]] [-m METHOD] [-o] [-f] [-l n]`; `this` needs a selected unit. `modtools/create-unit -race X -caste Y -location [ x y z ] [-nick N] [-domesticate] [-civId \\LOCAL]`; `spawnunit` is a thin wrapper that needs a cursor unless given coordinates, and both are tagged unavailable for 53.16 in the docs though shipped. `modtools/create-item -i WEAPON:ITEM_WEAPON_PICK -m INORGANIC:IRON -c N -q 0..5 -u <unit> -p x,y,z`; the `createitem` plugin has no position option and needs a selected unit or cursor. All print little on success. |
+| Announcements | `announcement_type` (357 items, `df.g_src.basics.xml` on master) with an `alert_type` attribute naming the left-side badge category. Flags (`df.d_init.xml:169-178`): `DO_MEGA`, `PAUSE`, `RECENTER`, `A_DISPLAY`, `D_DISPLAY`, `UNIT_COMBAT_REPORT`, `UNIT_COMBAT_REPORT_ALL_ACTIVE`, `ALERT`. `dfhack.gui.makeAnnouncement(type, flags, pos, text, color, bright)` creates a `df.report` (`type`, `text`, `color`, `pos`, `zoom_type`, `id`, `year`, `time`, `repeat_count`, `flags.announcement`); with `D_DISPLAY` it lands in the log and the left-side alert of its category; `PAUSE` and `RECENTER` act at creation; identical repeated text bumps `repeat_count` and creates no report. Icons come from the vanilla tile sheet per alert category (`graphics_announcements.txt`); no per-report icon exists. Text colours are the 16-colour palette; Steam defaults: light red 255,113,17, brown 215,155,45, yellow 255,225,17. Click-to-zoom uses `report.pos`; whether it works without `zoom_type` is a live check. |
+| Event capture | `eventful.onReport(report_id)` fires for every new report, combat lines included; enable with `eventful.enableEvent(eventful.eventType.REPORT, freq)`. EventManager polls every frame gated on `world.frame_counter`, so frequency 0 runs while paused and frequency 1 or more never fires while paused. Also `onUnitDeath(unit_id)`, `onInvasion(invasion_id)`, `onUnitAttack(attacker, defender, wound)` (one call per unit pair per pass). Mapping of the wanted kinds: `STRUCK_MINERAL`, `STRUCK_ECONOMIC_MINERAL`; `FEATURE_DISCOVERY`; `STRUCK_DEEP_METAL`; `STRANGE_MOOD`, `MOOD_BUILDING_CLAIMED`; `MADE_ARTIFACT`, `NAMED_ARTIFACT`; `CRIME_WITNESS_STOLEN`, `CRIME_WITNESS_ITEM_MISSING`, `CRIME_WITNESS_ITEM_MOVED`, `CREATURE_STEALS_OBJECT`; `CITIZEN_MISSING`, `PET_MISSING`; `CITIZEN_DEATH` plus `onUnitDeath`; `CARAVAN_ARRIVAL`, `FIRST_CARAVAN_ARRIVAL`, `MERCHANTS_UNLOADING`, `MERCHANTS_NEED_DEPOT`, `MERCHANT_WAGONS_BYPASSED`; `MERCHANTS_LEAVING_SOON`, `MERCHANTS_EMBARKED`; `DIPLOMAT_ARRIVAL`, `LIAISON_ARRIVAL`, `TRADE_DIPLOMAT_ARRIVAL`; `MEGABEAST_ARRIVAL`, `WEREBEAST_ARRIVAL`, `BEAST_AMBUSH`, `AMBUSH_DEFENDER`, `AMBUSH_RESIDENT`, `UNDEAD_ATTACK`, `NAMED_RESIDENT_CREATURE`; `AMBUSH_AMBUSHER`, `AMBUSH_AMBUSHER_NATURE`, `AMBUSH_THIEF`, `AMBUSH_SNATCHER` plus `onInvasion`; `SEASON_SPRING` to `SEASON_WINTER`. No announcement exists for a petition, a ghost rising or being put to rest, a moody dwarf that cannot find an item, or an artifact being dug up: these are polled. |
+| Timers | `dfhack.timeout(n, mode, fn)` modes `frames` (advance while paused), `ticks`, `days`, `months`, `years` (frozen while paused, cancelled on unload); `repeat-util.scheduleEvery(name, n, mode, fn)`; `dfhack.getTickCount()` real milliseconds; 1200 ticks a day, 33600 a month, 403200 a year; `df.global.cur_season`, `cur_year_tick`; `dfhack.world.ReadPauseState()`; `SC_PAUSED` and `SC_UNPAUSED` state-change codes exist but are undocumented. |
+| Petitions | `plotinfo.petitions` holds the ids of unapproved agreements; `continuing_agreement_id` sits beside it. `df.agreement`: `parties[]` (`histfig_ids`, `entity_ids`), `details[]` with `type` (`Residency`, `Citizenship`, `Location`, and plot types) and `data` (`Residency.reason` from `history_event_reason`, such as `eradicate_beasts`, `entertain_people`, `make_a_living_as_a_warrior`, `study`; `Location.type`, `deity_type`, `deity_data`, `profession`, `tier`), `flags.petition_not_accepted` ("unset by accepting"), `flags.convicted_accepted`. `list-agreements.lua` is the text reference (party names, deity, profession, tier, one-year expiry). The vanilla answer buttons are mouse only, `petitions_interfacest` has no decision field, and no DFHack code accepts or rejects. |
+| Files and editor | `dfhack.getSavePath()` (current save directory; the live value during play is a check), `dfhack.filesystem.mkdir_recursive`, `exists`, `listdir`, `mtime`; `plotinfo.site_id`; `dfhack.world.ReadWorldFolder()`. `widgets.TextArea` (multi-line editor with wrap, mouse selection, undo, clipboard, scrollbar; `init_text`, `on_text_change`, `getText`, `setText`; no read-only attribute) inside a `gui.ZScreen` as `gui/journal` does (`pass_pause=false` so Space types). |
+| Trade | `plotinfo.caravans[]` (`caravan_state`: `trade_state` None, Approaching, AtDepot, Leaving, Stuck; `time_remaining` in ticks divided by 120 for days; `entity`; `flags` casualty, hardship, seized, offended, greatly_offended, tribute; `mood`; `buy_prices`, `sell_prices`). `building_tradedepotst.trade_flags` has only `trader_requested` and `anyone_can_trade`; the broker is the `BROKER` position (`dfhack.units.getUnitByNobleRole('broker')`); a request is that flag plus a `TradeAtDepot` job on the depot (the caravan script's cancel path). `dfhack.items.markForTrade(item, depot)` creates the `BringItemToDepot` hauling job; unmarking removes that job; `canTrade`, `canTradeWithContents`, `getValue(item, caravan)` (agreement prices applied), `isRequestedTradeGood`. The vanilla trade screen is `main_interface.trade` (`open`, `bld`, `mer`, `good[2]`, `goodflag[2].selected`, `stillunloading`, `havetalker`, `fortress_trader`, `merchant_trader`, `talkline`, `counter_offer`); DFHack's overlay only toggles `goodflag`; Trade, Offer, and Seize are mouse buttons with no key binding and no DFHack code presses them. Diplomats: `plotinfo.meeting_requests`, `dip_meeting_info[]` (`meeting_diplomat_info` with `sell_requests`, `buy_requests`, `events[]`), `main_interface.diplomacy` (`taking_requests`, `environment.dipev.sell_requests.priority[category][i]` 0 to 4 as `tradeagreement.lua` writes it, `selecting_land_holder_position`, `land_holder_*`). Responsibilities `RECEIVE_DIPLOMATS` and `MEET_WORKERS`. |
+| Traps and depot | `dfhack/buildings.lua` inputs: lever, pressure plate, cage trap, stone-fall trap one mechanism; weapon trap mechanism plus one weapon; upright spike one spike; catapult three catapult parts, ballista three ballista parts; trade depot three building materials (5 by 5); siege engines 3 by 3; the rest 1 by 1. `building_trapst.plate_info` (`unit_min`, `unit_max`, `water_min`, `water_max`, `magma_min`, `magma_max`, `track_min`, `track_max`, flags `units`, `water`, `magma`, `citizens`, `resets`, `track`). Linking is the `LinkBuildingToTrigger` job with two mechanisms and trigger refs; the only writer is adventure-mode code, so it is skipped. |
+| Mods | `script-manager.get_active_mods()` returns `{id, name, version, numeric_version, path, vanilla}` from `world.object_loader`; source by path prefix (`mods/` Workshop, `data/installed_mods/`, `data/vanilla/`). `dfhack.internal.listPlugins()`; enabled state from the `enable` command output. |
+
+### 13.2 Decisions
+
+| Question | Decision |
+|---|---|
+| Delivery (13, 14.1, 15) | Channels. The server declares the channel capability and, from a background task, polls `events.poll` every two seconds and emits one `notifications/claude/channel` per ready batch with `meta` `{kind, count, first_seq, last_seq}` and a readable `content` listing each event's kind, text, position, and ids. Goal updates and timer prompts are their own batches (`kind` `goals` and `timer`). The server keeps no buffer beyond the last sequence it forwarded; Claude Code's queue is the only buffer. The `.mcp.json` entry stays as is; the session is started with the development-channels flag documented in the README and `docs/playing.md`. The driver-loop design in 2.4 is replaced by this. |
+| Poll cost | One `events.poll` every two seconds (a few milliseconds of core suspension each). The poll returns only events whose capture timestamp is at least two seconds old, or everything once 50 are queued, so batching needs no Lua timer. |
+| Settings window | Rebuilt with tabs (Permissions, Events, Timer, Goals) and Enter-to-toggle lists; per-row hotkey letters are dropped. |
+| Order of work | Phase number order, 10 to 18, one branch per item. |
+| Tests | Every event kind gets a server test that feeds a recorded Lua batch and checks the channel content Claude receives, plus Lua-side `claude-bridge test` fixtures for event formatting; live checks happen as events occur naturally. Allowlisting `force` is the owner's option for a test session. |
+| Kitchen (10.0) | `kitchen.list` groups in-stock ingredients as the game does (plants, seeds, drinks, other) with `cook` and `brew` allowed flags; `kitchen.set` takes an ingredient row key or a token (`PLANT:MUSHROOM_HELMET_PLUMP`, `SEEDS:...`, `DRINK:...`) and `cook`, `brew` booleans. New `kitchen_write` toggle (Items group); the read is under `stocks`. |
+| Farm plots (10.1) | `farms.list` and `farms.get` (soil report per plot: soil type from the 6.0 material lookup, mud, above or below ground, cavern, biome, and the note that underground soil outside a cavern yields less), crops per season with the plantable list and seed counts. `build.place` gains `farm_plot` with a box (up to 31 by 31); tiles failing the soil-or-mud rule are cut from the extents and reported. `farms.set_crops` writes `plant_id[season]` for a built plot and `seasonal_fertilize`; a crop not on the plantable list is `BAD_REQUEST` with the list. All writes under `build_write`. The autofarm approximation is stated in the tool description. |
+| Chop and gather (10.2) | `dig.designate` kinds `chop` (every tree whose base is in the box or circle, through `markPlant`) and `gather` (every shrub tile). `map.plants` lists trees and shrubs in a box with species, kind, size, dead flag, marked state, capped at 25. `dig.erase` gains the same kinds through `unmarkPlant`. |
+| Squads (11.0) | `military.list`, `military.get`; `military.create` with `name`, `kind` (`melee`: armor with individual melee weapon choice; `crossbow`: crossbow, quiver, leather armor, bolts with combat and training ammo) or `preset` (a `fortress_entity.uniforms` name), using the first vacant military position assignment; `military.rename` sets `alias`; `military.add` and `military.remove` wrap the API; `military.set_leader` is the mod's own (occupant and unit fields for slot 0, assignment `histfig`, position link, as the inverse of `removeFromSquad`'s leader path); `military.disband` removes every member including the leader, clears the assignment, rooms, and ammo links, and erases the squad from `fortress_entity.squads` and `world.squads.all`. Both are verified live against the game's own squad screen before merge. |
+| Orders (11.1) | `military.order` with `kind` `station` (`pos`), `kill` (`unit_ids`), `patrol` (`route_id`), and `cancel`; `military.set_routine` with one of the four routine names; `military.routes` to list waypoint routes and `military.create_route` from a list of points. Orders are written into `squad.orders` with `issuer_hf`, `year`, `year_tick` filled from the fort; the first live test compares a station order to one issued in the game and the branch does not merge until the squad moves. Defend-burrow and per-month schedules are deferred. |
+| Equipment (11.2) | `military.equipment` returns the uniform spec per category, each soldier's worn and assigned items, and ammunition. `military.set_uniform` takes `category`, `item_type` by plain name (`breastplate`, `helm`, `crossbow`), `material_class` (`any`, `metal`, `leather`, `cloth`, `wood`), `exact_matches`, `replace_clothing`, and an optional `position`; `military.set_ammo` takes `item`, `material_class`, `amount`, `combat`, `training`. Never a specific item id. Every write sets `squad.ammo.update` and `plotinfo.equipment.update`. |
+| Dev tools (12) | Tools `dev_spawn_unit(race, caste, x, y, z, nickname, domesticate)`, `dev_create_item(item, material, count, quality, x, y, z)`, `dev_exterminate(target, method, include_friendly, only_visible, limit)` compose the command lines above and call `console.run`, so each needs its command on the allowlist and the `console` toggle. `include_friendly` defaults to false. Guidance in the tool descriptions and the server instructions. |
+| Event kinds (13) | Kinds and sources: `mineral_discovered`, `cavern_discovered`, `adamantine_found`, `artifact_created`, `strange_mood`, `artifact_stolen_or_missing`, `citizen_missing`, `citizen_dead`, `caravan_arrived`, `caravan_leaving`, `diplomat_arrived`, `monster_arrived`, `invaders_arrived`, `season_changed` from announcements; `units_fighting` from `onUnitAttack` deduplicated per unit pair for the batch window; `sparring` the same when both units are fort-controlled, its own kind, off by default; `mood_item_missing` from polling strange-mood jobs the way `notify` does; `ghost_appeared` and `ghost_rested` from a polled ghost set; `artifact_found` from polling artifact items on the map whose tile turns from hidden to revealed; `petition` from polling `plotinfo.petitions`. Each event: `{seq, kind, tick, text, pos, unit_ids, building_id, item_id}`. Defaults on: `mineral_discovered`, `units_fighting`, `petition`. The Lua ring keeps 200 events. |
+| Petitions (13.1) | `petitions.list` with applicant, kind, reason, location type and deity or profession, tier, age, and obligation text; `petitions.answer` with `accept` true or false. The mod's implementation clears `petition_not_accepted` and moves the id from `plotinfo.petitions` to `continuing_agreement_id` on accept, and sets the flag and drops the id on reject; what else the game writes is learned by watching one vanilla accept and one reject with `devel/datamine` before the branch is written. If the game does not honour the writes (the applicant never becomes a resident, or the location obligation never appears), the write ships disabled and goes to the README open issues. |
+| Files (14.0) | `claude-df/` inside the current save (`dfhack.getSavePath()`), created on enable with empty `goals.md` and `plan.md`. `plan.read`, `plan.write` (whole file), `plan.append` (a section), 64 KB cap, under a `plan` toggle (on). `goals.read` under the same toggle. Rule 8 is amended to allow this folder. The live path during play (working folder versus region folder) is the first check of the branch. |
+| Goals window (14.0) | `claude-bridge goals`: a TextArea for goals, a TextArea for the prompt template (default as given, with `{Put Goals Here}` as the placeholder), saved to `goals.md` and the settings file on every change, and a Send hotkey that queues a `goals` batch whose content is the template with the goals substituted. Nothing is sent on edit or close. |
+| Messages (14.2) | `messages.say(text, x, y, z)` under no permission: at most 200 characters, `makeAnnouncement` with `D_DISPLAY` and a general-category type, colour light red, bright. With a position it sets `report.pos` so the alert zooms there on click; the first live test decides whether `zoom_type` must also be set. No pause, no immediate recenter. The icon is the vanilla badge of the chosen category; if the general badge does not stand out the branch picks another category's type whose badge does. The owner's `icon.png` is kept in `mod/assets/` for a later overlay. |
+| Timer (15) | Settings: `mode` (`days`, `month`, `minutes`), `interval`, `prompt`; off by default, 7 days when enabled, default prompt as given. Days and month run on `ticks` repeats; minutes on a `frames` repeat that counts real milliseconds only while unpaused. Every event batch the mod hands out resets the timer. One pending timer prompt at a time. |
+| Traps (16) | `build.place` types `lever`, `pressure_plate`, `cage_trap`, `stone_fall_trap`, `weapon_trap`, `upright_spike`, `catapult`, `ballista`, `trade_depot`, with the input tables above; `pressure_plate` takes the trigger settings as arguments. Lever linking, pulling, and multi-weapon traps are skipped and listed as open issues. Whether a cage trap gets its cage loaded after construction is a live check. |
+| Trade (17.0) | `trade.caravans` (state, civ, days remaining, mood, flags), `trade.depot` (built, accessible, broker requested, anyone may trade, goods at depot and pending), `trade.broker` (who, where, at the depot or not). `trade.request_broker` sets `trader_requested` and, if the game does not queue it, creates the `TradeAtDepot` job the way `markForTrade` creates its job. `trade.bring` marks items by id or by the same filters as `stocks.find`, through `markForTrade`; `trade.unbring` removes the job. `trade.offer` is the mod's own: it validates that the caravan is at the depot and the broker present, computes both sides with `getValue(item, caravan)`, applies the merchant acceptance rule (no loss, the wiki's margin, the caravan's mood), and then first tries to drive the game's own screen (open `main_interface.trade` with the depot and caravan, set `goodflag` selections, press Trade by simulated mouse input) and, if the screen cannot be driven headlessly, performs the exchange itself (ownership and `trader` flags, depot placement, `import_value`, `export_value_total`, exported wealth, caravan mood). Elven and animal ethics are checked before offering. If neither route works live, the feature goes to open issues with the reads and hauling kept. |
+| Diplomats (17.1) | `trade.diplomats` (who is waiting, for whom, the civ, the current agreement and price list from `meeting_events`), `trade.set_requests` writes `sell_requests.priority` per category while a meeting is open or, outside one, stores the list and applies it when the game opens the requests screen. `trade.meet` tries to advance the meeting headlessly (the land-holder choice included); if it cannot, Claude prepares the list and the message tool asks the player to hold the meeting. |
+| Mods (18) | `settings.mods` lists DF mods with id, name, version, source, and DFHack plugins with enabled state; under `settings`. |
+| Permissions | New toggles: `kitchen_write` (Items), `military` and `military_write` (Units), `events` (General), `petitions_write` (Units), `plan` (General), `trade` and `trade_write` (Logistics). No toggle for messages, dev tools (allowlist), or mods. Timer, event kinds, and the goal prompt live on their own tabs. |
+| List caps | 25 by default everywhere, raised per call with `limit` (rule 12). |
+
+### 13.3 Ops by item
+
+| Item | Ops | Tools |
+|---|---|---|
+| 10.0 | `kitchen.list`, `kitchen.set` | `list_kitchen`, `set_kitchen` |
+| 10.1 | `farms.list`, `farms.get`, `farms.set_crops`, `build.place(type=farm_plot)` | `list_farms`, `get_farm`, `set_farm_crops`, `place_furniture` |
+| 10.2 | `map.plants`, `dig.designate` and `dig.erase` kinds `chop`, `gather` | `list_plants`, `designate_dig`, `erase_designations` |
+| 11.0 | `military.list`, `military.get`, `military.create`, `military.rename`, `military.add`, `military.remove`, `military.set_leader`, `military.disband` | `list_squads`, `get_squad`, `create_squad`, `rename_squad`, `add_to_squad`, `remove_from_squad`, `set_squad_leader`, `disband_squad` |
+| 11.1 | `military.order`, `military.set_routine`, `military.routes`, `military.create_route` | `order_squad`, `set_squad_routine`, `list_routes`, `create_route` |
+| 11.2 | `military.equipment`, `military.set_uniform`, `military.set_ammo` | `get_squad_equipment`, `set_squad_uniform`, `set_squad_ammo` |
+| 12 | `console.run` | `dev_spawn_unit`, `dev_create_item`, `dev_exterminate` |
+| 13 | `events.poll`, `events.kinds` | channel notifications; `list_event_kinds` |
+| 13.1 | `petitions.list`, `petitions.answer` | `list_petitions`, `answer_petition` |
+| 14.0 | `plan.read`, `plan.write`, `plan.append`, `goals.read` | `read_plan`, `write_plan`, `append_plan`, `read_goals` |
+| 14.2 | `messages.say` | `send_message` |
+| 15 | `events.poll` carries `timer` batches; settings only | none |
+| 16 | `build.place` new types | `place_furniture` |
+| 17.0 | `trade.caravans`, `trade.depot`, `trade.broker`, `trade.request_broker`, `trade.bring`, `trade.unbring`, `trade.offer` | `list_caravans`, `get_trade_depot`, `get_broker`, `request_broker`, `bring_to_depot`, `cancel_bring`, `offer_trade` |
+| 17.1 | `trade.diplomats`, `trade.set_requests`, `trade.meet` | `list_diplomats`, `set_trade_requests`, `hold_meeting` |
+| 18 | `settings.mods` | `list_mods` |
+
+Channel content for an event batch: a header line with the fort name, date, and count, then one line per event: `[kind] text (x,y,z) unit 123`. A goals batch is the template with the goals substituted. A timer batch is the prompt text.
+
+### 13.4 In-game checks before or during implementation
+
+Recorded in `docs/decisions/0006-phases-10-18.md` as they are done.
+
+1. Channels: the org setting is on, the development flag loads the server, a notification sent before any tool call reaches Claude, and an idle session starts a turn on it.
+2. `dfhack.getSavePath()` during play, and that files written there survive a save.
+3. A vanilla squad creation, leader assignment, and disband watched with `devel/datamine` (assignment, links, routine index, symbol); a vanilla station order compared with the mod's.
+4. A vanilla petition accept and reject watched the same way.
+5. `markPlant` on a mushroom-cap tree; `GatherPlants` jobs carry `pos`.
+6. `plant_id` writes on a plot take effect; the game's plantable list versus the autofarm rule on a surface plot and an underground plot.
+7. `modtools/create-unit` and `create-item` work on 53.16 from the remote console.
+8. `makeAnnouncement` with `D_DISPLAY`: the badge shown, click-to-zoom with and without `zoom_type`, text colour in the box.
+9. Cage trap and stone-fall trap built through the bridge get their loading jobs.
+10. `trader_requested` alone queues `TradeAtDepot`; the trade screen can be opened and its Trade button pressed headlessly; the diplomacy screen likewise.
+11. The announcement types for a ghost rising, a ghost put to rest, a corpse found, and a siege, read from `world.status.reports` when they occur.
+
+### 13.5 Delivery
+
+One branch per item from `main`, in phase order, each verified live and updating `docs/protocol.md`, the README progress table, and the smoke test: `mod/kitchen` (10.0), `mod/farms` (10.1), `mod/plants` (10.2), `mod/squads` (11.0), `mod/squad-orders` (11.1), `mod/squad-equipment` (11.2), `server/dev-tools` (12), `mod/events` (13, with the server's channel support and `docs/playing.md`), `mod/petitions` (13.1), `mod/plan-goals` (14.0), `mod/messages` (14.2), `mod/timer` (15), `mod/traps` (16), `mod/trade` (17.0), `mod/diplomats` (17.1), `mod/mods` (18). 14.1 is satisfied by the 13 branch and gets a README row. Protocol version bumps on each, starting at 11.
+
+---
+
 ## References (checked 2026-10-12)
 
 - DFHack releases: https://github.com/DFHack/dfhack/releases (latest 53.16-r2)
@@ -732,4 +886,10 @@ Delivered 2026-10-14 in that order as PRs #29 to #35, protocol versions 4 to 10.
 - df-structures buildings, zone settings, construction types, job item flags, civzone_type (checked 2026-10-14): https://github.com/DFHack/df-structures/blob/master/df.building.xml, https://github.com/DFHack/df-structures/blob/master/df.d_basics.xml
 - DF wiki construction, bridge, stairs, door, activity zone, pasture, archery range pages (checked 2026-10-14): https://dwarffortresswiki.org/index.php/Construction and siblings
 - MCP Python SDK: https://github.com/modelcontextprotocol/python-sdk (mcp 2.3.0, 2026-10-02)
+- Claude Code channels (checked 2026-10-15): https://code.claude.com/docs/en/channels and https://code.claude.com/docs/en/channels-reference ; hooks: https://code.claude.com/docs/en/hooks ; scheduled tasks: https://code.claude.com/docs/en/scheduled-tasks
+- DFHack Lua API as shipped with 53.16-r2 (`hack/docs/docs/dev/Lua API.txt`), the kitchen, military, designations, items, gui, textures, persistent, and widgets sections (checked 2026-10-15): https://docs.dfhack.org/en/stable/docs/dev/Lua%20API.html
+- DFHack Military, Items, Gui, EventManager, Persistence, Designations modules and the autofarm and createitem plugins on master (checked 2026-10-15): https://github.com/DFHack/dfhack/tree/master/library/modules and https://github.com/DFHack/dfhack/tree/master/plugins
+- DFHack scripts shipped with 53.16-r2 and on master (checked 2026-10-15): quickfort build and dig, caravan (movegoods, trade, tradeagreement, common), notify, gui/journal, gui/petitions, list-agreements, ban-cooking, fix/archery-practice, lever, gui/advfort, exterminate, spawnunit, modtools/create-unit, modtools/create-item: https://github.com/DFHack/scripts
+- df-structures master as of 2026-10-10 (checked 2026-10-15): `df.plotinfo.xml`, `df.squad.xml`, `df.agreement.xml`, `df.announcement.xml`, `df.d_init.xml`, `df.d_interface.xml`, `df.building.xml`, `df.veg.xml`, `df.world.xml`, `df.g_src.basics.xml` (announcement types): https://github.com/DFHack/df-structures
+- DF wiki Farming, Kitchen, Tree, Squad, Ammunition, Trap, Trade depot, Trading, Caravan, Broker, Outpost liaison, Baron, Petition, Resident, Guildhall, Announcement, Strange mood, Ghost pages (checked 2026-10-15): https://dwarffortresswiki.org/
 - Dwarf Fortress wiki: https://dwarffortresswiki.org/
