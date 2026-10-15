@@ -22,6 +22,7 @@ from df_mcp.tools import (
     map,
     nobles,
     orders,
+    plants,
     stockpiles,
     stocks,
     time,
@@ -51,7 +52,8 @@ first, then `get_wagon`, `get_tile`, `get_area_map`, and `find_build_space`. `pl
 ingredients in stock may be cooked or brewed; `set_kitchen` changes that (needs `kitchen_write`).
 Digging: `find_exposed_walls` finds reachable rock, `list_designations` shows existing orders,
 `plan_dig` previews a box, and with `dig_write` `designate_dig` places mining, staircase,
-channel, and ramp orders and `erase_designations` removes them.
+channel, ramp, chop, and gather orders and `erase_designations` removes them; `list_plants`
+shows the trees and shrubs in a box.
 `run_console_command` only runs commands the player has allowlisted in-game. Every call pauses
 the game briefly, so batch what you can.
 """
@@ -68,6 +70,7 @@ TOOL_MODULES = (
     build,
     stockpiles,
     dig,
+    plants,
     construct,
     furniture,
     farms,

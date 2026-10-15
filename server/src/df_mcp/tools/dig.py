@@ -9,7 +9,17 @@ from df_mcp.bridge import Bridge
 from df_mcp.tools import call
 from df_mcp.tools.core import READ_ONLY, WRITE_SAFE
 
-KINDS = ("mine", "stairs", "channel", "ramp", "remove_stairs", "smooth", "engrave")
+KINDS = (
+    "mine",
+    "stairs",
+    "channel",
+    "ramp",
+    "remove_stairs",
+    "smooth",
+    "engrave",
+    "chop",
+    "gather",
+)
 ERASE_KINDS = (
     "mine",
     "up_stair",
@@ -19,6 +29,8 @@ ERASE_KINDS = (
     "ramp",
     "smooth",
     "engrave",
+    "chop",
+    "gather",
 )
 
 ERASE = ToolAnnotations(
@@ -32,7 +44,9 @@ BOX_DOC = """The box is two corners in any order, every corner inside the map, a
         box makes a stair column); "channel" digs the floor away, leaving a ramp below;
         "ramp" carves a ramp out of a wall; "remove_stairs" removes carved stairs and ramps;
         "smooth" smooths natural rock walls and floors (not soil, not constructions, not
-        hidden rock); "engrave" engraves tiles that are already smooth.
+        hidden rock); "engrave" engraves tiles that are already smooth; "chop" marks every
+        tree whose base tile is in the box for felling (saplings are skipped); "gather" marks
+        every living shrub in the box for herbalists. `list_plants` shows what is there.
         Tiles that already carry an order or a job are skipped, never overwritten, as are
         constructions, trees, buildings, and the map edge. Unrevealed rock is designated,
         which is how exploratory mining works. Instead of a box, a filled circle on one
@@ -148,8 +162,9 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         x1: int, y1: int, z1: int, x2: int, y2: int, z2: int, kind: str | None = None
     ) -> dict[str, Any]:
         """Remove dig, stair, channel, ramp, smooth, and engrave orders in a box, cancelling
-        any queued jobs for them. Needs `dig_write`. `kind` limits it to one of mine,
-        up_stair, down_stair, up_down_stair, channel, ramp, smooth, engrave. Already dug
+        any queued jobs for them, and chop and gather orders on trees and shrubs. Needs
+        `dig_write`. `kind` limits it to one of mine, up_stair, down_stair, up_down_stair,
+        channel, ramp, smooth, engrave, chop, gather. Already dug
         tiles are not changed. Check `list_designations` first so a staircase is not erased
         by accident.
         """

@@ -49,6 +49,7 @@ def test_server_registers_expected_tools():
         "find_build_space",
         "find_exposed_walls",
         "list_designations",
+        "list_plants",
         "plan_dig",
         "designate_dig",
         "erase_designations",
