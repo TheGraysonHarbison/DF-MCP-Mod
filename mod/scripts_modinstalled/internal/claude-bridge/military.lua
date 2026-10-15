@@ -1028,6 +1028,294 @@ local function create_route(args)
     return {id = route_id, name = name, points = ids, count = #ids}
 end
 
+
+----------------------------------------------------------------------------------------------
+-- equipment (11.2): what each slot asks for, what each soldier carries, and ammunition.
+
+-- Item definition vectors per uniform category, and the material class words.
+local CATEGORY_DEFS = {
+    body = {'armor', 'ARMOR'}, head = {'helms', 'HELM'}, pants = {'pants', 'PANTS'},
+    gloves = {'gloves', 'GLOVES'}, shoes = {'shoes', 'SHOES'}, shield = {'shields', 'SHIELD'},
+    weapon = {'weapons', 'WEAPON'},
+}
+MATERIAL_CLASSES = {'any', 'metal', 'leather', 'cloth', 'wood', 'bone', 'shell'}
+
+local function category_index(name)
+    for i, cat in ipairs(UNIFORM_CATEGORIES) do
+        if cat == name then return i - 1 end
+    end
+    return nil
+end
+
+-- Resolve "breastplate", "iron helm" (material words are not item names), "any armor",
+-- "crossbow", "melee", "ranged" for a category into item_type, subtype, choice flags, def.
+local function resolve_item(category, name)
+    local defs_name, type_token = CATEGORY_DEFS[category][1], CATEGORY_DEFS[category][2]
+    local item_type = df.item_type[type_token]
+    local wanted = name:lower():gsub('^%s+', ''):gsub('%s+$', '')
+    if category == 'weapon' then
+        if wanted == 'melee' or wanted == 'individual melee' then return item_type, -1, 'melee', nil end
+        if wanted == 'ranged' or wanted == 'individual ranged' then return item_type, -1, 'ranged', nil end
+        if wanted == 'any' or wanted == 'individual' or wanted == 'individual choice' then return item_type, -1, 'any', nil end
+    end
+    if wanted == 'any' or wanted == ('any ' .. category) or wanted == ('any ' .. type_token:lower()) then
+        return item_type, -1, nil, nil
+    end
+    local singular = wanted:gsub('s$', '')
+    local found = nil
+    pcall(function()
+        for _, def in ipairs(df.global.world.raws.itemdefs[defs_name]) do
+            local n, np, id = def.name:lower(), def.name_plural:lower(), def.id:lower()
+            if n == wanted or np == wanted or n == singular or id == wanted:upper():gsub(' ', '_'):lower() then
+                found = def
+                return
+            end
+        end
+        for _, def in ipairs(df.global.world.raws.itemdefs[defs_name]) do
+            if def.name:lower():find(wanted, 1, true) then found = def return end
+        end
+    end)
+    if not found then return nil end
+    return item_type, found.subtype, nil, found
+end
+
+local function known_items(category)
+    local names, seen = {}, {}
+    pcall(function()
+        for _, def in ipairs(df.global.world.raws.itemdefs[CATEGORY_DEFS[category][1]]) do
+            if not seen[def.name] then
+                seen[def.name] = true
+                table.insert(names, def.name)
+            end
+        end
+    end)
+    table.sort(names)
+    return names
+end
+
+local function material_class_for(category, word, def)
+    local w = word and tostring(word):lower() or 'any'
+    if w == 'any' or w == 'none' then return df.entity_material_category.None end
+    if w == 'metal' then
+        if category == 'weapon' then
+            local ranged = def and safe(function() return def.ranged_ammo ~= '' end)
+            return ranged and df.entity_material_category.WeaponRanged or df.entity_material_category.WeaponMelee
+        end
+        return df.entity_material_category.Armor
+    end
+    if w == 'leather' then return df.entity_material_category.Leather end
+    if w == 'cloth' then return df.entity_material_category.Cloth end
+    if w == 'wood' then return df.entity_material_category.Wood end
+    if w == 'bone' then return df.entity_material_category.Bone end
+    if w == 'shell' then return df.entity_material_category.Shell end
+    return nil
+end
+
+local function item_desc(id)
+    local item = df.item.find(id)
+    if not item then return {id = id} end
+    return {id = id, description = safe(dfhack.items.getReadableDescription, item)}
+end
+
+local function soldier_items(unit)
+    local out = {carried = {}, missing = {}, mode = nil}
+    pcall(function()
+        out.mode = enum_name(df.unit_uniform_mode_type, unit.uniform.cur_uniform)
+        local mode = unit.uniform.cur_uniform
+        if mode >= 0 then
+            for _, id in ipairs(unit.uniform.uniforms[mode]) do
+                if #out.carried < LIST_LIMIT then table.insert(out.carried, item_desc(id)) end
+            end
+        end
+        for _, id in ipairs(unit.uniform.uniform_pickup) do
+            if #out.missing < LIST_LIMIT then table.insert(out.missing, item_desc(id)) end
+        end
+    end)
+    out.worn = {}
+    pcall(function()
+        for _, entry in ipairs(unit.inventory) do
+            local mode = enum_name(df.unit_inventory_item.T_mode, entry.mode)
+            if (mode == 'Worn' or mode == 'Weapon') and #out.worn < LIST_LIMIT then
+                local d = item_desc(entry.item.id)
+                d.mode = mode
+                table.insert(out.worn, d)
+            end
+        end
+    end)
+    return out
+end
+
+local function equipment(args)
+    local squad, err = squad_for(args)
+    if not squad then return err end
+    local out = summary(squad)
+    out.positions = {}
+    for i, position in ipairs(squad.positions) do
+        local who = histfig_unit(position.occupant)
+        local row = {
+            slot = i - 1, leader = i == 1, unit = who, uniform = uniform_of(position),
+            exact_matches = safe(function() return position.equipment.flags.exact_matches end) == true,
+            replace_clothing = safe(function() return position.equipment.flags.replace_clothing end) == true,
+            assigned_items = {},
+        }
+        pcall(function()
+            for _, id in ipairs(position.equipment.assigned_items) do
+                if #row.assigned_items < LIST_LIMIT then table.insert(row.assigned_items, item_desc(id)) end
+            end
+        end)
+        if who and who.id then
+            local unit = df.unit.find(who.id)
+            if unit then row.soldier = soldier_items(unit) end
+        end
+        table.insert(out.positions, row)
+    end
+    out.ammunition = ammo_of(squad)
+    out.material_classes = MATERIAL_CLASSES
+    out.note = 'uniform is what each slot asks for; soldier.carried are the items the game assigned '
+        .. 'for the current uniform mode, soldier.missing the ones not yet picked up'
+    return out
+end
+
+local function set_uniform(args)
+    local squad, err = squad_for(args)
+    if not squad then return err end
+    local category = args.category ~= nil and tostring(args.category):lower() or nil
+    local cat_index = category and category_index(category)
+    if not cat_index then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"category" must be one of ' .. table.concat(UNIFORM_CATEGORIES, ', '))
+    end
+    local positions = {}
+    if args.position ~= nil then
+        local slot = tonumber(args.position)
+        if not slot or slot < 0 or slot >= #squad.positions then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST, ('"position" must be 0-%d'):format(#squad.positions - 1))
+        end
+        positions = {squad.positions[math.floor(slot)]}
+    else
+        for _, position in ipairs(squad.positions) do table.insert(positions, position) end
+    end
+    local clear = args.clear == true
+    local item = args.item
+    if item ~= nil and type(item) ~= 'string' then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"item" must be a string')
+    end
+    if item == nil and not clear and args.exact_matches == nil and args.replace_clothing == nil then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, 'pass "item" (with optional "material_class"), "clear", or a flag')
+    end
+    local spec = nil
+    if item then
+        local item_type, subtype, choice, def = resolve_item(category, item)
+        if not item_type then
+            local names = known_items(category)
+            local shown = {}
+            for i = 1, math.min(#names, 30) do shown[i] = names[i] end
+            return rpc.error_result(rpc.ERR_NOT_FOUND,
+                ('no %s item called "%s"; try "any", %s'):format(category, item, table.concat(shown, ', ')))
+        end
+        local mat = material_class_for(category, args.material_class, def)
+        if mat == nil then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST, '"material_class" must be one of ' .. table.concat(MATERIAL_CLASSES, ', '))
+        end
+        spec = {item_type = item_type, subtype = subtype, choice = choice, material_class = mat,
+                name = def and def.name or (choice and ('individual ' .. choice) or ('any ' .. category))}
+    end
+    local written = 0
+    for _, position in ipairs(positions) do
+        local specs = position.equipment.uniform[cat_index]
+        if clear or (spec and args.add ~= true) then
+            for j = #specs - 1, 0, -1 do
+                local old = specs[j]
+                specs:erase(j)
+                pcall(function() old:delete() end)
+            end
+        end
+        if spec then
+            specs:insert('#', {
+                new = df.squad_uniform_spec, item = -1,
+                item_type = spec.item_type, item_subtype = spec.subtype,
+                material_class = spec.material_class, mattype = -1, matindex = -1, color = -1,
+            })
+            local s = specs[#specs - 1]
+            if spec.choice then s.indiv_choice[spec.choice] = true end
+            written = written + 1
+        end
+        if args.exact_matches ~= nil then position.equipment.flags.exact_matches = args.exact_matches == true end
+        if args.replace_clothing ~= nil then position.equipment.flags.replace_clothing = args.replace_clothing == true end
+    end
+    touch_equipment(squad)
+    local out = summary(squad)
+    out.category = category
+    out.positions_changed = #positions
+    out.specs_written = written
+    out.spec = spec and {item = spec.name, material_class = enum_name(df.entity_material_category, spec.material_class)} or nil
+    out.uniform = uniform_of(positions[1])
+    return out
+end
+
+local function set_ammo(args)
+    local squad, err = squad_for(args)
+    if not squad then return err end
+    local clear = args.clear == true
+    if args.item == nil and not clear then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, 'pass "item" (bolts, arrows, ...) with "amount", or "clear"')
+    end
+    local spec = nil
+    if args.item ~= nil then
+        local wanted = tostring(args.item):lower()
+        local def = nil
+        pcall(function()
+            for _, d in ipairs(df.global.world.raws.itemdefs.ammo) do
+                if d.name:lower() == wanted or d.name_plural:lower() == wanted or d.id:lower() == wanted then def = d return end
+            end
+        end)
+        if not def then
+            local names, seen = {}, {}
+            pcall(function()
+                for _, d in ipairs(df.global.world.raws.itemdefs.ammo) do
+                    if not seen[d.name_plural] then
+                        seen[d.name_plural] = true
+                        table.insert(names, d.name_plural)
+                    end
+                end
+            end)
+            return rpc.error_result(rpc.ERR_NOT_FOUND, ('no ammunition called "%s"; known: %s'):format(args.item, table.concat(names, ', ')))
+        end
+        local amount = tonumber(args.amount) or 100
+        if amount < 1 then return rpc.error_result(rpc.ERR_BAD_REQUEST, '"amount" must be positive') end
+        local mat = df.entity_material_category.None
+        local w = args.material_class and tostring(args.material_class):lower() or 'any'
+        if w == 'metal' then mat = df.entity_material_category.AmmoMetal
+        elseif w == 'bone' then mat = df.entity_material_category.Bone
+        elseif w == 'wood' then mat = df.entity_material_category.Wood
+        elseif w ~= 'any' and w ~= 'none' then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST, '"material_class" for ammunition must be any, metal, wood, or bone')
+        end
+        spec = {def = def, amount = math.floor(amount), mat = mat,
+                combat = args.combat ~= false, training = args.training ~= false}
+    end
+    if clear or (spec and args.add ~= true) then
+        local list = squad.ammo.ammunition
+        for j = #list - 1, 0, -1 do
+            local old = list[j]
+            list:erase(j)
+            pcall(function() old:delete() end)
+        end
+    end
+    if spec then
+        squad.ammo.ammunition:insert('#', {
+            new = df.squad_ammo_spec, item_type = df.item_type.AMMO, item_subtype = spec.def.subtype,
+            material_class = spec.mat, mattype = -1, matindex = -1, amount = spec.amount,
+        })
+        local s = squad.ammo.ammunition[#squad.ammo.ammunition - 1]
+        s.flags.use_combat = spec.combat
+        s.flags.use_training = spec.training
+    end
+    touch_equipment(squad)
+    local out = summary(squad)
+    out.ammunition = ammo_of(squad)
+    return out
+end
+
 function ops()
     return {
         ['military.list'] = {namespace = 'military', handler = list, needs_map = true},
@@ -1040,6 +1328,9 @@ function ops()
         ['military.set_leader'] = {namespace = 'military_write', handler = set_leader, needs_map = true},
         ['military.disband'] = {namespace = 'military_write', handler = disband, needs_map = true},
         ['military.order'] = {namespace = 'military_write', handler = order, needs_map = true},
+        ['military.equipment'] = {namespace = 'military', handler = equipment, needs_map = true},
+        ['military.set_uniform'] = {namespace = 'military_write', handler = set_uniform, needs_map = true},
+        ['military.set_ammo'] = {namespace = 'military_write', handler = set_ammo, needs_map = true},
         ['military.set_routine'] = {namespace = 'military_write', handler = set_routine, needs_map = true},
         ['military.routes'] = {namespace = 'military', handler = routes, needs_map = true},
         ['military.create_route'] = {namespace = 'military_write', handler = create_route, needs_map = true},
