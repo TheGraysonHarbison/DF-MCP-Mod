@@ -8,15 +8,17 @@
 
 local rpc = reqscript('internal/claude-bridge/rpc')
 local map = reqscript('internal/claude-bridge/map')
+local plants = reqscript('internal/claude-bridge/plants')
 
 local M = dfhack.maps
 
-KINDS = {'mine', 'stairs', 'channel', 'ramp', 'remove_stairs', 'smooth', 'engrave'}
+KINDS = {'mine', 'stairs', 'channel', 'ramp', 'remove_stairs', 'smooth', 'engrave', 'chop', 'gather'}
+PLANT_KINDS = {chop = true, gather = true}
 SMOOTH_KINDS = {smooth = 1, engrave = 2}
 -- Tiletype materials that can be smoothed: natural hard rock and ice (quickfort's list).
 HARD = {STONE = true, MINERAL = true, LAVA_STONE = true, FEATURE = true, FROZEN_LIQUID = true}
 ERASE_KINDS = {'mine', 'up_stair', 'down_stair', 'up_down_stair', 'channel', 'ramp',
-               'smooth', 'engrave'}
+               'smooth', 'engrave', 'chop', 'gather'}
 SKIPPED_LIMIT = 25
 MAX_RADIUS = 31
 
@@ -203,6 +205,9 @@ local function run_designate(args, apply)
         box, berr = map.parse_box(args)
     end
     if berr then return berr end
+    if PLANT_KINDS[kind] then
+        return plants.designate(box, inside, kind, apply)
+    end
     local levels = box.z2 - box.z1 + 1
     if kind == 'stairs' and levels < 2 then
         return rpc.error_result(rpc.ERR_BAD_REQUEST,
@@ -305,6 +310,11 @@ local function erase(args)
     if err then return err end
     local box, berr = map.parse_box(args)
     if berr then return berr end
+    if PLANT_KINDS[kind] then
+        local cleared = plants.erase(box, kind)
+        return {box = box, kind = kind, cleared = cleared, jobs_removed = 0, counts = {[kind] = cleared},
+                note = (kind == 'chop' and 'tree' or 'shrub') .. ' orders cleared with their queued jobs'}
+    end
     local jobs = map.designation_jobs()
     local cleared, jobs_removed, counts = 0, 0, {}
     local touched = {}

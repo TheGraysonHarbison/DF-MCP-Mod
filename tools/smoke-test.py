@@ -51,6 +51,7 @@ def main() -> int:
         ("build.materials", {"limit": 5}),
         ("kitchen.list", {"limit": 5}),
         ("farms.list", {"limit": 5}),
+        ("map.plants", {"x1": 0, "y1": 0, "z1": 0, "x2": 10, "y2": 10, "z2": 0, "limit": 5}),
         ("build.plan_construction", {"kind": "wall", "line": {"x1": 2, "y1": 2, "x2": 6, "y2": 2, "z": 0}}),
         ("build.plan_furniture", {"type": "bed", "x": 2, "y": 2, "z": 0}),
         ("build.list", {"limit": 5}),

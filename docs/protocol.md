@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **12**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **13**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -63,7 +63,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `zones` | on | `zones.list`, `zones.get` |
 | `zones_write` | off | `zones.create`, `zones.edit`, `zones.assign`, `zones.unassign`, `zones.delete` |
 | `dig_write` | off | `dig.designate`, `dig.erase` (`dig.plan` is under `map`) |
-| `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space` |
+| `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space`, `map.exposed_walls`, `map.designations`, `map.plants` |
 | `build_write` | off | `build.workshop`, `build.remove`, `build.construct`, `build.place`, `build.suspend`, `build.remove_constructions`, `farms.set_crops` |
 | `stockpiles` | on | `stockpiles.list`, `stockpiles.get`, `stockpiles.presets` |
 | `stockpiles_write` | off | `stockpiles.create`, `stockpiles.configure`, `stockpiles.rename`, `stockpiles.delete` |
@@ -379,11 +379,19 @@ Result: `z`, `scanned` `{x1, y1, x2, y2}`, `total_tiles`, `total_segments`, `cou
 
 ### `map.designations`
 
-Args: `x1`, `y1`, `z1`, `x2`, `y2`, `z2` (two corners in any order; every corner must be inside the map; at most 64 by 64 tiles per level and 32 levels), `kind` (optional: `mine`, `up_stair`, `down_stair`, `up_down_stair`, `channel`, `ramp`, `smooth`, `engrave`), `assigned_only` (default false), `limit` (default 25).
+Args: `x1`, `y1`, `z1`, `x2`, `y2`, `z2` (two corners in any order; every corner must be inside the map; at most 64 by 64 tiles per level and 32 levels), `kind` (optional: `chop`, `gather`, `mine`, `up_stair`, `down_stair`, `up_down_stair`, `channel`, `ramp`, `smooth`, `engrave`), `assigned_only` (default false), `limit` (default 25). A `Default` dig flag on a tree tile reads as `chop` and on a shrub tile as `gather`; `FellTree` and `GatherPlants` jobs map to the same kinds.
 
 Two sources are merged (verified live 2026-10-13). Pending orders are tiles whose `tile_designation.dig` (`Default` is `mine`) or `tile_designation.smooth` (1 smooth, 2 engrave) is set. Taken orders are the entries of `world.jobs.list` whose job type has the `is_designation` attribute (`Dig`, `CarveUpwardStaircase`, `CarveDownwardStaircase`, `CarveUpDownStaircase`, `DigChannel`, `CarveRamp`, `RemoveStairs`, `SmoothWall`, `SmoothFloor`, `DetailWall`, `DetailFloor`, `CarveFortification`), keyed by their `pos`: when the game creates such a job it clears the tile's flag, so a taken order is only visible in the job list, and it reappears as a tile flag if the job is cancelled. The game queues jobs ahead of the miners, so a taken order may have no worker yet; `assigned` means `dfhack.job.getWorker` returned a dwarf.
 
 Result: `box`, `total`, `count`, `truncated`, `counts` (per kind), `taken` (rows with a job), `assigned` (rows with a worker), `designations` `[{pos, kind, state (pending or taken), marker (blueprint mode), hidden, assigned, job {id, type, name, kind, pos, worker {id, name}}}]`, `note`.
+
+### `map.plants`
+
+Args: a box (`x1`..`z2`, any levels) or `circle` `{x, y, z, radius}`, `kind` (optional: `tree`, `shrub`, `sapling`), `query` (species substring), `marked_only` (default false), `limit` (default 25). Needs a map.
+
+Walks `world.plants.all` and keeps plants whose base position is in the shape. A plant with a `tree_info` is a tree; a tree species without one is a sapling; the rest are shrubs. `marked` comes from `dfhack.designations.isPlantMarked` (a `Default` dig flag on the plant's designation tile, or a `FellTree` or `GatherPlants` job there).
+
+Result: `box`, `shape`, `total`, `count`, `truncated`, `counts` (per kind), `species` (name to count), `plants` `[{pos, kind, species, dead, marked, size {width, depth, height} (trees), designation_tile (trees)}]`, `note`. Verified in-game 2026-10-15.
 
 ### Digging
 
@@ -401,11 +409,13 @@ Result: `kind`, `box` (for a circle: its bounding box plus `center` and `radius`
 
 Args and result as `dig.plan`. Needs a map and `dig_write`. Sets `tile_designation.dig` on each accepted tile, sets `designated` on every touched map block, then calls `dfhack.job.checkDesignationsNow()`. No priority is written; the game's default (4) applies.
 
+Kinds `chop` and `gather` work on plants instead of tiles: every tree (`chop`) or living shrub (`gather`) whose base position is in the box or circle is marked with `dfhack.designations.markPlant` (the same `Default` dig flag, placed on the tree's base trunk tile or the shrub's tile, with the block flagged), after `canMarkPlant` agrees; saplings, dead shrubs, and already marked plants are skipped with reasons. The result carries `plants` (the first 25 marked, with species and the designation tile) and `designations_api` (whether the DFHack module was present; without it the base tile is flagged directly). `by_level` is empty for these kinds. Verified in-game 2026-10-15.
+
 ### `dig.erase`
 
-Args: the box, `kind` (optional: `mine`, `up_stair`, `down_stair`, `up_down_stair`, `channel`, `ramp`, `smooth`, `engrave`). Needs a map and `dig_write`.
+Args: the box, `kind` (optional: `mine`, `up_stair`, `down_stair`, `up_down_stair`, `channel`, `ramp`, `smooth`, `engrave`, `chop`, `gather`). Needs a map and `dig_write`.
 
-Clears the dig and smooth flags and the blueprint marker on matching tiles, and removes the queued designation job for each with `dfhack.job.removeJob`. Dug tiles stay dug.
+Clears the dig and smooth flags and the blueprint marker on matching tiles, and removes the queued designation job for each with `dfhack.job.removeJob`. Dug tiles stay dug. `chop` and `gather` unmark every marked tree or shrub in the box through `dfhack.designations.unmarkPlant` (which also removes the queued job); `cleared` counts plants and `jobs_removed` is 0 for them.
 
 Result: `box`, `kind`, `cleared`, `jobs_removed`, `counts` (per kind), `note`.
 

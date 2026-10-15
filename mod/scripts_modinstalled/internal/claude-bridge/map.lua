@@ -20,7 +20,7 @@ DIG_GLYPHS = {Default = 'd', UpStair = 'u', DownStair = 'j', UpDownStair = 'i',
               Channel = 'h', Ramp = 'r'}
 DIG_NAMES = {Default = 'mine', UpStair = 'up_stair', DownStair = 'down_stair',
              UpDownStair = 'up_down_stair', Channel = 'channel', Ramp = 'ramp'}
-DESIGNATION_KINDS = {'mine', 'up_stair', 'down_stair', 'up_down_stair', 'channel', 'ramp',
+DESIGNATION_KINDS = {'chop', 'gather', 'mine', 'up_stair', 'down_stair', 'up_down_stair', 'channel', 'ramp',
                      'smooth', 'engrave'}
 MAX_BOX_SIDE = 64
 MAX_BOX_LEVELS = 32
@@ -895,6 +895,7 @@ JOB_KINDS = {
     CarveUpDownStaircase = 'up_down_stair', DigChannel = 'channel', CarveRamp = 'ramp',
     RemoveStairs = 'mine', SmoothWall = 'smooth', SmoothFloor = 'smooth',
     DetailWall = 'engrave', DetailFloor = 'engrave', CarveFortification = 'smooth',
+    FellTree = 'chop', GatherPlants = 'gather',
 }
 
 -- Designation jobs in the world keyed by "x,y,z": {id, type, name, kind, worker}.
@@ -968,6 +969,12 @@ local function designations(args)
                 local p = {x = x, y = y, z = z}
                 local des, occ = designation_at(p)
                 local kind = des and designation_kind(des)
+                if kind == 'mine' then
+                    -- The same flag on a tree or shrub tile means fell or gather.
+                    local info = tile_shape(M.getTileType(p)) or {}
+                    if info.material == 'TREE' then kind = 'chop'
+                    elseif info.shape == 'SHRUB' then kind = 'gather' end
+                end
                 if kind then
                     local key = x .. ',' .. y .. ',' .. z
                     flagged[key] = true

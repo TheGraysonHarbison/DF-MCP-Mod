@@ -11,6 +11,8 @@ from df_mcp.tools.core import READ_ONLY
 MAX_AREA = 64
 VIEWS = ("shape", "material", "designations")
 DESIGNATION_KINDS = (
+    "chop",
+    "gather",
     "mine",
     "up_stair",
     "down_stair",
@@ -135,8 +137,9 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
 
         Check this before designating so new orders do not land on tiles that already have
         one. The box is two corners in any order, at most 64 by 64 tiles per level and 32
-        levels. `kind` filters to one of mine, up_stair, down_stair, up_down_stair, channel,
-        ramp, smooth, engrave. Each row has `pos`, `kind`, `state` ("pending": still on the
+        levels. `kind` filters to one of chop, gather, mine, up_stair, down_stair,
+        up_down_stair, channel, ramp, smooth, engrave. Each row has `pos`, `kind`, `state`
+        ("pending": still on the
         tile; "taken": the game has made a job for it), `marker` (blueprint mode, not dug
         until unmarked), `hidden`, `assigned` (a dwarf holds the job) and `job` `{id, type,
         name, worker {id, name}}`. `counts` per kind, `taken` and `assigned` totals,
