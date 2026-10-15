@@ -352,6 +352,7 @@ These are the rules the repo's `CLAUDE.md` carries. Kept here so the rationale s
 10. When a feature lands, update the README progress section in the same PR. The README is for readers; this file is for builders.
 11. Confirm before anything that affects a running game beyond reads: pausing, running console commands, or changing settings during a test session.
 12. Any list that can grow large is capped at 25 entries by default, with a per-call `limit` to raise it and a `truncated` marker in the response. Reason: one call pauses the game and lands in Claude's context; an uncapped inventory or memory list can be thousands of rows.
+13. Never write to texture or render cache fields on game structs (`*_texpos`, `texture_*`, anything df-structures marks transient or cached). Reason: resetting `squad.solid_texpos` and `blended_texpos` to make a new badge redraw crashed the game on 2026-10-15 (owner's rule). Change the data fields and let the game redraw.
 
 ---
 
