@@ -94,6 +94,8 @@ def test_server_registers_expected_tools():
         "rename_stockpile",
         "delete_stockpile",
         "run_console_command",
+        "list_event_kinds",
+        "poll_events",
         "dev_create_item",
         "dev_exterminate",
     }

@@ -14,18 +14,23 @@ Usage::
     claude-bridge [status]
     claude-bridge settings
     claude-bridge perm <namespace> on|off
+    claude-bridge event <kind> on|off
+    claude-bridge send <text>
     claude-bridge allow <command>
     claude-bridge deny <command>
     claude-bridge reload
     claude-bridge test <json request>
 
-``reload`` re-reads the mod's Lua modules from disk and re-registers the ops without
+``send`` queues a test event carrying the text, which reaches Claude through the
+channel like any other event (a way to check the push path from the game). ``reload``
+re-reads the mod's Lua modules from disk and re-registers the ops without
 disabling the bridge. For development.
 ]====]
 
 local GLOBAL_KEY = 'claude-bridge'
 local RPC_MODULE_NAME = 'rpc.claude_bridge'
 
+local json = require('json')
 local state = reqscript('internal/claude-bridge/state')
 local rpc = reqscript('internal/claude-bridge/rpc')
 
@@ -78,14 +83,20 @@ local function register_ops()
     end
 end
 
+local function events_module()
+    return reqscript('internal/claude-bridge/events')
+end
+
 local function do_enable()
     state.load_settings()
     register_ops()
     publish_rpc()
+    pcall(function() events_module().start() end)
     enabled = true
 end
 
 local function do_disable()
+    pcall(function() events_module().stop() end)
     unpublish_rpc()
     enabled = false
 end
@@ -95,6 +106,7 @@ dfhack.onStateChange[GLOBAL_KEY] = function(sc)
         if enabled then
             do_disable()
         end
+        pcall(function() events_module().reset() end)
         return
     end
     if sc ~= SC_MAP_LOADED or not dfhack.world.isFortressMode() then
@@ -155,6 +167,20 @@ elseif command == 'perm' then
         qerror('unknown namespace: ' .. ns)
     end
     print_status()
+elseif command == 'event' then
+    local kind, value = args[2], args[3]
+    if not kind or (value ~= 'on' and value ~= 'off') then
+        qerror('usage: claude-bridge event <kind> on|off')
+    end
+    if not events_module().kind_spec(kind) then qerror('unknown event kind: ' .. kind) end
+    state.set_event_enabled(kind, value == 'on')
+    print(('event %s is %s'):format(kind, value))
+elseif command == 'send' then
+    if not enabled then qerror('claude-bridge is not enabled') end
+    local text = table.concat(args, ' ', 2)
+    if text == '' then text = 'test message from the DFHack console' end
+    local result = rpc.dispatch(json.encode({op = 'events.emit', args = {kind = 'test', text = text}}))
+    print('queued: ' .. result)
 elseif command == 'allow' then
     if not args[2] then qerror('usage: claude-bridge allow <command>') end
     state.allow_console(args[2])
@@ -165,8 +191,10 @@ elseif command == 'deny' then
     print_status()
 elseif command == 'reload' then
     if not enabled then qerror('claude-bridge is not enabled') end
+    pcall(function() events_module().stop() end)
     register_ops()
     publish_rpc()
+    pcall(function() events_module().start() end)
     print(('claude-bridge reloaded, %d ops'):format(#rpc.list_ops()))
 elseif command == 'test' then
     if not enabled then qerror('claude-bridge is not enabled') end

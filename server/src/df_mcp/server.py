@@ -6,10 +6,12 @@ import logging
 import os
 import sys
 
+import anyio
 from mcp.server import MCPServer
 
 from df_mcp import __version__
 from df_mcp.bridge import Bridge
+from df_mcp.channel import run_stdio_with_channel
 from df_mcp.tools import (
     build,
     console,
@@ -17,6 +19,7 @@ from df_mcp.tools import (
     core,
     dev,
     dig,
+    events,
     farms,
     furniture,
     kitchen,
@@ -58,6 +61,9 @@ Digging: `find_exposed_walls` finds reachable rock, `list_designations` shows ex
 `plan_dig` previews a box, and with `dig_write` `designate_dig` places mining, staircase,
 channel, ramp, chop, and gather orders and `erase_designations` removes them; `list_plants`
 shows the trees and shrubs in a box.
+Events: when the session was started with the channel flag, batches of in-game events the
+player enabled (see `list_event_kinds`) arrive on their own as channel messages; read the
+units, tiles, or petitions they name with the tools and act. `poll_events` is the fallback.
 `run_console_command` only runs commands the player has allowlisted in-game. For dev testing,
 `dev_create_item` and `dev_exterminate` build `modtools/create-item` and `exterminate` lines
 and run them the same way; they change the game outside its rules, so use them only when the
@@ -85,6 +91,7 @@ TOOL_MODULES = (
     farms,
     zones,
     kitchen,
+    events,
     console,
     dev,
 )
@@ -113,7 +120,7 @@ def main() -> None:
         port=int(os.environ.get("DFHACK_PORT", "5000")),
     )
     try:
-        build_server(bridge).run(transport="stdio")
+        anyio.run(run_stdio_with_channel, build_server(bridge), bridge)
     finally:
         bridge.close()
 

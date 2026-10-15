@@ -11,7 +11,7 @@ local LUA_COMMANDS = {lua = true, [':lua'] = true}
 -- whatever the allowlist says, so the settings panel stays the only trust boundary.
 -- Anything that is not a plain word (quotes, separators, `-` flags) is refused too.
 local MOD_COMMAND = 'claude-bridge'
-local MOD_SAFE_SUBCOMMANDS = {status = true, help = true, reload = true, test = true}
+local MOD_SAFE_SUBCOMMANDS = {status = true, help = true, reload = true, test = true, send = true}
 
 local function command_name(line)
     return line:match('^%s*(%S+)')
