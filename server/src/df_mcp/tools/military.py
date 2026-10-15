@@ -11,6 +11,7 @@ from df_mcp.tools.core import READ_ONLY, WRITE_SAFE
 
 KINDS = ("melee", "crossbow")
 ORDER_KINDS = ("station", "kill", "patrol", "cancel")
+CATEGORIES = ("body", "head", "pants", "gloves", "shoes", "shield", "weapon")
 
 DISBAND = ToolAnnotations(
     read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=False
@@ -197,3 +198,92 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         if name is not None:
             args["name"] = name
         return call(bridge, "military.create_route", args)
+
+    @mcp.tool(name="get_squad_equipment", annotations=READ_ONLY)
+    def get_squad_equipment(squad_id: int) -> dict[str, Any]:
+        """Read a squad's equipment: for every slot the uniform specs per category (body,
+        head, pants, gloves, shoes, shield, weapon), the exact-match and replace-clothing
+        flags, the items the game assigned, and for the soldier in it the items carried for
+        the current uniform mode, the ones still to pick up, and what they actually wear;
+        plus the squad's ammunition. Use it to see what gear is missing before ordering
+        more from the forges.
+        """
+        return call(bridge, "military.equipment", {"id": squad_id})
+
+    @mcp.tool(name="set_squad_uniform", annotations=WRITE_SAFE)
+    def set_squad_uniform(
+        squad_id: int,
+        category: str,
+        item: str | None = None,
+        material_class: str = "any",
+        add: bool = False,
+        clear: bool = False,
+        exact_matches: bool | None = None,
+        replace_clothing: bool | None = None,
+        position: int | None = None,
+    ) -> dict[str, Any]:
+        """Change one uniform category for every slot of a squad (or one `position`).
+        Needs `military_write`.
+
+        `item` is a plain item name ("breastplate", "helm", "greaves", "gauntlets", "high
+        boots", "shield", "short sword", "crossbow"), "any" for any item of the category, or
+        for the weapon slot "melee", "ranged", or "any" for the soldier's own choice.
+        `material_class` is any, metal, leather, cloth, wood, bone, or shell. The item
+        replaces the category's list unless `add` is true; `clear` empties it. Never pins a
+        specific item. `exact_matches` and `replace_clothing` set the squad flags.
+        """
+        if category not in CATEGORIES:
+            raise ValueError(f"category must be one of {', '.join(CATEGORIES)}")
+        if item is None and not clear and exact_matches is None and replace_clothing is None:
+            raise ValueError("pass item, clear, or a flag")
+        args: dict[str, Any] = {"id": squad_id, "category": category}
+        if item is not None:
+            args["item"] = item
+            args["material_class"] = material_class
+        if add:
+            args["add"] = True
+        if clear:
+            args["clear"] = True
+        if exact_matches is not None:
+            args["exact_matches"] = exact_matches
+        if replace_clothing is not None:
+            args["replace_clothing"] = replace_clothing
+        if position is not None:
+            args["position"] = position
+        return call(bridge, "military.set_uniform", args)
+
+    @mcp.tool(name="set_squad_ammo", annotations=WRITE_SAFE)
+    def set_squad_ammo(
+        squad_id: int,
+        item: str | None = None,
+        amount: int = 100,
+        material_class: str = "any",
+        combat: bool = True,
+        training: bool = True,
+        add: bool = False,
+        clear: bool = False,
+    ) -> dict[str, Any]:
+        """Set a squad's ammunition: `item` ("bolts", "arrows"), `amount`, `material_class`
+        (any, metal, wood, bone), and whether it is for combat and training. Replaces the
+        list unless `add` is true; `clear` empties it. Needs `military_write`.
+        """
+        if item is None and not clear:
+            raise ValueError("pass item or clear")
+        if amount < 1:
+            raise ValueError("amount must be positive")
+        args: dict[str, Any] = {"id": squad_id}
+        if item is not None:
+            args.update(
+                {
+                    "item": item,
+                    "amount": amount,
+                    "material_class": material_class,
+                    "combat": combat,
+                    "training": training,
+                }
+            )
+        if add:
+            args["add"] = True
+        if clear:
+            args["clear"] = True
+        return call(bridge, "military.set_ammo", args)

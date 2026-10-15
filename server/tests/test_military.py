@@ -91,3 +91,59 @@ def test_orders_and_routes():
     }
     with pytest.raises(Exception):  # noqa: B017
         run(mcp, "create_route", points=[[1, 2, 3]])
+
+
+def test_equipment_ops():
+    mcp, holder = make()
+    run(mcp, "get_squad_equipment", squad_id=3)
+    assert last_request(holder)["op"] == "military.equipment"
+    assert last_request(holder)["args"] == {"id": 3}
+    run(
+        mcp,
+        "set_squad_uniform",
+        squad_id=3,
+        category="body",
+        item="breastplate",
+        material_class="metal",
+    )
+    assert last_request(holder)["op"] == "military.set_uniform"
+    assert last_request(holder)["args"] == {
+        "id": 3,
+        "category": "body",
+        "item": "breastplate",
+        "material_class": "metal",
+    }
+    run(
+        mcp,
+        "set_squad_uniform",
+        squad_id=3,
+        category="weapon",
+        clear=True,
+        exact_matches=True,
+        position=2,
+    )
+    assert last_request(holder)["args"] == {
+        "id": 3,
+        "category": "weapon",
+        "clear": True,
+        "exact_matches": True,
+        "position": 2,
+    }
+    with pytest.raises(Exception):  # noqa: B017
+        run(mcp, "set_squad_uniform", squad_id=3, category="hat", item="helm")
+    with pytest.raises(Exception):  # noqa: B017
+        run(mcp, "set_squad_uniform", squad_id=3, category="head")
+    run(mcp, "set_squad_ammo", squad_id=3, item="bolts", amount=50, training=False)
+    assert last_request(holder)["op"] == "military.set_ammo"
+    assert last_request(holder)["args"] == {
+        "id": 3,
+        "item": "bolts",
+        "amount": 50,
+        "material_class": "any",
+        "combat": True,
+        "training": False,
+    }
+    run(mcp, "set_squad_ammo", squad_id=3, clear=True)
+    assert last_request(holder)["args"] == {"id": 3, "clear": True}
+    with pytest.raises(Exception):  # noqa: B017
+        run(mcp, "set_squad_ammo", squad_id=3)

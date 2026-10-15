@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **15**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **16**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -54,8 +54,8 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `units_write` | off | `units.set_nickname` |
 | `nobles` | on | `nobles.list` |
 | `nobles_write` | off | `nobles.assign` |
-| `military` | on | `military.list`, `military.get`, `military.routes` |
-| `military_write` | off | `military.create`, `military.rename`, `military.set_symbol`, `military.add`, `military.remove`, `military.set_leader`, `military.disband`, `military.order`, `military.set_routine`, `military.create_route` |
+| `military` | on | `military.list`, `military.get`, `military.routes`, `military.equipment` |
+| `military_write` | off | `military.create`, `military.rename`, `military.set_symbol`, `military.add`, `military.remove`, `military.set_leader`, `military.disband`, `military.order`, `military.set_routine`, `military.create_route`, `military.set_uniform`, `military.set_ammo` |
 | `stocks` | on | `stocks.bar`, `stocks.list`, `stocks.find`, `stocks.artifacts`, `stocks.status`, `build.materials`, `kitchen.list` |
 | `kitchen_write` | off | `kitchen.set` |
 | `stocks_true` | on | no ops; a toggle. Off puts the stocks ops in bookkeeper view. |
@@ -284,6 +284,26 @@ Args: none. Needs a map. Namespace `military`. Result: `count`, `routes` `[{id, 
 ### `military.create_route`
 
 Args: `name` (optional), `points` (at least two `{x, y, z}` on walkable tiles). Needs a map and `military_write`. Appends a `pointst` per point (ids from `next_point_id`, tile `X`, white on black, named after the route) and a `routest` (id from `next_route_id`) listing them. Result: `{id, name, points, count}`.
+
+### `military.equipment`
+
+Args: `id`. Needs a map. Namespace `military`.
+
+Result: the list row plus `positions` `[{slot, leader, unit, uniform (as military.get), exact_matches, replace_clothing, assigned_items [{id, description}], soldier {mode (unit.uniform.cur_uniform), carried [{id, description}] (unit.uniform.uniforms[mode]), missing [...] (uniform_pickup), worn [{id, description, mode}] (inventory entries worn or wielded)}}]`, `ammunition`, `material_classes`, `note`. Lists are capped at 25. Verified in-game 2026-10-15.
+
+### `military.set_uniform`
+
+Args: `id`, `category` (`body`, `head`, `pants`, `gloves`, `shoes`, `shield`, `weapon`), `item` (an item definition name such as "breastplate", "helm", "crossbow", matched against the category's `world.raws.itemdefs` vector by name, plural, or id; "any" for the type with no subtype; for `weapon` also "melee", "ranged", or "any" for the individual choice flags), `material_class` (`any`, `metal`, `leather`, `cloth`, `wood`, `bone`, `shell`; `metal` becomes `Armor` for armor slots and `WeaponMelee` or `WeaponRanged` for weapons by the definition's `ranged_ammo`), `add` (append instead of replace), `clear`, `exact_matches`, `replace_clothing`, `position` (one slot instead of all). Needs a map and `military_write`.
+
+Writes `squad_uniform_spec` entries (`item` -1, never a specific item) into each position's category vector and the flags, then sets the equipment update flags on the squad and the fort. Unknown items are `NOT_FOUND` with the category's names.
+
+Result: the list row plus `category`, `positions_changed`, `specs_written`, `spec {item, material_class}`, `uniform` (the first changed position's). Verified in-game 2026-10-15.
+
+### `military.set_ammo`
+
+Args: `id`, `item` (an ammunition definition name such as "bolts"), `amount` (default 100), `material_class` (`any`, `metal` (AmmoMetal), `wood`, `bone`), `combat` and `training` (default true), `add`, `clear`. Needs a map and `military_write`.
+
+Writes `squad_ammo_spec` entries into `squad.ammo.ammunition` (replacing the list unless `add`) and sets the update flags. Result: the list row plus `ammunition`.
 
 ### `stocks.bar`
 
