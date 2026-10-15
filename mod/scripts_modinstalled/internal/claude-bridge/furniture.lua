@@ -12,6 +12,7 @@ local map = reqscript('internal/claude-bridge/map')
 local build = reqscript('internal/claude-bridge/build')
 local construct = reqscript('internal/claude-bridge/construct')
 local materials = reqscript('internal/claude-bridge/materials')
+local farms = reqscript('internal/claude-bridge/farms')
 
 local B = dfhack.buildings
 
@@ -167,7 +168,22 @@ local function make_with_for(filter)
     return {item = token}
 end
 
+local function is_farm_plot(name)
+    return type(name) == 'string' and name:lower():gsub('[%s%-]+', '_') == 'farm_plot'
+end
+
 local function run(args, apply)
+    if is_farm_plot(args.type) then
+        -- One building over the box (or the single tile); the farms module owns the rules.
+        if args.x1 == nil then
+            local x, y, z = tonumber(args.x), tonumber(args.y), tonumber(args.z)
+            if not (x and y and z) then
+                return rpc.error_result(rpc.ERR_BAD_REQUEST, 'give "x", "y", "z" or a box "x1".."z2"')
+            end
+            args = {x1 = x, y1 = y, z1 = z, x2 = x, y2 = y, z2 = z, fertilize = args.fertilize}
+        end
+        return farms.place(args, apply)
+    end
     local key, entry, btype = resolve_type(args.type)
     if not key then
         return rpc.error_result(rpc.ERR_NOT_FOUND,

@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **11**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **12**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -59,12 +59,12 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `stocks_true` | on | no ops; a toggle. Off puts the stocks ops in bookkeeper view. |
 | `orders` | on | `orders.list`, `orders.get`, `orders.jobs` |
 | `orders_write` | off | `orders.create`, `orders.edit`, `orders.delete` |
-| `workshops` | on | `workshops.list`, `workshops.get`, `build.plan_construction`, `build.plan_furniture`, `build.list` |
+| `workshops` | on | `workshops.list`, `workshops.get`, `build.plan_construction`, `build.plan_furniture`, `build.list`, `farms.list`, `farms.get` |
 | `zones` | on | `zones.list`, `zones.get` |
 | `zones_write` | off | `zones.create`, `zones.edit`, `zones.assign`, `zones.unassign`, `zones.delete` |
 | `dig_write` | off | `dig.designate`, `dig.erase` (`dig.plan` is under `map`) |
 | `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space` |
-| `build_write` | off | `build.workshop`, `build.remove`, `build.construct`, `build.place`, `build.suspend`, `build.remove_constructions` |
+| `build_write` | off | `build.workshop`, `build.remove`, `build.construct`, `build.place`, `build.suspend`, `build.remove_constructions`, `farms.set_crops` |
 | `stockpiles` | on | `stockpiles.list`, `stockpiles.get`, `stockpiles.presets` |
 | `stockpiles_write` | off | `stockpiles.create`, `stockpiles.configure`, `stockpiles.rename`, `stockpiles.delete` |
 | `console` | off | `console.run` (plus a per-command allowlist) |
@@ -461,6 +461,30 @@ Result: `type`, `building_type`, `box`, `dry_run`, `applied`, `status` (`plan`, 
 ### `build.place`
 
 Args and result as `build.plan_furniture`. Needs a map and `build_write`. One `constructBuilding` per tile with fresh filters.
+
+### Farm plots
+
+`build.plan_furniture` and `build.place` accept `type` `farm_plot`: one building over the whole box (one level, at most 31 by 31), no items. A tile joins the plot when it is a floor, twig, sapling, or shrub tile whose tiletype material is soil, grass, or plant, or any floor whose block has a solid mud spatter with a non-zero amount on that tile (quickfort's rule, checked 2026-10-15); hidden tiles, buildings, magma, water deeper than 1, map edges, and other floors are cut out of the extents and listed in `skipped` with reasons. `fertilize` (default false) sets fertilize-every-season at placement. The response is the furniture placement shape plus `tiles`, `candidates`, `soil` (materials by tile count; grass tiles name the soil layer under them with "(grass)"), and `mud_tiles`; `placed` is 1 for the one building. A planter builds it (a `ConstructBuilding` job). Verified in-game 2026-10-15.
+
+### `farms.list`
+
+Args: `limit` (default 25). Needs a map. Namespace `workshops`.
+
+Result: `count`, `total`, `truncated`, `plots` `{id, pos, bounds, tiles, built, crops {spring, summer, autumn, winter} (plant names or "none"), fertilize_every_season, fertilization {current, max}, soil (main material), subterranean}`. Plots come from `world.buildings.other.FARM_PLOT`.
+
+### `farms.get`
+
+Args: `id`, `limit` (plantable rows per season, default 25). Needs a map. Namespace `workshops`.
+
+Result: the list row plus `soil` `{tiles, materials [{material, tiles}], mud_tiles, subterranean (majority of tiles), subterranean_tiles, outside_tiles, cavern_tiles (subterranean tiles flagged as a local feature), biome, note}` and `plantable` keyed by season with rows `{plant, id, index, seeds, seasons_to_grow}` sorted by seeds in stock, `plantable_truncated`, `plantable_note`. A plant is plantable when its raw has the `SEED` flag and not `TREE`, carries the season flag for every season the crop spans (`growdur` in tens of ticks over 100800 per season), and the `BIOME_<biome>` flag of the plot's biome for surface plots or `BIOME_SUBTERRANEAN_WATER` for underground plots (DFHack autofarm's rule; the game's own is not readable). Seeds count `SEEDS` items by plant index, skipping unusable ones. Verified in-game 2026-10-15.
+
+### `farms.set_crops`
+
+Args: `id`, `crops` (object keyed by `spring`, `summer`, `autumn` (or `fall`), `winter`, values a plant name, raw id, or `none`), `fertilize` (boolean); at least one of the two. Needs a map. Namespace `build_write`.
+
+Writes `plant_id[season]` (the plant raw index, -1 for none) and `farm_flags.seasonal_fertilize` directly, as DFHack's autofarm does. A plant not on that season's plantable list is `BAD_REQUEST` naming the plantable crops; an unknown plant is `NOT_FOUND`. `crops` on a plot that is not built yet is `BAD_REQUEST`: the game clears the crops when the planter finishes the plot (seen live 2026-10-15), while the fertilize flag survives and may be set at any time.
+
+Result: the list row plus `changed` (season names and `fertilize`) and `warnings`. Verified in-game 2026-10-15: the game recomputed `fertilization.max` (13 for 49 tiles) as soon as the flag was set.
 
 ### `build.list`
 
