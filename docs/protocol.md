@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **20**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **21**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -622,6 +622,10 @@ Result (per-tile kinds): `kind`, `shape`, `box` (line endpoints under `line`, ci
 ### `build.construct`
 
 Args and result as `build.plan_construction`. Needs a map and `build_write`. Places each construction with `dfhack.buildings.constructBuilding` and fresh filters per building; a placement DFHack refuses is added to `skipped` as `placement failed`.
+
+### Traps and military buildings (Phase 16)
+
+`build.plan_furniture` and `build.place` take the extra types `lever`, `pressure_plate`, `cage_trap`, `stone_fall_trap`, `weapon_trap` (building type `Trap` with the matching `trap_type` subtype), `upright_spike` (`Weapon`), `catapult` and `ballista` (`SiegeEngine` subtypes, 3 by 3), and `trade_depot` (5 by 5). Inputs come from DFHack's building input table (checked 2026-10-15): one mechanism for the four traps and the plate, a mechanism plus one weapon or trap component for the weapon trap, one spike trap component for the spike, three catapult or ballista parts, three building materials for the depot. Vector-only filters (`ANY_SPIKE`, `ANY_WEAPON`) are counted from the game's own item vectors and labelled "spike (trap component)" and "weapon or trap component"; their `make_with` jobs are `MakeTrapComponent` and `MakeWeapon`, and mechanisms come from `ConstructMechanisms`. The 3 by 3 and 5 by 5 types take one position, the top-left corner, and the response carries `footprint` and the unsuitable tiles. A `pressure_plate` accepts `plate` `{triggers: [units, water, magma, track], citizens, resets, unit_min, unit_max, water_min, water_max, magma_min, magma_max, track_min, track_max}`, written to `building_trapst.plate_info` after placement (defaults: units, not citizens, resets, unit size 50000-200000, depth 1-7, track 1-2000); `plate` on any other type is `BAD_REQUEST`. Cage and stone-fall traps are loaded by the game after they are built. Lever linking is not offered (README open issue). Verified in-game 2026-10-15: a lever and a pressure plate placed from two mechanisms; the spike, siege engines, and weapon trap refused for missing parts with the right work orders named.
 
 ### `build.plan_furniture`
 
