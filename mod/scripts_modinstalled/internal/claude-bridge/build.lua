@@ -100,10 +100,34 @@ end
 
 -- Count items in play that satisfy one job item filter, and the material spec's class and
 -- form (which DFHack's check ignores). nil when DFHack cannot judge.
+-- The item vector a filter restricts itself to (job_item_vector_id names match
+-- items_other_id names: ANY_SPIKE, ANY_WEAPON, DOOR, ...), else IN_PLAY.
+function filter_vector(filter)
+    local vid = safe(function() return filter.vector_id end)
+    local name = type(vid) == 'number' and vid >= 0 and enum_name(df.job_item_vector_id, vid) or nil
+    if name and name ~= 'ANY_FREE' and name ~= 'IN_PLAY' then
+        local vec = safe(function() return df.global.world.items.other[name] end)
+        if vec then return vec, name end
+    end
+    return df.global.world.items.other.IN_PLAY, nil
+end
+
+-- A readable item label for a filter: its item type, else its vector ("spike", "weapon").
+function filter_label(filter)
+    local itype = filter.item_type
+    if type(itype) == 'number' and itype >= 0 then return enum_name(df.item_type, itype) or 'any' end
+    local _, vector = filter_vector(filter)
+    if vector == 'ANY_SPIKE' then return 'spike (trap component)' end
+    if vector == 'ANY_WEAPON' then return 'weapon or trap component' end
+    if vector then return vector:lower():gsub('^any_', '') end
+    return 'any'
+end
+
 function count_suitable(filter, spec)
     if not dfhack.job.isSuitableItem or not dfhack.job.isSuitableMaterial then return nil end
     local count = 0
-    for _, item in ipairs(df.global.world.items.other.IN_PLAY) do
+    local vector = filter_vector(filter)
+    for _, item in ipairs(vector) do
         if materials.item_usable(item) then
             local itype, isub = item:getType(), item:getSubtype()
             local ok_item = safe(dfhack.job.isSuitableItem, filter, itype, isub)

@@ -52,8 +52,21 @@ TYPES = {
     offering_place = {type = 'OfferingPlace', rule = 'generic'},
     instrument = {type = 'Instrument', rule = 'generic'},
     animal_trap = {type = 'AnimalTrap', rule = 'generic'},
+    -- Phase 16: traps and military buildings (placement only; linking is an open issue).
+    lever = {type = 'Trap', subtype = 'Lever', rule = 'generic'},
+    pressure_plate = {type = 'Trap', subtype = 'PressurePlate', rule = 'generic'},
+    cage_trap = {type = 'Trap', subtype = 'CageTrap', rule = 'generic'},
+    stone_fall_trap = {type = 'Trap', subtype = 'StoneFallTrap', rule = 'generic'},
+    weapon_trap = {type = 'Trap', subtype = 'WeaponTrap', rule = 'generic'},
+    upright_spike = {type = 'Weapon', rule = 'generic'},
+    catapult = {type = 'SiegeEngine', subtype = 'Catapult', rule = 'generic', big = true},
+    ballista = {type = 'SiegeEngine', subtype = 'Ballista', rule = 'generic', big = true},
+    trade_depot = {type = 'TradeDepot', rule = 'generic', big = true},
 }
-ALIASES = {throne = 'chair', seat = 'chair', box = 'chest', coffer = 'chest', armour_stand = 'armor_stand',
+SUBTYPE_ENUMS = {Trap = 'trap_type', SiegeEngine = 'siegeengine_type'}
+PLATE_TRIGGERS = {'units', 'water', 'magma', 'track'}
+ALIASES = {spike = 'upright_spike', spear_trap = 'upright_spike', stonefall_trap = 'stone_fall_trap',
+           depot = 'trade_depot', plate = 'pressure_plate', throne = 'chair', seat = 'chair', box = 'chest', coffer = 'chest', armour_stand = 'armor_stand',
            chain = 'restraint', rope = 'restraint', window = 'glass_window', burial_receptacle = 'coffin',
            grate = 'floor_grate', bars = 'floor_bars', display = 'display_case', container = 'chest'}
 
@@ -69,6 +82,8 @@ MAKE_WITH = {
     WINDOW = {'MakeWindow', 'ConstructWindow'}, CAGE = {'MakeCage'}, CHAIN = {'MakeChain'},
     ANIMALTRAP = {'MakeAnimalTrap'}, TOOL = {'MakeTool'}, BLOCKS = {'ConstructBlocks'},
     SMALLGEM = {'CutGems'}, BAR = {'SmeltOre'}, INSTRUMENT = {'MakeInstrument'},
+    TRAPPARTS = {'ConstructMechanisms'}, TRAPCOMP = {'MakeTrapComponent'}, WEAPON = {'MakeWeapon'},
+    CATAPULTPARTS = {'ConstructCatapultParts'}, BALLISTAPARTS = {'ConstructBallistaParts'},
 }
 
 local FLOOR_SHAPES = {FLOOR = true, BOULDER = true, PEBBLES = true, TWIG = true, SAPLING = true, SHRUB = true}
@@ -144,7 +159,63 @@ local function resolve_type(name)
     if not entry then return nil end
     local btype = df.building_type[entry.type]
     if btype == nil then return nil end
-    return key, entry, btype
+    local subtype = -1
+    if entry.subtype then
+        local enum = df[SUBTYPE_ENUMS[entry.type]]
+        subtype = enum and enum[entry.subtype]
+        if subtype == nil then return nil end
+    end
+    return key, entry, btype, subtype
+end
+
+-- Pressure plate settings from the request: which triggers, who trips it, whether it
+-- resets, and the depth or size windows (building_trapst.plate_info).
+local function parse_plate(args)
+    local plate = args.plate
+    if plate == nil then return nil end
+    if type(plate) ~= 'table' then return nil, '"plate" must be an object' end
+    local out = {triggers = {}, citizens = plate.citizens == true, resets = plate.resets ~= false}
+    for _, trig in ipairs(plate.triggers or {'units'}) do
+        local ok = false
+        for _, t in ipairs(PLATE_TRIGGERS) do if t == trig then ok = true end end
+        if not ok then return nil, '"plate.triggers" entries must be units, water, magma, or track' end
+        out.triggers[trig] = true
+    end
+    local function range(name, lo, hi, default_min, default_max)
+        local vmin = tonumber(plate[name .. '_min']) or default_min
+        local vmax = tonumber(plate[name .. '_max']) or default_max
+        if vmin < lo or vmax > hi or vmin > vmax then
+            return nil, ('"plate.%s_min/max" must be %d-%d with min <= max'):format(name, lo, hi)
+        end
+        return {math.floor(vmin), math.floor(vmax)}
+    end
+    local err
+    out.unit, err = range('unit', 1, 10000000, 50000, 200000)
+    if not out.unit then return nil, err end
+    out.water, err = range('water', 1, 7, 1, 7)
+    if not out.water then return nil, err end
+    out.magma, err = range('magma', 1, 7, 1, 7)
+    if not out.magma then return nil, err end
+    out.track, err = range('track', 1, 2000, 1, 2000)
+    if not out.track then return nil, err end
+    return out
+end
+
+local function apply_plate(bld, plate)
+    pcall(function()
+        local info = bld.plate_info
+        for _, t in ipairs(PLATE_TRIGGERS) do info.flags[t] = plate.triggers[t] == true end
+        info.flags.citizens = plate.citizens
+        info.flags.resets = plate.resets
+        info.unit_min, info.unit_max = plate.unit[1], plate.unit[2]
+        info.water_min, info.water_max = plate.water[1], plate.water[2]
+        info.magma_min, info.magma_max = plate.magma[1], plate.magma[2]
+        info.track_min, info.track_max = plate.track[1], plate.track[2]
+    end)
+end
+
+local function is_farm_plot(name)
+    return type(name) == 'string' and name:lower():gsub('[%s%-]+', '_') == 'farm_plot'
 end
 
 local function known_types()
@@ -156,8 +227,12 @@ end
 
 local function make_with_for(filter)
     local itype = filter.item_type
-    if type(itype) ~= 'number' or itype < 0 then return nil end
-    local token = enum_name(df.item_type, itype)
+    local token = (type(itype) == 'number' and itype >= 0) and enum_name(df.item_type, itype) or nil
+    if not token then
+        local _, vector = build.filter_vector(filter)
+        if vector == 'ANY_SPIKE' then token = 'TRAPCOMP' elseif vector == 'ANY_WEAPON' then token = 'WEAPON' end
+    end
+    if not token then return nil end
     for _, job in ipairs(MAKE_WITH[token or ''] or {}) do
         if safe(function() return df.job_type[job] end) ~= nil then
             return {job = job, item = token,
@@ -168,11 +243,84 @@ local function make_with_for(filter)
     return {item = token}
 end
 
-local function is_farm_plot(name)
-    return type(name) == 'string' and name:lower():gsub('[%s%-]+', '_') == 'farm_plot'
+-- One multi-tile building (siege engine, trade depot) at a top-left corner.
+local function run_big(args, key, entry, btype, subtype, apply)
+    local x, y, z = tonumber(args.x or args.x1), tonumber(args.y or args.y1), tonumber(args.z or args.z1)
+    if not (x and y and z) then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, ('a %s takes one position: its top-left corner x, y, z'):format(key))
+    end
+    x, y, z = math.floor(x), math.floor(y), math.floor(z)
+    local _, w, h = B.getCorrectSize(nil, nil, btype, subtype, -1, 0)
+    local footprint = {origin = {x = x, y = y, z = z}, width = w, height = h}
+    local spec, why = materials.resolve(args.material)
+    if why then return rpc.error_result(rpc.ERR_BAD_REQUEST, why) end
+    local skipped = {}
+    for ty = y, y + h - 1 do
+        for tx = x, x + w - 1 do
+            local pos = {x = tx, y = ty, z = z}
+            local f = construct.facts(pos)
+            local problem = (not f) and 'no map block' or (construct.is_edge(pos) and 'map edge')
+                or construct.base_problem(f) or (not FLOOR_SHAPES[f.shape or ''] and (tostring(f.shape):lower() .. ', not a floor'))
+            if problem then table.insert(skipped, {pos = pos, reason = problem}) end
+        end
+    end
+    local result = {type = key, building_type = entry.type, footprint = footprint, dry_run = not apply,
+                    applied = false, placed = 0, candidates = #skipped == 0 and 1 or 0,
+                    skipped = skipped, skipped_unsuitable = #skipped, requirements = {}, warnings = {}, buildings = {}}
+    if #skipped > 0 then
+        result.status = 'nothing_to_place'
+        result.note = ('%d of %d footprint tiles cannot take a %s'):format(#skipped, w * h, key)
+        return result
+    end
+    local filters = construct.filters_for(btype, subtype, spec)
+    local shortage, make_with = nil, nil
+    if filters then
+        for i, filter in ipairs(filters) do
+            local applies = i == 1 and spec ~= nil
+            local need = {
+                item_type = build.filter_label(filter),
+                quantity = filter.quantity or 1,
+                material = applies and spec.label or 'any',
+                available = build.count_suitable(filter, applies and spec or nil),
+            }
+            table.insert(result.requirements, need)
+            if need.available ~= nil and need.available < need.quantity then
+                shortage = shortage or need
+                make_with = make_with or make_with_for(filter)
+            end
+        end
+        build.free_filters(filters)
+    end
+    if shortage then
+        result.status, result.missing, result.make_with = 'no_materials', shortage, make_with
+        result.note = ('a %s needs %d %s; %d available%s; nothing placed'):format(key, shortage.quantity,
+            shortage.item_type:lower(), shortage.available or 0,
+            make_with and make_with.job and (': queue a work order for job ' .. make_with.job) or '')
+        return result
+    end
+    if not apply then
+        result.status, result.placed = 'plan', 1
+        result.note = 'nothing was changed; call build.place with the same arguments to place it'
+        return result
+    end
+    local fresh = construct.filters_for(btype, subtype, spec)
+    local bld, err = B.constructBuilding{type = btype, subtype = subtype, pos = {x = x, y = y, z = z}, filters = fresh}
+    if not bld then
+        if fresh then build.free_filters(fresh) end
+        result.status = 'nothing_to_place'
+        result.note = 'placement failed: ' .. tostring(err)
+        return result
+    end
+    result.status, result.applied, result.placed, result.buildings = 'placed', true, 1, {bld.id}
+    result.note = 'blueprint placed; dwarves haul the parts and build it'
+    return result
 end
 
 local function run(args, apply)
+    local key0, entry0, btype0, subtype0 = resolve_type(args.type)
+    if key0 and entry0.big then
+        return run_big(args, key0, entry0, btype0, subtype0, apply)
+    end
     if is_farm_plot(args.type) then
         -- One building over the box (or the single tile); the farms module owns the rules.
         if args.x1 == nil then
@@ -184,11 +332,16 @@ local function run(args, apply)
         end
         return farms.place(args, apply)
     end
-    local key, entry, btype = resolve_type(args.type)
+    local key, entry, btype, subtype = resolve_type(args.type)
     if not key then
         return rpc.error_result(rpc.ERR_NOT_FOUND,
             ('unknown furniture "type" %s; known: %s'):format(tostring(args.type),
                 table.concat(known_types(), ', ')))
+    end
+    local plate, perr = parse_plate(args)
+    if perr then return rpc.error_result(rpc.ERR_BAD_REQUEST, perr) end
+    if plate and entry.subtype ~= 'PressurePlate' then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"plate" settings only apply to a pressure_plate')
     end
     local box, berr
     if args.x1 ~= nil then
@@ -250,14 +403,13 @@ local function run(args, apply)
         end
     end
 
-    local filters = construct.filters_for(btype, -1, spec)
+    local filters = construct.filters_for(btype, subtype, spec)
     local requirements, make_with, shortage = {}, nil, nil
     if filters then
         for i, filter in ipairs(filters) do
             local applies = i == 1 and spec ~= nil
             local need = {
-                item_type = (type(filter.item_type) == 'number' and filter.item_type >= 0)
-                    and enum_name(df.item_type, filter.item_type) or 'any',
+                item_type = build.filter_label(filter),
                 quantity = (filter.quantity or 1) * math.max(#targets, 1),
                 material = applies and spec.label or 'any',
                 available = build.count_suitable(filter, applies and spec or nil),
@@ -298,9 +450,10 @@ local function run(args, apply)
         return result
     end
     for _, pos in ipairs(targets) do
-        local fresh = construct.filters_for(btype, -1, spec)
-        local bld, err = B.constructBuilding{type = btype, pos = pos, filters = fresh}
+        local fresh = construct.filters_for(btype, subtype, spec)
+        local bld, err = B.constructBuilding{type = btype, subtype = subtype, pos = pos, filters = fresh}
         if bld then
+            if plate then apply_plate(bld, plate) end
             result.placed = result.placed + 1
             if #result.buildings < LIST_LIMIT then table.insert(result.buildings, bld.id) end
         else
@@ -311,7 +464,11 @@ local function run(args, apply)
     end
     result.status = result.placed > 0 and 'placed' or 'nothing_to_place'
     result.applied = result.placed > 0
+    result.plate = plate and {triggers = plate.triggers, citizens = plate.citizens, resets = plate.resets} or nil
     result.note = 'blueprints placed; a dwarf fetches the item and installs it'
+    if entry.subtype == 'CageTrap' or entry.subtype == 'StoneFallTrap' then
+        result.note = result.note .. '; the game loads a cage or boulder into it after it is built'
+    end
     return result
 end
 
