@@ -3,7 +3,9 @@
 -- fights through the other eventful hooks; what the game never announces (petitions,
 -- ghosts, moody dwarves missing an item, artifacts dug up, season changes) is polled every
 -- 100 ticks. Migrant announcements (plan section 15.2, P1.2) also carry the citizens who
--- were absent at the last poll. Events sit in a ring of 200 and events.poll hands them out once the newest is
+-- were absent at the last poll. Box popups (plan section 15.2, P4.0) are polled every 30
+-- frames instead, since the game pauses while a box is up and a ticks timer would not run
+-- (repeat-util in DFHack 53.16-r2). Events sit in a ring of 200 and events.poll hands them out once the newest is
 -- two seconds old or 50 are waiting. Only kinds the player enabled are queued.
 --@ module = true
 
@@ -14,7 +16,10 @@ local repeatutil = require('repeat-util')
 
 local HOOK_KEY = 'claude_bridge'
 local POLL_JOB = 'claude-bridge-events'
+local POPUP_JOB = 'claude-bridge-popups'
 POLL_TICKS = 100
+POPUP_FRAMES = 30
+POPUP_TEXT_MAX = 400
 CAPACITY = 200
 QUIET_MS = 2000
 BATCH_MAX = 50
@@ -62,6 +67,7 @@ KINDS = {
     {key = 'invaders_arrived', label = 'Invaders arrived', default = false,
      types = {'AMBUSH_AMBUSHER', 'AMBUSH_AMBUSHER_NATURE', 'AMBUSH_THIEF', 'AMBUSH_SNATCHER'},
      invasion = true},
+    {key = 'popup', label = 'Popup box opened (game paused)', default = true, poll = true, frames = true},
     {key = 'season_changed', label = 'Season changed', default = false, poll = true},
     {key = 'units_fighting', label = 'Units are fighting', default = true, attack = true},
     {key = 'sparring', label = 'Soldiers sparring', default = false, attack = true},
@@ -77,6 +83,9 @@ if not store then
     store = {queue = {}, next_seq = 1, dropped = 0, last_handed_seq = 0}
     rawset(_G, 'claude_bridge_event_store', store)
 end
+-- Texts of the open popups already reported, kept in the store so a reload does not report
+-- the same box twice.
+store.popups_reported = store.popups_reported or {}
 queue = store.queue
 next_seq = store.next_seq
 dropped = store.dropped
@@ -436,6 +445,40 @@ local function poll()
     baseline = current
 end
 
+-- Every open popup whose text is not yet reported becomes a `popup` event; a text leaves the
+-- reported list when its box closes. Runs on a frames timer, so it fires while paused.
+-- Matching is by text, one reported entry per open box, so two identical boxes are two events.
+local function poll_popups()
+    if not dfhack.isMapLoaded() then return end
+    local popups = reqscript('internal/claude-bridge/popups')
+    local v = popups.popup_vector()
+    local count = v and (safe(function() return #v end) or 0) or 0
+    local unused = {}
+    for _, text in ipairs(store.popups_reported) do table.insert(unused, text) end
+    local reported = {}
+    for i = 0, count - 1 do
+        local p = safe(function() return v[i] end)
+        local full = p and safe(function() return p.text end)
+        if full then
+            local found = nil
+            for j, text in ipairs(unused) do
+                if text == full then found = j break end
+            end
+            if found then
+                table.remove(unused, found)
+            else
+                local text, cut = popups.clip(full, POPUP_TEXT_MAX)
+                local portrait = popups.portrait_of(p)
+                push('popup', {text = text, extra = {popup_index = i + 1, popup_count = count,
+                                                     portrait = portrait and portrait.name or nil,
+                                                     text_truncated = cut or nil}})
+            end
+            table.insert(reported, full)
+        end
+    end
+    store.popups_reported = reported
+end
+
 ----------------------------------------------------------------------------------------------
 -- start and stop (called by the control script)
 
@@ -453,6 +496,7 @@ function start()
     eventful.onUnitAttack[HOOK_KEY] = function(a, d, w) pcall(on_unit_attack, a, d, w) end
     baseline = nil
     repeatutil.scheduleEvery(POLL_JOB, POLL_TICKS, 'ticks', function() pcall(poll) end)
+    repeatutil.scheduleEvery(POPUP_JOB, POPUP_FRAMES, 'frames', function() pcall(poll_popups) end)
     running = true
 end
 
@@ -462,6 +506,7 @@ function stop()
     eventful.onInvasion[HOOK_KEY] = nil
     eventful.onUnitAttack[HOOK_KEY] = nil
     pcall(repeatutil.cancel, POLL_JOB)
+    pcall(repeatutil.cancel, POPUP_JOB)
     running = false
 end
 
@@ -472,6 +517,7 @@ function reset()
     baseline = nil
     fight_seen = {}
     last_handed_seq = 0
+    store.popups_reported = {}
     persist()
 end
 
@@ -481,7 +527,7 @@ end
 local function kinds(args)
     local out = {}
     for _, k in ipairs(KINDS) do
-        local source = k.poll and 'poll' or (k.attack and 'attack hook' or (k.types and 'announcement' or 'hook'))
+        local source = k.poll and (k.frames and 'poll (frames)' or 'poll') or (k.attack and 'attack hook' or (k.types and 'announcement' or 'hook'))
         local missing = {}
         for _, name in ipairs(k.types or {}) do
             if type(safe(function() return df.announcement_type[name] end)) ~= 'number' then

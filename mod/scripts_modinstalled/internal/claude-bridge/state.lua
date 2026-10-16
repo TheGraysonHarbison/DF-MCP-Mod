@@ -6,7 +6,7 @@ local scriptmanager = require('script-manager')
 
 MOD_ID = 'claude-bridge'
 MOD_VERSION = '1.0.0-alpha'
-PROTOCOL_VERSION = 27
+PROTOCOL_VERSION = 28
 
 -- Settings groups, in display order.
 GROUPS = {'General', 'Units', 'Items', 'Logistics', 'World', 'Commands'}
@@ -21,6 +21,8 @@ NAMESPACES = {
      label = 'Read these settings'},
     {key = 'pause_write', group = 'General', hotkey = 'CUSTOM_H', default = false,
      label = 'Pause and unpause the game'},
+    {key = 'screens_write', group = 'General', hotkey = 'CUSTOM_SHIFT_S', default = false,
+     label = 'Drive game screens: trade, meetings, popups'},
     {key = 'events',   group = 'General',  hotkey = 'CUSTOM_X', default = true,
      label = 'Send in-game events (per kind, Events tab)'},
     {key = 'plan',     group = 'General',  hotkey = 'CUSTOM_SHIFT_P', default = true,
