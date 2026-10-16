@@ -612,7 +612,7 @@ Result: `count` (16), `hotkeys` `[{slot, key, kind (none, zoom, follow_unit, fol
 
 Args: `name` (required, non-empty after trimming), `x`, `y`, `z` (required integers, a valid tile position by `dfhack.maps.isValidTilePos`, else `BAD_REQUEST`), `slot` (optional, 1 to 16), `overwrite` (default false). Needs a map and `hotkeys_write`.
 
-Without `slot` the first empty slot is used; when there is none, `NOT_FOUND`. A given slot that is not empty is `BAD_REQUEST` naming its current name and kind unless `overwrite` is true. The name is converted to CP437, stripped of control characters, trimmed, and clipped to 40 characters. Writes `cmd = Zoom`, the name and position, and sets the union to -1.
+Without `slot` the first empty slot is used; when there is none, `NOT_FOUND`. A given slot that is not empty is `BAD_REQUEST` naming its current name and kind unless `overwrite` is true. The name is converted to CP437, stripped of control characters, trimmed, and clipped to 16 characters. Writes `cmd = Zoom`, the name and position, and sets the union to -1.
 
 Result: `slot`, `key`, `name` (as stored), `pos`, `overwrote` `{name, kind, pos}` when a slot was replaced, `note`.
 

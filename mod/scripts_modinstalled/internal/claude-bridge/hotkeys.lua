@@ -7,15 +7,15 @@
 -- (https://docs.dfhack.org/en/stable/docs/dev/Lua%20API.html, checked against 53.16-r2).
 -- Only the name, cmd, x, y, z, and unit/item union of a slot are written; nothing else in
 -- `plotinfo.main`, and no texture or render field anywhere (CLAUDE.md rule 13).
--- VERIFY LIVE: the game's Hotkeys window shows a slot written here (name and zoom target)
--- without any redraw help.
+-- The game's Hotkeys window shows a slot written here and the key jumps to it (verified
+-- live 2026-10-16, no redraw help needed).
 --@ module = true
 
 local rpc = reqscript('internal/claude-bridge/rpc')
 
 SLOT_COUNT = 16
--- VERIFY LIVE: the longest name the game's hotkey rename field accepts; adjust to match.
-NAME_MAX = 40
+-- The game's rename field takes 16 characters (verified live 2026-10-16).
+NAME_MAX = 16
 
 KIND_NAMES = {[-1] = 'none', [0] = 'zoom', [1] = 'follow_unit', [2] = 'follow_item'}
 
@@ -30,8 +30,7 @@ local function slot_struct(n)
     return df.global.plotinfo.main.hotkeys[n - 1]
 end
 
--- Same label DFHack's hotkey-notes prints.
--- VERIFY LIVE: the 16 labels match the keys the game's Hotkeys window shows.
+-- Same label DFHack's hotkey-notes prints (F1 to F8, Shift+F1 to Shift+F8; verified live 2026-10-16).
 local function key_label(n)
     local label = safe(function()
         return dfhack.screen.getKeyDisplay(df.interface_key.D_HOTKEY1 + n - 1)
