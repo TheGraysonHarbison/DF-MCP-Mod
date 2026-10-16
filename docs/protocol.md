@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **29**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **30**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -52,8 +52,8 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `settings` | on | `settings.get`, `settings.mods` |
 | `time` | on | `time.now` |
 | `pause_write` | off | `time.set_pause` |
-| `screens_write` | off | `popups.close`, `trade.open_screen`, `trade.press` |
-| `events` | on | `events.kinds`, `events.poll`, `events.emit`, `timer.status`, `popups.list` |
+| `screens_write` | off | `trade.open_dialog`, `trade.dialog_step` |
+| `events` | on | `events.kinds`, `events.poll`, `events.emit`, `timer.status` |
 | `plan` | on | `plan.info`, `plan.read`, `plan.write`, `plan.append`, `goals.read` |
 | `units` | on | `units.list`, `units.find`, `units.get`, `units.sheet`, `units.full_sheet`, `labor.details` |
 | `units_write` | off | `units.set_nickname` |
@@ -74,7 +74,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `dig_write` | off | `dig.designate`, `dig.erase` (`dig.plan` is under `map`) |
 | `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space`, `map.exposed_walls`, `map.designations`, `map.plants`, `hotkeys.list` |
 | `build_write` | off | `build.workshop`, `build.remove`, `build.construct`, `build.place`, `build.suspend`, `build.remove_constructions`, `farms.set_crops` |
-| `trade` | on | `trade.caravans`, `trade.depot`, `trade.broker`, `trade.screen`, `trade.diplomats`, `trade.request_options` |
+| `trade` | on | `trade.caravans`, `trade.depot`, `trade.broker`, `trade.screen`, `trade.diplomats`, `trade.request_options`, `trade.dialog` |
 | `trade_write` | off | `trade.request_broker`, `trade.bring`, `trade.unbring`, `trade.offer`, `trade.select`, `trade.set_requests` |
 | `stockpiles` | on | `stockpiles.list`, `stockpiles.get`, `stockpiles.presets` |
 | `stockpiles_write` | off | `stockpiles.create`, `stockpiles.configure`, `stockpiles.rename`, `stockpiles.delete` |
@@ -85,9 +85,9 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 
 ### Events
 
-The mod queues in-game events (plan section 13, Phase 13) and the server pushes them to Claude Code as channel notifications (`notifications/claude/channel`, declared through the experimental `claude/channel` capability at the handshake). The queue is a ring of 200 entries; `events.poll` hands out a batch once the newest waiting event is two seconds old or 50 are waiting. Each kind has a player toggle (settings window, Events tab, or `claude-bridge event <kind> on|off`); defaults on: `mineral_discovered`, `popup`, `units_fighting`, `petition`.
+The mod queues in-game events (plan section 13, Phase 13) and the server pushes them to Claude Code as channel notifications (`notifications/claude/channel`, declared through the experimental `claude/channel` capability at the handshake). The queue is a ring of 200 entries; `events.poll` hands out a batch once the newest waiting event is two seconds old or 50 are waiting. Each kind has a player toggle (settings window, Events tab, or `claude-bridge event <kind> on|off`); defaults on: `mineral_discovered`, `units_fighting`, `petition`, `meeting_ready`.
 
-Sources: `eventful.onReport` (announcements mapped by `announcement_type` to kinds; continuation lines skipped; units standing on the report's position are attached), `onUnitDeath` (citizens, `citizen_dead`), `onInvasion` (`invaders_arrived`), `onUnitAttack` (`units_fighting`, or `sparring` when both units are fort-controlled; one event per unit pair per ten seconds), and a poller every 100 ticks for `petition` (new ids in `plotinfo.petitions`), `ghost_appeared` and `ghost_rested` (the set of ghost units), `mood_item_missing` (citizens whose strange-mood job stalled waiting for an item), `artifact_found` (artifact items on the map whose tile became revealed), and `season_changed` (`cur_season`). The poller's first run only records a baseline. A second poller every 30 frames (a `frames` timer, so it runs while the game is paused) watches `world.status.popups` for `popup` (below). Hooks are installed on enable and reload and removed on disable; the queue is cleared on map unload.
+Sources: `eventful.onReport` (announcements mapped by `announcement_type` to kinds; continuation lines skipped; units standing on the report's position are attached), `onUnitDeath` (citizens, `citizen_dead`), `onInvasion` (`invaders_arrived`), `onUnitAttack` (`units_fighting`, or `sparring` when both units are fort-controlled; one event per unit pair per ten seconds), and a poller every 100 ticks for `petition` (new ids in `plotinfo.petitions`), `ghost_appeared` and `ghost_rested` (the set of ghost units), `mood_item_missing` (citizens whose strange-mood job stalled waiting for an item), `artifact_found` (artifact items on the map whose tile became revealed), `season_changed` (`cur_season`), and `meeting_ready` (P3.0: a report id new to the left-side alerts, `world.status.announcement_alert[].announcement_id` plus `alert_button_announcement_id`, whose report passes the meeting-alert rule of `trade.dialog`; one per poll; `text` is the report's text, `extra` `{report_id, announcement}`; which announcement the meeting button carries is checked on the owner's liaison save). The poller's first run only records a baseline. Hooks are installed on enable and reload and removed on disable; the queue is cleared on map unload.
 
 ### `events.kinds`
 
@@ -852,6 +852,31 @@ Args: `category` (optional `entity_sell_category` name), `civ_id`, `limit`. Need
 ### `trade.set_requests`
 
 Args: `requests` `[{category, item (index, name substring, or "all"), priority 0-4}]`, `civ_id`. Needs a map and `trade_write`. Writes `sell_requests.priority[category][index]`, the vector DFHack's trade-agreement overlay edits on the Requests screen. Result: `civ`, `applied`, `problems`, `note`.
+
+### Diplomacy dialog (Patch 1 P3.0)
+
+The liaison's meeting dialog (`game.main_interface.diplomacy`, plan section 15.2). It arrives as a left-side alert button; the open dialog pauses the game. The reads are built from df-structures; the opener and the steps are state replays whose writes are best guesses until the field diff of the owner's clicks is recorded on a liaison save (15.4 check 6). Every replay saves the fields it writes, restores them on error, and reports them in `replayed [{field, before, after}]`. `claude-bridge dialog-snapshot` in the DFHack console prints the dialog's scalar fields, the meeting moment (`mm`), the meeting (`dipev`), the alerts, the focus, the interface rect, and the mouse as one JSON object for that diff.
+
+Meeting-alert rule: a report under `world.status.announcement_alert[]` or in `alert_button_announcement_id` whose `announcement_type` is `DIPLOMAT_ARRIVAL`, `LIAISON_ARRIVAL`, or `TRADE_DIPLOMAT_ARRIVAL`, or whose name contains `MEETING` or `DIPLOMA` (except `DIPLOMAT_LEFT_UNHAPPY`), or whose alert type is `AGREEMENT`. Unverified; `trade.dialog` lists every alert so the live session can correct it.
+
+### `trade.dialog`
+
+Args: `limit` (default 25). Needs a map. Namespace `trade`. Result: `available` (a meeting alert is up), `meeting_report_ids`, `alerts [{type (alert type, or button for ids only in alert_button_announcement_id), report_ids, texts (first 120 characters), announcements, truncated}]`, `alerts_truncated`, `open`, `in_progress` (`flag.in_the_middle_of_stuff`), `actor`, `target` (unit refs), `popup` (`mm`: `actor_unit_id`, `noble_unit_id`, `flags {close_screen, new_screen}`, `moment_time_left`) when present, `step` (`requests` when `taking_requests`, `land_holder` when `selecting_land_holder_position`, `text` when open otherwise, `closed`), `text` (lines rebuilt from `text.word[]`: a new line on `NEW_LINE`, an empty line on `BLANK_LINE`, four spaces on `INDENT`, words joined by spaces; at most 200 lines, `text_truncated`), `script` (`code`, `cur_step`, `step_type` (the `script_stepst` subclass), `next_step_idx`, `steps`, `flags {success, failure}`; from `diplomacy.dipev`, else `environment.dipev`; absent without a meeting), `choices` (`links [{type, id}]` from `text.link[]`, and `filename` and `outvar_name` on a `script_step_textviewerst` step), `choices_note`, `requests {taking, tabs (entity_sell_category names), selected_tab}`, `land_holder {selecting, positions (land_holder_pos_id), assigned (hfids), candidates [{hist_figure_id, name}], selected_pos, truncated}`, `paused`, `note`.
+
+### `trade.open_dialog`
+
+Args: none. Needs a map and `screens_write`. An open dialog answers `opened: false, already_open: true`. Otherwise the focus must be the main map (`SCREEN_BUSY`), a meeting alert must be up (`NOT_FOUND`), and the game must hold the meeting on the interface (`mm` or `dipev` set; `NOT_FOUND` naming `claude-bridge dialog-snapshot` otherwise). The replay writes `diplomacy.open = true` (unverified). Result: `opened`, `already_open`, `replayed`, `meeting_report_ids`, `dialog` (a `trade.dialog` result), `note`.
+
+### `trade.dialog_step`
+
+Args: `action` (`continue`, `choose`, `done`, `land_holder`, `close`), `choice` (index, required for `choose`), `hf_id` (required for `land_holder`), `position_index` (default 0), `unpause` (default false). Needs a map and `screens_write`. A closed dialog answers `BAD_REQUEST`, except `close`, which is then a no-op that says so; an open one needs the `dwarfmode/Diplomacy` focus (`SCREEN_BUSY`). Actions:
+
+- `continue`, `choose`: refused with `BAD_REQUEST` ("not yet replayable") until the click diff is recorded; the dipscript's `execute`/`skip` and `cur_step` are never driven, since a wrong step corrupts the meeting. The player clicks through.
+- `done`: on the requests step only; writes `taking_requests = false`.
+- `land_holder`: on the land-holder step only; `hf_id` must be in `land_holder_avail_hfid`; writes `land_holder_selected_pos = position_index` and `land_holder_assigned_hfid[position_index] = hf_id`.
+- `close`: writes `open = false` (not `mm.flags.close_screen`), then honours `unpause` when `pause_write` is on.
+
+Result: `action`, `replayed`, `dialog` (a `trade.dialog` result after the step), `unpaused`, `paused`, `pause_note`, `note`.
 
 ### `stockpiles.list`
 

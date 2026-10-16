@@ -181,8 +181,15 @@ What the game and the bridge have taught us. Each line was learned by doing it w
   with `send_message` to press Trade.
 - `SCREEN_BUSY` means the player has a menu open. Their menu is never closed; try later or
   ask them.
-- **The liaison meeting is the player's.** `set_trade_requests` sets next year's requests
-  while the meeting's Requests step is open; the player clicks through the rest.
+- **The liaison meeting.** A `meeting_ready` event says its left-side alert is up.
+  `get_meeting_dialog` shows whether it is available or open, its text, step, and the
+  land-holder candidates. With `screens_write`: `open_meeting_dialog`, then on the requests
+  step `set_trade_requests` and `step_meeting_dialog(action="done")`, `land_holder` with an
+  `hf_id` when asked, and `close` (with `unpause=True` when `pause_write` is on).
+- Until the owner verifies them in-game, the opener and every step are guesses:
+  `continue` and `choose` always answer "not yet replayable", so the player clicks through
+  the conversation; if the opener or a step does not show on screen, ask the player to click
+  it with `send_message`.
 - Elves refuse anything made of wood; offering it offends the caravan.
 
 ## Units and names
@@ -250,9 +257,10 @@ monuments.
 
 - Petitions cannot be read or answered through the bridge yet; the player answers them in
   the game. Petition events still arrive.
-- The liaison meeting is the player's (above) until P3.0 lands. The trade screen is driven
-  by the mod but its live verification is pending: if `press_trade` says nothing changed,
-  or the counter-offer answers come back `NOT_FOUND`, the player presses the button.
+- Trade counter-offers: `accept_counter` and `decline_counter` come back `NOT_FOUND` until the
+  buttons are measured; the player answers a counter-offer by hand. The liaison conversation
+  (`continue`, `choose`) is the player's until the owner records it; opening, Done, the land
+  holder, and close are replays verified only as far as the README says.
 - Levers cannot be linked, weapon traps hold one weapon, siege engines cannot be aimed.
 - Dev tools cannot spawn units on this DFHack build.
 
