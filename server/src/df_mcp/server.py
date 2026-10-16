@@ -24,6 +24,7 @@ from df_mcp.tools import (
     furniture,
     kitchen,
     map,
+    messages,
     military,
     nobles,
     orders,
@@ -65,6 +66,9 @@ shows the trees and shrubs in a box.
 Your plan: `read_plan` at the start of a session; keep plans, rules, and memory about this fort in
 it with `write_plan` and `append_plan`; `read_goals` holds the player's goals, which also arrive as
 `goals` channel messages when the player sends them.
+`send_message` tells the player something inside the game (short, light red, on the left-side
+alerts, with an optional position to zoom to); use it when a plan is made or a decision is
+needed.
 Events: when the session was started with the channel flag, batches of in-game events the
 player enabled (see `list_event_kinds`) arrive on their own as channel messages; read the
 units, tiles, or petitions they name with the tools and act. `poll_events` is the fallback.
@@ -97,6 +101,7 @@ TOOL_MODULES = (
     kitchen,
     events,
     plan,
+    messages,
     console,
     dev,
 )

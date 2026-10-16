@@ -101,6 +101,8 @@ def test_server_registers_expected_tools():
         "write_plan",
         "append_plan",
         "read_goals",
+        "send_message",
+        "list_message_badges",
         "dev_create_item",
         "dev_exterminate",
     }

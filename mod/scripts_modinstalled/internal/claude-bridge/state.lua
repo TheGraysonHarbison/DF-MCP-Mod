@@ -6,7 +6,7 @@ local scriptmanager = require('script-manager')
 
 MOD_ID = 'claude-bridge'
 MOD_VERSION = '0.3.0'
-PROTOCOL_VERSION = 18
+PROTOCOL_VERSION = 19
 
 -- Settings groups, in display order.
 GROUPS = {'General', 'Units', 'Items', 'Logistics', 'World', 'Commands'}
@@ -79,7 +79,7 @@ function namespaces_in(group)
 end
 
 -- Namespaces that are always allowed. 'core' carries only ping.
-local ALWAYS_ALLOWED = {core = true}
+local ALWAYS_ALLOWED = {core = true, messages = true}
 
 local settings = nil
 
