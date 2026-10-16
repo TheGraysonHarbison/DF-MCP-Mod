@@ -88,11 +88,36 @@ What the game and the bridge have taught us. Each line was learned by doing it w
 - **Crops are set after the plot is built.** Setting crops on a planned plot is undone by
   the game; `set_farm_crops` waits for a built plot. Underground crops per season: plump
   helmets year round, then pig tails, cave wheat, sweet pods, dimple cups, quarry bushes by
-  season. `get_farm` lists what is plantable with seed counts.
-- **Seeds come from eating and brewing**, not from cooking: ban cooking of the plants you
-  need seeds from with `set_kitchen`. The game bans seed cooking by default; keep it so.
+  season. Seeds are their own section below.
 - Drink is more urgent than food. A still, a plump helmet plot, and barrels or pots.
 - Food left outside rots; a food stockpile indoors early, refuse outdoors.
+
+## Sustainable farming
+
+- **One planted tile takes one seed.** A plot's seed need per season is its tile count
+  (`list_farms` gives tiles per plot).
+- **Seeds return only from eating raw plants and from brewing**, never from cooking. The
+  game bans cooking seeds by default; keep it so.
+- **Keep one planting cycle in reserve per crop:** seeds at least equal to the tiles of
+  every plot that grows it.
+- **Check seed counts with `get_farm`** (its plantable list carries seeds in stock) at
+  every season change and before every `set_farm_crops`. `season_changed` is off by
+  default; without it, check when `get_time` shows a new season.
+- **Below the reserve:** ban cooking and brewing of that plant with `set_kitchen`
+  (`item_type="PLANT"`, `material="<plant>"`) and leave its last plants alone until the
+  seeds recover.
+- **Never set a crop whose seed count is below the tiles it needs.** Plant a crop you have
+  seeds for instead, or leave the season fallow.
+- **Buy seeds.** Caravans sell seed bags: `bring_to_depot` goods to pay, then pick the seeds
+  with `select_trade_goods` on the trade screen. Put seeds in next year's requests with
+  `set_trade_requests` (`get_trade_request_options` shows the seeds category).
+- **Gather wild plants** with `designate_dig(kind="gather")` for extra seeds and new crops.
+- **Plump helmets are the backbone crop**, year round underground. Pig tails for cloth and
+  the brewing crops (cave wheat, sweet pods, dimple cups) are the second tier.
+- **Each seed type caps at 200 in the fort;** more are destroyed, so a huge reserve is
+  waste.
+- **A seedless season starves the fort a year later.** The seed check is a standing rule
+  every season, not a reaction to hunger.
 
 ## Workshops and orders
 

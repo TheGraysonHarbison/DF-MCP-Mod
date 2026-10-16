@@ -35,7 +35,8 @@ invoked by hand as `/claude-df:<name>`.
   the manager, when to delegate, and the brief every delegation carries.
 - **fortress-quirks** (`skills/fortress-quirks/SKILL.md`): what the game and the bridge have
   taught us: calls pause the game, lists are capped, dwarves move diagonally so rooms need
-  solid corners, crops are set after the plot is built, work orders need a manager, the
+  solid corners, crops are set after the plot is built, a seed reserve per crop keeps farming
+  sustainable, work orders need a manager, the
   Trade button and the liaison meeting stay with the player, never touch texture fields,
   and a table of error codes with what to do about each.
 
