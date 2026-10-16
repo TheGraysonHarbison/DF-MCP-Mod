@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **17**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **18**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -51,6 +51,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `time` | on | `time.now` |
 | `pause_write` | off | `time.set_pause` |
 | `events` | on | `events.kinds`, `events.poll`, `events.emit` |
+| `plan` | on | `plan.info`, `plan.read`, `plan.write`, `plan.append`, `goals.read` |
 | `units` | on | `units.list`, `units.find`, `units.get`, `units.sheet`, `units.full_sheet` |
 | `units_write` | off | `units.set_nickname` |
 | `nobles` | on | `nobles.list` |
@@ -96,6 +97,26 @@ Result: `next_seq`, `dropped`, `now_ms`, `running`, `tick`, `waiting`, `events` 
 ### `events.emit`
 
 Args: `kind` (an event kind, or `test`), `text`, `pos`. Namespace `events`. Queues one event by hand (disabled kinds are refused with `queued: false`); used by tests and by the goals and timer features. Result: `queued`, `seq`.
+
+### Plan and goals
+
+Two Markdown files in the current save, `<save>/claude-df/plan.md` (Claude's) and `goals.md` (the player's), created empty on enable (`dfhack.getSavePath()` is the region folder, `save/<name>/`, verified 2026-10-15). Files are UTF-8; the ops convert through CP437 on the way out so the dispatcher's UTF-8 conversion returns the file unchanged (characters outside CP437 are lost). Writes arrive as UTF-8 and are stored as given. The goal prompt lives in the mod's settings (`goal_prompt`, default in `plan.lua`), edited in the `claude-bridge goals` window, whose Ctrl+S queues a `goals` event (a special kind that ignores the per-kind toggles) carrying the prompt with `{Put Goals Here}` replaced by the goals; the server delivers that batch as the message itself. Nothing is sent on edit or close.
+
+### `plan.info`
+
+Args: none. Needs a world. Result: `folder`, `save_folder`, `plan {name, exists, bytes}`, `goals {...}`, `max_bytes` (65536), `goal_prompt`.
+
+### `plan.read`, `goals.read`
+
+Args: none. Needs a world. Result: `file`, `text`, `bytes`.
+
+### `plan.write`
+
+Args: `text` (at most 65536 bytes). Needs a world. Replaces the plan. Result: `file`, `bytes`, `replaced`.
+
+### `plan.append`
+
+Args: `text`. Needs a world. Appends with a newline before and after as needed; refused with `BAD_REQUEST` when the file would pass the cap. Result: `file`, `bytes`, `appended`. All verified in-game 2026-10-15.
 
 ### `core.ping`
 

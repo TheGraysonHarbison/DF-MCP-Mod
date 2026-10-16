@@ -13,6 +13,7 @@ Usage::
     disable claude-bridge
     claude-bridge [status]
     claude-bridge settings
+    claude-bridge goals
     claude-bridge perm <namespace> on|off
     claude-bridge event <kind> on|off
     claude-bridge send <text>
@@ -92,6 +93,7 @@ local function do_enable()
     register_ops()
     publish_rpc()
     pcall(function() events_module().start() end)
+    pcall(function() reqscript('internal/claude-bridge/plan').ensure_files() end)
     enabled = true
 end
 
@@ -158,6 +160,9 @@ elseif command == 'help' or command == '-h' or command == '--help' then
     print_help()
 elseif command == 'settings' then
     reqscript('internal/claude-bridge/ui/settings').show()
+elseif command == 'goals' then
+    if not enabled then qerror('claude-bridge is not enabled') end
+    reqscript('internal/claude-bridge/ui/goals').show()
 elseif command == 'perm' then
     local ns, value = args[2], args[3]
     if not ns or (value ~= 'on' and value ~= 'off') then

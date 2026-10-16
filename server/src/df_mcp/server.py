@@ -27,6 +27,7 @@ from df_mcp.tools import (
     military,
     nobles,
     orders,
+    plan,
     plants,
     stockpiles,
     stocks,
@@ -61,6 +62,9 @@ Digging: `find_exposed_walls` finds reachable rock, `list_designations` shows ex
 `plan_dig` previews a box, and with `dig_write` `designate_dig` places mining, staircase,
 channel, ramp, chop, and gather orders and `erase_designations` removes them; `list_plants`
 shows the trees and shrubs in a box.
+Your plan: `read_plan` at the start of a session; keep plans, rules, and memory about this fort in
+it with `write_plan` and `append_plan`; `read_goals` holds the player's goals, which also arrive as
+`goals` channel messages when the player sends them.
 Events: when the session was started with the channel flag, batches of in-game events the
 player enabled (see `list_event_kinds`) arrive on their own as channel messages; read the
 units, tiles, or petitions they name with the tools and act. `poll_events` is the fallback.
@@ -92,6 +96,7 @@ TOOL_MODULES = (
     zones,
     kitchen,
     events,
+    plan,
     console,
     dev,
 )

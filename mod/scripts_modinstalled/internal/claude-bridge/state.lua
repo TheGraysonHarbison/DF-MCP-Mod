@@ -6,7 +6,7 @@ local scriptmanager = require('script-manager')
 
 MOD_ID = 'claude-bridge'
 MOD_VERSION = '0.3.0'
-PROTOCOL_VERSION = 17
+PROTOCOL_VERSION = 18
 
 -- Settings groups, in display order.
 GROUPS = {'General', 'Units', 'Items', 'Logistics', 'World', 'Commands'}
@@ -23,6 +23,8 @@ NAMESPACES = {
      label = 'Pause and unpause the game'},
     {key = 'events',   group = 'General',  hotkey = 'CUSTOM_X', default = true,
      label = 'Send in-game events (per kind, Events tab)'},
+    {key = 'plan',     group = 'General',  hotkey = 'CUSTOM_SHIFT_P', default = true,
+     label = 'Read and write its plan file, read goals'},
     {key = 'units',    group = 'Units',    hotkey = 'CUSTOM_U', default = true,
      label = 'Read units'},
     {key = 'units_write', group = 'Units', hotkey = 'CUSTOM_N', default = false,
@@ -110,7 +112,7 @@ local function defaults()
     for _, ns in ipairs(NAMESPACES) do
         permissions[ns.key] = ns.default
     end
-    return {permissions = permissions, console_allow = {}, events = {}}
+    return {permissions = permissions, console_allow = {}, events = {}, goal_prompt = nil}
 end
 
 local function read_file(path)
@@ -152,6 +154,9 @@ function load_settings()
                     end
                 end
             end
+            if type(data.goal_prompt) == 'string' and data.goal_prompt ~= '' then
+                loaded.goal_prompt = data.goal_prompt
+            end
             if type(data.events) == 'table' then
                 for key, value in pairs(data.events) do
                     if type(key) == 'string' then loaded.events[key] = value and true or false end
@@ -191,6 +196,19 @@ function set_permission(namespace, value)
     s.permissions[namespace] = value and true or false
     save_settings()
     return true
+end
+
+-- The prompt the goals window sends; the default lives in the plan module.
+function get_goal_prompt()
+    local s = get_settings()
+    if type(s.goal_prompt) == 'string' and s.goal_prompt ~= '' then return s.goal_prompt end
+    return reqscript('internal/claude-bridge/plan').DEFAULT_GOAL_PROMPT
+end
+
+function set_goal_prompt(text)
+    local s = get_settings()
+    s.goal_prompt = text
+    save_settings()
 end
 
 -- Event kinds: enabled per kind, defaulting to the kind's own default (events module).

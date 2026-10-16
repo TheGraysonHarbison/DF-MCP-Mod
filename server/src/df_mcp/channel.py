@@ -31,6 +31,7 @@ POLL_SECONDS = 2.0
 BACKOFF_SECONDS = 10.0
 STARTUP_DELAY_SECONDS = 3.0
 TEXT_LIMIT = 300
+PROMPT_KINDS = ("goals", "timer")
 
 
 def format_batch(result: dict[str, Any]) -> tuple[str, dict[str, str]]:
@@ -39,6 +40,16 @@ def format_batch(result: dict[str, Any]) -> tuple[str, dict[str, str]]:
     first = events[0]["seq"] if events else 0
     last = events[-1]["seq"] if events else 0
     kinds = sorted({str(e.get("kind")) for e in events})
+    if events and all(e.get("kind") in PROMPT_KINDS for e in events):
+        # Goals and timer prompts are messages in their own right, delivered whole.
+        content = "\n\n".join(str(e.get("text") or "") for e in events)
+        return content, {
+            "kind": str(events[-1].get("kind")),
+            "count": str(len(events)),
+            "first_seq": str(first),
+            "last_seq": str(last),
+            "kinds": " ".join(kinds),
+        }
     lines = [
         f"Dwarf Fortress events: {len(events)} (seq {first}-{last}, "
         f"game tick {result.get('tick')}). Read what matters with the dfhack tools, "
