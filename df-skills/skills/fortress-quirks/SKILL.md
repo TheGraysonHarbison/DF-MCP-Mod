@@ -1,0 +1,204 @@
+---
+name: fortress-quirks
+description: Facts about Dwarf Fortress and the dfhack bridge that are easy to get wrong. Use before digging or building, when laying out rooms, farming, forming squads, trading, reading names or long lists, handling events or the prompt timer, and whenever a tool returns NOT_ALLOWED, MOD_NOT_ENABLED, a refusal, or a truncated list.
+when_to_use: Any time a fort action touches the map, the dwarves, the military, trade, or the bridge's limits, or something unexpected comes back from a tool.
+---
+
+# Fortress Quirks
+
+What the game and the bridge have taught us. Each line was learned by doing it wrong once.
+
+## The bridge
+
+- **Every call pauses the game** for a few milliseconds while DFHack answers. Prefer one
+  call with a bigger `limit` or a bigger box over many small calls. Do not poll in a loop
+  while dwarves are working unless the task needs it.
+- **Lists are capped at 25 rows** by default. Every list tool takes `limit`; the response
+  says when the cap was hit (`truncated`). Raise `limit` when you need the whole list; never
+  assume a capped list is complete.
+- **Ids are the keys.** Unit, building, item, squad, zone, stockpile, and work order ids are
+  stable while the fort is loaded. Turn names into ids with `find_unit` and `find_items`;
+  never match by name twice.
+- **Dry runs exist** for the three big writes: `plan_dig`, `plan_construction`,
+  `plan_furniture`. They report overlaps, bad tiles, and missing items with the work order
+  that makes them. Use them before any footprint you have not seen.
+- **Writes never overwrite** an existing designation or blueprint; overlapping tiles are
+  skipped and reported. A repeat of the same order is refused, not duplicated.
+- **Permissions are the player's.** `get_permissions` shows the namespaces. `NOT_ALLOWED`
+  names the toggle; tell the player once, do not retry.
+- **Text is CP437.** Names come back with the English surname in quotes ("Urist
+  Scourgears"); the quoted part is not a nickname. Some accented capitals become `?`. Do not
+  "fix" spellings.
+- **The game's own notion of stock** depends on the bookkeeper. If the player turned off
+  true counts, `list_stocks` shows what a bookkeeper would know, which may be rounded or
+  stale.
+
+## Movement and rooms
+
+- **Dwarves move diagonally.** Two dug rooms whose corners touch are one room; a room whose
+  corner touches a corridor is open to it. Every dug room needs a fully solid border,
+  corners included, with at least one wall tile between it and any other room or corridor,
+  and a deliberate doorway tile.
+- **Z-levels connect only through stairs and ramps.** A floor above needs an up stair or a
+  ramp below it. Roof floors need a ramp or stair to be built; a tree canopy above a ramp
+  blocks it.
+- **Doors need an adjacent wall.** A door on open ground is refused.
+- **Beds go indoors.** A bed on a surface tile with sky above is refused.
+- The wagon's roof is its own small walkable group; do not count it as fort floor.
+
+## Digging
+
+- `find_exposed_walls` lists rock that borders walkable floor: that is where digging can
+  start without a tile walk.
+- `designate_dig` kinds: `mine`, `stairs` (a box spanning at least two levels; down stair
+  on top, up/down between, up stair at the bottom; a 1 by 1 box makes a stair column),
+  `channel`, `ramp`, `remove_stairs`, `smooth`, `engrave`, `chop`, `gather`. Boxes span
+  z-levels; circles take a centre and radius for every kind but stairs.
+- **A designation job without a worker is normal.** The game queues the jobs long before a
+  miner picks one. `list_designations` shows pending tiles and taken jobs; the tile's own
+  flag clears when the job is created and comes back if the job is cancelled.
+- **Smoothing and engraving** are refused on tiles already done; engrave only after smooth.
+- **Trees** are felled from their base tile; saplings are neither chopped nor gathered.
+  `list_plants` shows trees and shrubs in a box.
+- Soil layers (loam, clay, sand, silt, peat) dig fast and take farms; stone layers do not.
+  `get_tile` names the material; the surface level is in `get_map_bounds` and `get_wagon`.
+
+## Building
+
+- **Materials in plain words.** "any stone", "any wood", "granite", "blocks", "plum wood",
+  "granite blocks". `list_building_materials` shows what is usable with counts. A material
+  with zero available is refused and nothing is placed.
+- **Furniture is made first, placed second.** A door, bed, table, chair, or cabinet needs the
+  item in stock; the refusal names the work order job that makes it. Workshops and
+  constructions take raw materials directly.
+- **A building shown on a tile may not be built.** `get_tile` and `list_buildings` say
+  whether it is built, planned, or suspended.
+- Workshops need a 3 by 3 clear footprint; `find_build_space` returns usable spots. The
+  trade depot is 5 by 5 and must be reachable by wagons (a 3-wide path from the map edge).
+- Dwarves build wooden constructions fast (25 in about half a minute of unpaused play);
+  stone follows the hauling distance.
+- **Traps and levers:** traps need a mechanism in stock; levers cannot be linked through the
+  bridge (open issue), so ask the player to link them in the game.
+
+## Farming and food
+
+- **Farm plots go on soil or mud.** Soil floors (including grass over soil) and any floor
+  with mud. Stone floors are cut from the plot and reported. Underground soil outside a
+  cavern yields less; near water or in a cavern it yields more.
+- **Crops are set after the plot is built.** Setting crops on a planned plot is undone by
+  the game; `set_farm_crops` waits for a built plot. Underground crops per season: plump
+  helmets year round, then pig tails, cave wheat, sweet pods, dimple cups, quarry bushes by
+  season. `get_farm` lists what is plantable with seed counts.
+- **Seeds come from eating and brewing**, not from cooking: ban cooking of the plants you
+  need seeds from with `set_kitchen`. The game bans seed cooking by default; keep it so.
+- Drink is more urgent than food. A still, a plump helmet plot, and barrels or pots.
+- Food left outside rots; a food stockpile indoors early, refuse outdoors.
+
+## Workshops and orders
+
+- **Work orders need a manager.** Without one, orders sit unapproved. `list_nobles` shows
+  the seat; `assign_noble` fills it (needs `nobles_write`). The same goes for the
+  bookkeeper (stock counts) and the broker (trade).
+- `find_job_types` turns a plain name into the job the order needs; `create_work_order`
+  takes a material in plain words and refuses orders the game would label "unknown
+  material".
+- `get_workshop` shows the shop's jobs and contents; a shop with a stuck job is usually
+  missing a material or a dwarf with the labor.
+
+## Stockpiles
+
+- A freshly painted stockpile accepts nothing until categories are set; `configure_stockpile`
+  with a category or a preset name (`list_stockpile_presets`). Circles leave their corners as
+  floor.
+- Refuse and corpses need their own pile outdoors; bars, blocks, and stone their own indoors.
+
+## Military
+
+- A new squad needs a vacant military position (militia commander or captain); `list_squads`
+  shows seats and the game's uniform presets.
+- Equipment is set by item type and material class (`breastplate`, `metal`), never a
+  specific item; the game assigns the gear. Crossbow squads need bolts with combat and
+  training ammunition set.
+- Routines: Off duty, Staggered training, Constant training, Ready. Training needs an
+  archery range or barracks zone assigned to the squad.
+- Orders: `station`, `kill`, `patrol` (a route from `create_route`), `cancel`. A kill order
+  on a citizen is refused. A station order moves soldiers to the tiles beside the target.
+- The squad badge on screen may lag after a symbol or colour change. Leave it.
+- Sparring between soldiers arrives as `sparring` events, not fights, when that kind is on.
+
+## Trade and diplomats
+
+- Caravans need a built trade depot and an appointed broker; `request_broker` calls them
+  to the depot. `bring_to_depot` hauls goods; `offer_trade` prices a set and tells you
+  whether the merchant would accept, including the weight limit.
+- **The Trade button is the player's.** `select_trade_goods` picks goods on the open trade
+  screen; the player opens the depot's trade screen and presses Trade. Say so with
+  `send_message` when a deal is ready.
+- **The liaison meeting is the player's.** `set_trade_requests` sets next year's requests
+  while the meeting's Requests step is open; the player clicks through the rest.
+- Elves refuse anything made of wood; offering it offends the caravan.
+
+## Units and names
+
+- Units come in three buckets: citizens, domesticated animals, and others (visitors,
+  merchants, wildlife, hostiles, undead). `list_others` is where hostiles show.
+- `get_unit_sheet` reads one tab (thoughts, health, skills, relations); `get_unit_full_sheet`
+  reads all of them with each list capped. Use the tab you need.
+- A dwarf's mood in the list row is the game's overall mood word; the thoughts tab explains
+  it.
+- Nicknames (`set_unit_nickname`) are the only unit write and need `units_write`.
+
+## Events, timer, and channel
+
+- Events arrive as channel messages when the session was started with the channel flag:
+  batches two quiet seconds or 50 events apart, each line `[kind] text (x,y,z) units ...`.
+  A `goals` message is the player's goals in their prompt; a `timer` message is the prompt
+  timer asking for a status check.
+- The player chooses which kinds are on (`list_event_kinds`); mineral discovered, units
+  fighting, and petition are on by default. Do not ask for kinds to be enabled unless the
+  plan needs them.
+- Any batch sent to you re-arms the prompt timer, so a busy fort is driven by events and a
+  quiet one by the timer. The timer counts only while the game is unpaused.
+- Without the channel, `poll_events` returns the same batches: call it first without
+  `after_seq`, then with the last sequence received, on a `/loop`.
+- `send_message` is your voice in the game: short, with a position when there is one. It
+  does not pause or recenter the game.
+
+## Early fort priorities
+
+In this order unless the goals say otherwise: a dug entrance with a door, beds and a
+dining area, drink and food for a year (still, farms, kitchen, indoor food stockpile),
+manager, bookkeeper, and broker appointed, a trade depot before the first autumn caravan,
+a militia with a uniform before the second year, then wealth, nobles, and the player's
+monuments.
+
+## Known open issues
+
+- Petitions cannot be read or answered through the bridge yet; the player answers them in
+  the game. Petition events still arrive.
+- The Trade button and the liaison meeting are the player's (above).
+- Levers cannot be linked, weapon traps hold one weapon, siege engines cannot be aimed.
+- Dev tools cannot spawn units on this DFHack build.
+
+## When something is off
+
+| Symptom | Meaning | What to do |
+|---|---|---|
+| `MOD_NOT_ENABLED` | The mod is off in this fort | Tell the player to run `enable claude-bridge` in the DFHack console |
+| `DISCONNECTED` or `RPC_FAILED` | Dwarf Fortress is not running or DFHack's remote port is closed | Tell the player; retry `ping` once they confirm |
+| `NO_MAP` | A world is loaded but no fort | Wait for the player to load a fort |
+| `NOT_ALLOWED` | A permission namespace is off, or a console command is not allowlisted | Name the toggle once; mark the task blocked |
+| A list says `truncated` | The 25-row cap | Repeat with a higher `limit` |
+| A write says skipped tiles | Existing orders, buildings, or open space in the footprint | Read the skipped list; adjust the box, do not force it |
+| No events ever arrive | The session lacks the channel flag, or the organization's Channels switch is off | Tell the player: start with `claude --dangerously-load-development-channels server:dfhack`; an Owner enables Channels under Organization settings > Claude Code; the log is in `~/.cache/claude-cli-nodejs/<project>/mcp-logs-dfhack/`. Meanwhile poll with `poll_events` |
+| The game seems frozen | It is paused | `get_time` shows `paused`; `set_paused(false)` if `pause_write` is on, else ask the player |
+| A crop write changed nothing | The plot is not built yet | Wait for the planter; set crops after `list_farms` shows it built |
+
+## Never
+
+- Never write to texture or render cache fields on game structures (anything named
+  `*_texpos` or `texture_*`), and never ask the console to do it: it crashed the game. The
+  bridge does not expose them; do not look for a way around that.
+- Never run `exterminate` or any destructive console command against a race the fort owns,
+  and never without the player naming the exact target.
+- Never leave the game paused at the end of a turn unless the player asked.

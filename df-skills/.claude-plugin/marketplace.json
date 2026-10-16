@@ -1,0 +1,11 @@
+{
+  "name": "claude-df",
+  "owner": {"name": "TheGraysonHarbison"},
+  "plugins": [
+    {
+      "name": "claude-df",
+      "source": "./",
+      "description": "Skills and worker agents for playing a Dwarf Fortress fort through the dfhack MCP server."
+    }
+  ]
+}

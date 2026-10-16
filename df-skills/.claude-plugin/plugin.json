@@ -1,0 +1,7 @@
+{
+  "name": "claude-df",
+  "version": "1.0.0-alpha",
+  "description": "Skills and worker agents for playing a Dwarf Fortress fort through the dfhack MCP server.",
+  "author": {"name": "TheGraysonHarbison"},
+  "license": "MIT"
+}
