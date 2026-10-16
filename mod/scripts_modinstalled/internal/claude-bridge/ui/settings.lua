@@ -142,7 +142,7 @@ function EventsPage:init()
         },
         widgets.Label{
             frame = {b = 0, l = 0},
-            text = {{text = 'The "Send in-game events" permission on the first tab must be on.',
+            text = {{text = 'Goals and the goal prompt: claude-bridge goals. Events permission: first tab.',
                      pen = COLOR_GREY}},
         },
     }

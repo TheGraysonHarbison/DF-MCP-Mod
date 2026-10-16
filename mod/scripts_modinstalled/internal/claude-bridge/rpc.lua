@@ -7,7 +7,7 @@ local state = reqscript('internal/claude-bridge/state')
 -- Op modules under internal/claude-bridge/, each exporting ops(). Kept here, not in the
 -- control script, so `claude-bridge reload` picks up a newly added module.
 OP_MODULES = {'core', 'time', 'units', 'sheet', 'nobles', 'stocks', 'orders', 'workshops', 'map',
-              'build', 'stockpiles', 'dig', 'construct', 'plants', 'farms', 'furniture', 'military', 'events', 'zones', 'kitchen', 'console'}
+              'build', 'stockpiles', 'dig', 'construct', 'plants', 'farms', 'furniture', 'military', 'events', 'plan', 'zones', 'kitchen', 'console'}
 
 ERR_BAD_REQUEST = 'BAD_REQUEST'
 ERR_NOT_ALLOWED = 'NOT_ALLOWED'

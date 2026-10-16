@@ -17,6 +17,7 @@ enable claude-bridge          start the bridge (also from gui/control-panel)
 disable claude-bridge         stop it
 claude-bridge status          show enabled state, permissions, and console allowlist
 claude-bridge settings        open the settings window
+claude-bridge goals           open the goals window (goals.md and the goal prompt; Ctrl+S sends them)
 claude-bridge perm <ns> on|off   toggle a permission namespace (time, units, units_write, nobles,
                                  nobles_write, stocks, orders, orders_write, workshops,
                                  build_write, stockpiles, stockpiles_write, map, console,

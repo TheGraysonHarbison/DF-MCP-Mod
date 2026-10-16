@@ -137,6 +137,22 @@ function push(kind, fields)
     return entry
 end
 
+-- Special kinds (goals, timer, test) bypass the per-kind toggles.
+function push_special(kind, text, extra)
+    local entry = {
+        seq = next_seq, kind = kind,
+        tick = safe(function() return df.global.world.frame_counter end) or 0,
+        ms = now_ms(), text = text, extra = extra,
+    }
+    next_seq = next_seq + 1
+    table.insert(queue, entry)
+    while #queue > CAPACITY do
+        table.remove(queue, 1)
+        dropped = dropped + 1
+    end
+    return entry
+end
+
 local function unit_ref(id)
     local unit = id and df.unit.find(id)
     if not unit then return nil end
@@ -458,9 +474,7 @@ local function emit(args)
     if spec then
         entry = push(kind, {text = args.text, pos = args.pos})
     else
-        entry = {seq = next_seq, kind = 'test', tick = 0, ms = now_ms(), text = args.text or 'test event', pos = args.pos}
-        next_seq = next_seq + 1
-        table.insert(queue, entry)
+        entry = push_special('test', args.text or 'test event')
     end
     return {queued = entry ~= nil, seq = entry and entry.seq or nil}
 end

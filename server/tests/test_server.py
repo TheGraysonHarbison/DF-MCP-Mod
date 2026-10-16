@@ -96,6 +96,11 @@ def test_server_registers_expected_tools():
         "run_console_command",
         "list_event_kinds",
         "poll_events",
+        "get_plan_info",
+        "read_plan",
+        "write_plan",
+        "append_plan",
+        "read_goals",
         "dev_create_item",
         "dev_exterminate",
     }
