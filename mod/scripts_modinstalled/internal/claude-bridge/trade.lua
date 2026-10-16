@@ -324,10 +324,9 @@ local function broker(args)
 end
 
 -- The merchant's words on the trade screen: main_interface.trade.big_announce, a
--- curses_text_boxst. VERIFY LIVE: its layout is not in the df-structures files checked
--- 2026-10-16; DFHack's devel/dump-tooltip-ids iterates another curses_text_boxst with ipairs
--- and reads `line.value`, so this tries a `text` string vector first and then the box itself
--- as that vector. Check with `claude-bridge trade-snapshot` (big_announce_text) after a reply.
+-- curses_text_boxst with a `text` vector of lines (`line.value`, the shape DFHack's
+-- devel/dump-tooltip-ids reads). Live on 2026-10-16 it stayed empty through a greeting and an
+-- accepted deal, so merchant_message is nil until the game puts a longer speech there.
 local function box_lines(box)
     local lines = {}
     local function add(line)
@@ -721,12 +720,35 @@ local function index_list(waiting)
     return table.concat(have, ', ')
 end
 
--- The fields the depot sheet's Trade button writes, as far as the plan's research shows.
--- VERIFY LIVE: the owner presses Trade once on the caravan save with `claude-bridge
--- trade-snapshot` run before and after; correct this list (and the values written in
--- open_screen) from that diff. The strings title, talker, fortname, place and the
--- stillunloading and havetalker flags are left to the game unless the diff says otherwise.
-local REPLAY_FIELDS = {'bld', 'mer', 'civ', 'st', 'choosing_merchant', 'buildlists', 'handle_appraisal', 'open'}
+-- The fields the depot sheet's Trade button writes, recorded live on 2026-10-16 by diffing
+-- `claude-bridge trade-snapshot` before and after the owner's press on the caravan save:
+-- open, bld, mer, civ, st, merlist (the one caravan), havetalker 1, fortress_trader (the
+-- broker), merchant_trader (the caravan's Merchant), the title, fortname, place, and talker
+-- strings, and the goods and type lists (221 merchant goods, 60 type rows) already built with
+-- buildlists back at 0; the press also paused the game. The lists are the game's to build,
+-- so the replay sets buildlists = 1 and lets the next frame fill them.
+local REPLAY_FIELDS = {'bld', 'mer', 'civ', 'st', 'merlist', 'choosing_merchant', 'stillunloading', 'havetalker',
+                       'fortress_trader', 'merchant_trader', 'title', 'fortname', 'place', 'talker',
+                       'buildlists', 'handle_appraisal', 'open'}
+
+-- The caravan's talking merchant: the unit with the Merchant profession among the caravan
+-- civilization's merchants on the map (unit 220 on the live diff), else the first merchant.
+local function merchant_trader_of(caravan)
+    local first, trader = nil, nil
+    pcall(function()
+        for _, unit in ipairs(df.global.world.units.active) do
+            if unit.flags1.merchant and unit.civ_id == caravan.entity and not dfhack.units.isDead(unit) then
+                first = first or unit
+                if unit.profession == df.profession.MERCHANT then trader = trader or unit end
+            end
+        end
+    end)
+    return trader or first
+end
+
+local function native_name(name)
+    return safe(function() return dfhack.translation.translateName(name, false) end) or ''
+end
 
 local function open_screen(args)
     local tr = trade_interface()
@@ -768,23 +790,54 @@ local function open_screen(args)
         table.insert(warnings, 'the broker is not standing at the depot; the screen may open without a trader '
             .. '(has_talker false) and the merchants will not deal until the broker arrives; see get_broker')
     end
-    -- VERIFY LIVE: the replayed field set and values (see REPLAY_FIELDS).
     local saved = {}
-    for _, name in ipairs(REPLAY_FIELDS) do saved[name] = safe(function() return tr[name] end) end
+    for _, name in ipairs(REPLAY_FIELDS) do
+        if name == 'merlist' then
+            local copy = {}
+            pcall(function() for _, m in ipairs(tr.merlist) do table.insert(copy, m) end end)
+            saved[name] = copy
+        else
+            saved[name] = safe(function() return tr[name] end)
+        end
+    end
+    local trader = merchant_trader_of(caravan)
+    local at_depot = anyone or (broker ~= nil and unit_at_depot(broker, depot))
     local ok, werr = pcall(function()
         tr.bld = depot
         tr.mer = caravan
         tr.civ = df.historical_entity.find(caravan.entity)
         tr.st = df.world_site.find(df.global.plotinfo.site_id)
+        tr.merlist:resize(0)
+        tr.merlist:insert('#', caravan)
         tr.choosing_merchant = false
+        tr.stillunloading = 0
+        tr.havetalker = at_depot and 1 or 0
+        tr.fortress_trader = at_depot and broker or nil
+        tr.merchant_trader = trader
+        local place = native_name(tr.civ and tr.civ.name)
+        tr.title = 'Merchants from ' .. place
+        tr.fortname = 'Your fortress of ' .. native_name(tr.st and tr.st.name)
+        tr.place = place
+        tr.talker = trader and native_name(trader.name):match('^(%S+)') or ''
         tr.buildlists = 1
         tr.handle_appraisal = 1
         tr.open = true
     end)
     if not ok then
-        for _, name in ipairs(REPLAY_FIELDS) do pcall(function() tr[name] = saved[name] end) end
+        for _, name in ipairs(REPLAY_FIELDS) do
+            pcall(function()
+                if name == 'merlist' then
+                    tr.merlist:resize(0)
+                    for _, m in ipairs(saved.merlist) do tr.merlist:insert('#', m) end
+                else
+                    tr[name] = saved[name]
+                end
+            end)
+        end
         return rpc.error_result(rpc.ERR_INTERNAL, 'opening the trade screen failed and was undone: ' .. tostring(werr))
     end
+    -- The game's own Trade press pauses the game (live diff); so does this.
+    pcall(dfhack.world.SetPauseState, true)
     local view = screen({})
     if view.still_unloading then
         table.insert(warnings, 'the merchants are still unloading; wait until still_unloading is false before trading')
@@ -797,18 +850,21 @@ local function open_screen(args)
     }
 end
 
--- Button frames as DFHack's confirm plugin measures them against gui.get_interface_rect()
--- (specs.lua: trade-confirm-trade, trade-offer, trade-seize; context dwarfmode/Trade/Default).
+-- Button frames in the confirm plugin's form ({l, r, b, w, h} against gui.get_interface_rect(),
+-- centred between l and r). Measured live on 2026-10-16 at a 199 by 72 interface by hovering
+-- each button: Trade at column 85, Seize at 65, Offer at 59, all on rows 65 to 67. Trade and
+-- Seize match DFHack's confirm frames (trade-confirm-trade, trade-seize); the plugin's
+-- trade-offer frame (l 40, r 5) lands at column 116, which is not the Offer button on this
+-- build, so Offer uses the measured position. Other interface widths scale through the same
+-- centring; the first live press at another width should be watched.
 FRAMES = {
     trade = {l = 0, r = 23, b = 4, w = 11, h = 3},
-    offer = {l = 40, r = 5, b = 4, w = 19, h = 3},
-    seize = {l = 0, r = 73, b = 4, w = 11, h = 3},
+    offer = {l = 0, r = 81, b = 4, w = 11, h = 3},
+    seize = {l = 0, r = 67, b = 4, w = 11, h = 3},
 }
--- VERIFY LIVE: the counter-offer Accept and Decline buttons are not measured. On the caravan
--- save, run `claude-bridge trade-snapshot` while hovering each (its mouse and interface_rect)
--- and fill in frames in the same {l, r, t, b, w, h} form:
---   accept_counter = {l = ?, b = ?, w = ?, h = ?},
---   decline_counter = {l = ?, b = ?, w = ?, h = ?},
+-- The counter-offer Accept and Decline buttons are not measured yet (no counter-offer came
+-- up in the live session). When one does, run `claude-bridge trade-snapshot` while hovering
+-- each and fill in frames in the same form; until then those two actions return NOT_FOUND.
 COUNTER_FRAMES = {}
 
 local ACTIONS = {trade = true, offer = true, seize = true, accept_counter = true, decline_counter = true, close = true}
@@ -849,8 +905,9 @@ local function press_note(action, before, after)
             return 'read reply_meaning and mood_after; close the screen with press_trade("close") when done'
         end
     end
-    return 'nothing on the trade screen changed after the click; the game may not have taken it. Tell the player '
-        .. 'and let them press the button by hand'
+    return 'nothing on the trade screen changed after the click: the game greys that button out for this '
+        .. 'selection (Offer needs a gift the merchants find worth taking; verified live 2026-10-16), or the click '
+        .. 'missed at this window size. Change the selection, or tell the player and let them press it by hand'
 end
 
 local function press(args)
@@ -869,8 +926,8 @@ local function press(args)
     local before = press_state(tr)
 
     if action == 'close' then
-        -- VERIFY LIVE: open = false does what the screen's own close does (focus back to
-        -- dwarfmode/Default, selections dropped, no texture field touched).
+        -- The screen's own Escape only flips open to false (live diff 2026-10-16): the lists and
+        -- pointers stay, the focus returns to dwarfmode/Default, the game stays paused.
         local ok, werr = pcall(function() tr.open = false end)
         if not ok then return rpc.error_result(rpc.ERR_INTERNAL, 'closing the trade screen failed: ' .. tostring(werr)) end
         local out = {action = action, confirm_answered = false, mood_before = before.mood, mood_after = before.mood,
@@ -898,8 +955,9 @@ local function press(args)
             'the counter-offer buttons are not measured yet; run `claude-bridge trade-snapshot` while hovering them')
     end
 
-    -- VERIFY LIVE: screens.CLICK_KEYS is {_MOUSE_L = true}; if the first live click does
-    -- nothing, _MOUSE_L_DOWN may be needed too (an owner change in screens.lua).
+    -- _MOUSE_L alone is what the game's buttons take (Trade pressed live 2026-10-16); the
+    -- goods lists update on the game's next frame, so goods_after is the same-frame view and
+    -- get_trade_screen a moment later shows the exchange.
     local ok, clicked = pcall(screens.click_frame, frame)
     if not ok then
         return rpc.error_result(rpc.ERR_INTERNAL, 'the click could not be sent: ' .. tostring(clicked))
@@ -964,7 +1022,7 @@ function snapshot()
     if tr then
         for name, value in pairs(tr) do
             local ok, row = pcall(snapshot_value, value)
-            out[name] = ok and row or ('unreadable: ' .. tostring(row))
+            if ok then out[name] = row else out[name] = 'unreadable: ' .. tostring(row) end
         end
         out.talkline_name = enum_name(df.talk_line_type, safe(function() return tr.talkline end))
         out.mer_entity = safe(function() return tr.mer.entity end)

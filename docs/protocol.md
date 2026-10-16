@@ -837,6 +837,8 @@ The Trade, Offer, and Seize buttons have no key binding; the op clicks them thro
 
 Result: `action`, `clicked` `{x, y}` (the interface tile), `confirm_answered`, `reply` (`talk_line_type` name) and `reply_meaning`, `merchant_message`, `mood_before`, `mood_after`, `counter_offer`, `counter_offer_items` `[{id, description, value}]` with `counter_offer_truncated`, `screen_open`, `goods_after {merchant, fort}` (list lengths), `unpaused`, `paused`, `pause_note`, `note` (says when nothing on the screen changed after the click, so the player can press by hand). `close` returns `action`, `confirm_answered`, `mood_before`, `mood_after`, `counter_offer`, `screen_open`, the pause fields, and `note`.
 
+
+Verified in-game 2026-10-16 (199 by 72 interface): Trade at column 85, Seize at 65, Offer at 59, rows 65 to 67; the Trade click is caught by DFHack's confirm plugin (`dfhack/lua/MessageBox`), which the op answers with SELECT; the merchant accepted and the goods lists updated on the next frame. A greyed-out button (Offer for a small gift) takes the click without effect and the note says so. Counter-offer frames are unmeasured.
 ### Diplomats (Phase 17.1)
 
 ### `trade.diplomats`
