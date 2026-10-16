@@ -435,5 +435,5 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | P2.0 | Trade screen: open, press Trade, Offer, Seize, answer counter-offers, read the reply, close (`open_trade_screen`, `press_trade`, `screens_write` permission) | planned 2026-10-16; live test on the owner's caravan save |
 | P3.0 | Diplomacy dialog: availability event, open, read text and choices, step, finish (`get_meeting_dialog`, `open_meeting_dialog`, `step_meeting_dialog`) | planned 2026-10-16; live test on the owner's liaison save |
 | P4.0 | Popups: `popup` event with the text, `list_popups`, `close_popup` with optional unpause | planned 2026-10-16 |
-| P5.0 | Hotkeys: list the 16 slots, set and clear zoom hotkeys (`list_hotkeys`, `set_hotkey`, `clear_hotkey`, `hotkeys_write` permission) | planned 2026-10-16 |
+| P5.0 | Hotkeys: list the 16 slots, set and clear zoom hotkeys (`list_hotkeys`, `set_hotkey`, `clear_hotkey`, `hotkeys_write` permission) | built 2026-10-16 (not yet verified in-game) |
 | P6.0 | Alpha 1.0.1 release | owner's |

@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **26**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **27**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -68,8 +68,9 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `workshops` | on | `workshops.list`, `workshops.get`, `build.plan_construction`, `build.plan_furniture`, `build.list`, `farms.list`, `farms.get` |
 | `zones` | on | `zones.list`, `zones.get` |
 | `zones_write` | off | `zones.create`, `zones.edit`, `zones.assign`, `zones.unassign`, `zones.delete` |
+| `hotkeys_write` | off | `hotkeys.set`, `hotkeys.clear` |
 | `dig_write` | off | `dig.designate`, `dig.erase` (`dig.plan` is under `map`) |
-| `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space`, `map.exposed_walls`, `map.designations`, `map.plants` |
+| `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space`, `map.exposed_walls`, `map.designations`, `map.plants`, `hotkeys.list` |
 | `build_write` | off | `build.workshop`, `build.remove`, `build.construct`, `build.place`, `build.suspend`, `build.remove_constructions`, `farms.set_crops` |
 | `trade` | on | `trade.caravans`, `trade.depot`, `trade.broker`, `trade.screen`, `trade.diplomats`, `trade.request_options` |
 | `trade_write` | off | `trade.request_broker`, `trade.bring`, `trade.unbring`, `trade.offer`, `trade.select`, `trade.set_requests` |
@@ -596,6 +597,30 @@ Args: a box (`x1`..`z2`, any levels) or `circle` `{x, y, z, radius}`, `kind` (op
 Walks `world.plants.all` and keeps plants whose base position is in the shape. A plant with a `tree_info` is a tree; a tree species without one is a sapling; the rest are shrubs. `marked` comes from `dfhack.designations.isPlantMarked` (a `Default` dig flag on the plant's designation tile, or a `FellTree` or `GatherPlants` job there).
 
 Result: `box`, `shape`, `total`, `count`, `truncated`, `counts` (per kind), `species` (name to count), `plants` `[{pos, kind, species, dead, marked, size {width, depth, height} (trees), designation_tile (trees)}]`, `note`. Verified in-game 2026-10-15.
+
+### Hotkeys (Patch 1, P5.0)
+
+The 16 slots of the game's Hotkeys window (`plotinfo.main.hotkeys`, `ui_hotkey`: `name`, `cmd` of `hotkey_type` `None` -1, `Zoom`, `FollowUnit`, `FollowItem`, `x`, `y`, `z`, union `unit_id`/`item_id`), the player's F-key zoom points. Slots are numbered 1 to 16; slot n is array index n - 1. `custom_hotkeys` is ignored. Key labels come from `dfhack.screen.getKeyDisplay(df.interface_key.D_HOTKEY1 + n - 1)` as in DFHack's `hotkey-notes`, falling back to `slot n`. Writes touch only the slot's `name`, `cmd`, `x`, `y`, `z`, and union, and are refused with `BAD_REQUEST` while the player has the Hotkeys window open (`game.main_interface.hotkey.open`). Follow-unit and follow-item slots are read but never written.
+
+### `hotkeys.list`
+
+Args: none. Needs a map; namespace `map`.
+
+Result: `count` (16), `hotkeys` `[{slot, key, kind (none, zoom, follow_unit, follow_item), name ('' when none), empty, pos {x, y, z} (zoom), unit_id (follow_unit), item_id (follow_item)}]`, `free_slots` (slots whose kind is `none`), `note` (slot 1 is the game's "Wagon arrival location" default; the slots are the player's F-keys). A slot is `empty` when its kind is `none` and its name is ''.
+
+### `hotkeys.set`
+
+Args: `name` (required, non-empty after trimming), `x`, `y`, `z` (required integers, a valid tile position by `dfhack.maps.isValidTilePos`, else `BAD_REQUEST`), `slot` (optional, 1 to 16), `overwrite` (default false). Needs a map and `hotkeys_write`.
+
+Without `slot` the first slot of kind `none` is used; when there is none, `NOT_FOUND`. A given slot that is not empty is `BAD_REQUEST` naming its current name and kind unless `overwrite` is true. The name is converted to CP437, stripped of control characters, trimmed, and clipped to 40 characters. Writes `cmd = Zoom`, the name and position, and sets the union to -1.
+
+Result: `slot`, `key`, `name` (as stored), `pos`, `overwrote` `{name, kind, pos}` when a slot was replaced, `note`.
+
+### `hotkeys.clear`
+
+Args: `slot` (required, 1 to 16). Needs a map and `hotkeys_write`. Resets the slot to `cmd = None`, name '', position 0, union -1.
+
+Result: `slot`, `cleared` (false when the slot was already empty), `previous` `{name, kind, pos}` when something was cleared.
 
 ### Digging
 
