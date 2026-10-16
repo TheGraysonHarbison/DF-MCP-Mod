@@ -34,6 +34,49 @@ local function translate(name, in_english)
     end)
 end
 
+-- Masses are kilograms plus milligrams (massst). Items carry theirs once the game has
+-- computed it (flags.weight_computed); the caravan's total_capacity is what its animals bear.
+local function mass_kg(m)
+    if not m then return nil end
+    return (safe(function() return m.whole end) or 0) + (safe(function() return m.fraction end) or 0) / 1000000
+end
+
+local function item_kg(item)
+    if safe(function() return item.flags.weight_computed end) then return mass_kg(item.weight) end
+    return nil
+end
+
+local function caravan_capacity(car)
+    return car and mass_kg(safe(function() return car.total_capacity end)) or nil
+end
+
+-- What the merchants are already carrying: their goods at the depot.
+local function merchant_load(depot)
+    local kg, unknown = 0, 0
+    pcall(function()
+        for _, entry in ipairs(depot.contained_items) do
+            if entry.use_mode == df.building_item_role_type.TEMP and entry.item.flags.trader
+                    and entry.item.flags.in_building then
+                local w = item_kg(entry.item)
+                if w then kg = kg + w else unknown = unknown + 1 end
+            end
+        end
+    end)
+    return kg, unknown
+end
+
+REPLY_MEANING = {
+    Greet = 'ready to trade', Trade = 'deal accepted', Offer = 'gift accepted', Seize = 'goods seized',
+    Weight = 'too heavy for the animals', Weight1 = 'too heavy for the animals', Weight2 = 'too heavy for the animals',
+    WeightMoney = 'too heavy and too little value', WeightMoney1 = 'too heavy and too little value',
+    WeightMoney2 = 'too heavy and too little value',
+    Money = 'not enough value offered', Money1 = 'not enough value offered', Money2 = 'not enough value offered',
+    Haggle = 'haggling', CounterOffer = 'counter-offer made', NoMoreTradeHaggleFailure = 'merchant refuses to trade further',
+    AnimalReject = 'refuses animal products', TreeReject = 'refuses wood', AnimalTreeReject = 'refuses animal and wood goods',
+    LiveAnimalReject = 'refuses live animals', ICannotAfford = 'merchant cannot afford it',
+    YouCannotAfford = 'the fort offered too little', NoGoods = 'nothing selected',
+}
+
 local function unit_ref(unit)
     if not unit then return nil end
     return {id = unit.id, name = safe(dfhack.units.getReadableName, unit),
@@ -79,7 +122,7 @@ local function active_caravan()
     local best = nil
     pcall(function()
         for i, car in ipairs(df.global.plotinfo.caravans) do
-            local row = caravan_row(i - 1, car)
+            local row = caravan_row(i, car)
             if row.active and (best == nil or row.state == 'at_depot') then best = car end
         end
     end)
@@ -89,7 +132,7 @@ end
 local function caravans(args)
     local rows = {}
     pcall(function()
-        for i, car in ipairs(df.global.plotinfo.caravans) do table.insert(rows, caravan_row(i - 1, car)) end
+        for i, car in ipairs(df.global.plotinfo.caravans) do table.insert(rows, caravan_row(i, car)) end
     end)
     local merchants = 0
     pcall(function()
@@ -130,7 +173,7 @@ end
 
 local function item_row(item, caravan)
     local row = {id = item.id, description = safe(dfhack.items.getReadableDescription, item),
-                 value = safe(dfhack.items.getValue, item, caravan)}
+                 value = safe(dfhack.items.getValue, item, caravan), kg = item_kg(item)}
     if caravan then row.requested = safe(dfhack.items.isRequestedTradeGood, item, caravan) == true end
     if safe(function() return item.flags.trader end) then row.merchant_goods = true end
     return row
@@ -176,7 +219,8 @@ local function depot_info(args)
     local fort_total, merchant_total, fort_value, merchant_value = 0, 0, 0, 0
     pcall(function()
         for _, entry in ipairs(depot.contained_items) do
-            if entry.use_mode == df.building_item_role_type.TEMP then
+            -- Released goods (in_building cleared) stay in the list until hauled away.
+            if entry.use_mode == df.building_item_role_type.TEMP and entry.item.flags.in_building then
                 local item = entry.item
                 local row = item_row(item, caravan)
                 if item.flags.trader then
@@ -209,7 +253,7 @@ local function depot_info(args)
         accessible = safe(function() return depot.accessible end),
         broker_requested = safe(function() return depot.trade_flags.trader_requested end) == true,
         anyone_can_trade = safe(function() return depot.trade_flags.anyone_can_trade end) == true,
-        trade_job = dj.trade_job,
+        trade_job = dj.trade_job or false,
         times_used = safe(function() return depot.times_used end),
         fort_goods = {count = fort_total, value = fort_value, items = fort_goods, truncated = fort_total > #fort_goods},
         merchant_goods = {count = merchant_total, value = merchant_value, items = merchant_goods,
@@ -249,7 +293,65 @@ local function broker(args)
         out.broker_requested = safe(function() return depot.trade_flags.trader_requested end) == true
         out.anyone_can_trade = safe(function() return depot.trade_flags.anyone_can_trade end) == true
     end
+    -- A diplomat waiting for the site leader keeps that dwarf busy; a broker who is also
+    -- the leader never comes to the depot (seen live 2026-10-15).
+    out.meetings_waiting = safe(function() return #df.global.plotinfo.meeting_requests end) or 0
+    if unit then
+        local leader = false
+        pcall(function()
+            for _, np in ipairs(dfhack.units.getNoblePositions(unit) or {}) do
+                local code = np.position.code
+                if code == 'EXPEDITION_LEADER' or code == 'MAYOR' or code == 'BARON' or code == 'COUNT'
+                        or code == 'DUKE' or code == 'MONARCH' then leader = true end
+            end
+        end)
+        out.is_site_leader = leader
+        if leader and out.meetings_waiting > 0 then
+            out.warning = 'the broker is also the site leader and a diplomat is waiting to meet them, so they will not '
+                .. 'come to the depot; appoint another dwarf as BROKER (assign_noble) or finish the meeting first'
+        end
+    end
     if not unit then out.note = 'no broker appointed; assign one with assign_noble (position BROKER) or allow anyone to trade' end
+    return out
+end
+
+-- The game's own trade screen state (df.global.game.main_interface.trade), the view the
+-- Trade button operates on; only meaningful while the screen is open.
+local function screen(args)
+    local tr = safe(function() return df.global.game.main_interface.trade end)
+    if not tr then return rpc.error_result(rpc.ERR_INTERNAL, 'no trade interface struct on this build') end
+    local out = {open = safe(function() return tr.open end) == true}
+    pcall(function()
+        out.choosing_merchant = tr.choosing_merchant
+        out.still_unloading = tr.stillunloading ~= 0
+        out.has_talker = tr.havetalker ~= 0
+        out.fortress_trader = tr.fortress_trader and unit_ref(tr.fortress_trader) or nil
+        out.merchant_trader = tr.merchant_trader and unit_ref(tr.merchant_trader) or nil
+        out.depot_id = tr.bld and tr.bld.id or nil
+        out.counter_offer = tr.counter_offer
+        out.reply = enum_name(df.talk_line_type, tr.talkline)
+        out.reply_meaning = REPLY_MEANING[out.reply or '']
+        out.capacity_kg = caravan_capacity(tr.mer)
+        local sides = {'merchant', 'fort'}
+        for side = 0, 1 do
+            local goods, selected, value, kg, total_kg = #tr.good[side], 0, 0, 0, 0
+            for i = 0, goods - 1 do
+                local w = item_kg(tr.good[side][i]) or 0
+                total_kg = total_kg + w
+                if tr.goodflag[side][i].selected then
+                    selected = selected + 1
+                    value = value + (safe(dfhack.items.getValue, tr.good[side][i], tr.mer) or 0)
+                    kg = kg + w
+                end
+            end
+            out[sides[side + 1] .. '_goods'] = {count = goods, selected = selected, selected_value = value,
+                                                selected_kg = kg, total_kg = total_kg}
+        end
+        if out.capacity_kg and out.merchant_goods and out.fort_goods then
+            out.load_after_kg = out.merchant_goods.total_kg - out.merchant_goods.selected_kg + out.fort_goods.selected_kg
+            out.fits = out.load_after_kg <= out.capacity_kg
+        end
+    end)
     return out
 end
 
@@ -266,11 +368,43 @@ local function request_broker(args)
     depot.trade_flags.trader_requested = want
     depot.trade_flags.anyone_can_trade = anyone
     local caravan = active_caravan()
+    -- The flag alone did not make the game queue the job (seen live 2026-10-15), so the
+    -- TradeAtDepot job is created the way DFHack's lever script creates a PullLever job,
+    -- and removed again when the request is withdrawn (caravan.lua's path).
+    local existing = depot_jobs(depot).trade_job
+    local job_made, job_removed = false, false
+    if want and not existing and caravan then
+        pcall(function()
+            local ref = df.general_ref_building_holderst:new()
+            ref.building_id = depot.id
+            local job = df.job:new()
+            job.job_type = df.job_type.TradeAtDepot
+            job.pos.x, job.pos.y, job.pos.z = depot.centerx, depot.centery, depot.z
+            job.general_refs:insert('#', ref)
+            depot.jobs:insert('#', job)
+            dfhack.job.linkIntoWorld(job, true)
+            dfhack.job.checkBuildingsNow()
+            job_made = true
+        end)
+    elseif not want and existing then
+        pcall(function()
+            for _, job in ipairs(depot.jobs) do
+                if job.job_type == df.job_type.TradeAtDepot then
+                    dfhack.job.removeJob(job)
+                    job_removed = true
+                    break
+                end
+            end
+        end)
+    end
     return {
         depot_id = depot.id, before = before,
         broker_requested = want, anyone_can_trade = anyone,
         caravan_present = caravan ~= nil,
-        note = want and 'the broker (or anyone, if allowed) heads to the depot once a caravan is there; the game creates the TradeAtDepot job'
+        trade_job = depot_jobs(depot).trade_job or false,
+        job_created = job_made, job_removed = job_removed,
+        note = want and (caravan and 'the TradeAtDepot job is on the depot; the broker (or anyone, if allowed) takes it'
+                         or 'flag set; the job is created once a caravan is at the depot (call again then)')
             or 'request withdrawn',
     }
 end
@@ -427,9 +561,19 @@ local function offer(args)
     collect(args.take, take, true)
     local profit = give_value - take_value
     local margin = take_value > 0 and profit / take_value or (give_value > 0 and 1 or 0)
+    local give_kg, take_kg = 0, 0
+    for _, row in ipairs(give) do give_kg = give_kg + (row.kg or 0) end
+    for _, row in ipairs(take) do take_kg = take_kg + (row.kg or 0) end
+    local load_kg, unknown = merchant_load(depot)
+    local capacity = caravan_capacity(caravan)
+    local after_kg = load_kg - take_kg + give_kg
+    local fits = capacity == nil or after_kg <= capacity
+    local weight = {give_kg = give_kg, take_kg = take_kg, merchant_load_kg = load_kg, capacity_kg = capacity,
+                    load_after_kg = after_kg, fits = fits, unknown_weights = unknown}
     local verdict
     if caravan == nil then verdict = 'no caravan is at the depot'
     elseif #problems > 0 then verdict = 'invalid'
+    elseif not fits then verdict = ('refused: too heavy for the animals (%d kg over capacity)'):format(math.ceil(after_kg - capacity))
     elseif profit < 0 then verdict = 'refused: merchants never accept a loss'
     elseif margin >= 0.5 then verdict = 'accepted: generous (at least 50% profit)'
     elseif margin >= 0.1 then verdict = 'likely accepted'
@@ -440,11 +584,53 @@ local function offer(args)
         caravan = state and {civ = state.civ, state = state.state, mood = state.mood} or nil,
         give = {count = #give, value = give_value, items = give},
         take = {count = #take, value = take_value, items = take},
-        profit = profit, margin = margin, verdict = verdict, problems = problems,
+        profit = profit, margin = margin, weight = weight, verdict = verdict, problems = problems,
         executed = false,
         note = 'this evaluates the deal with the caravan\'s own prices; the trade itself is still the game\'s '
             .. 'Trade button (driving it headlessly is unverified until a caravan is at the depot)',
     }
+end
+
+-- Select goods on the open trade screen (what DFHack's trade overlay does: it flips
+-- main_interface.trade.goodflag[side][i].selected; side 0 is the merchants' list, 1 the
+-- fort's). The Trade button itself stays the player's until the headless press is verified.
+local function select_goods(args)
+    local tr = safe(function() return df.global.game.main_interface.trade end)
+    if not tr or not tr.open then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            'the trade screen is not open; open the depot and press Trade (the broker must be at the depot), then call again')
+    end
+    local want_give, want_take = {}, {}
+    for _, id in ipairs(args.give or {}) do want_give[math.floor(tonumber(id) or -1)] = true end
+    for _, id in ipairs(args.take or {}) do want_take[math.floor(tonumber(id) or -1)] = true end
+    local clear = args.clear ~= false
+    local result = {give = {selected = 0, value = 0, missing = {}}, take = {selected = 0, value = 0, missing = {}}}
+    local function apply(side, wanted, bucket)
+        local found = {}
+        for i = 0, #tr.good[side] - 1 do
+            local item = tr.good[side][i]
+            local flag = tr.goodflag[side][i]
+            if wanted[item.id] then
+                flag.selected = true
+                found[item.id] = true
+                bucket.selected = bucket.selected + 1
+                bucket.value = bucket.value + (safe(dfhack.items.getValue, item, tr.mer) or 0)
+            elseif clear then
+                flag.selected = false
+            elseif flag.selected then
+                bucket.selected = bucket.selected + 1
+                bucket.value = bucket.value + (safe(dfhack.items.getValue, item, tr.mer) or 0)
+            end
+        end
+        for id in pairs(wanted) do
+            if not found[id] then table.insert(bucket.missing, id) end
+        end
+    end
+    pcall(apply, 1, want_give, result.give)
+    pcall(apply, 0, want_take, result.take)
+    result.profit = result.give.value - result.take.value
+    result.note = 'goods are selected on the trade screen; the player presses Trade, Offer, or closes it'
+    return result
 end
 
 function ops()
@@ -452,9 +638,11 @@ function ops()
         ['trade.caravans'] = {namespace = 'trade', handler = caravans, needs_map = true},
         ['trade.depot'] = {namespace = 'trade', handler = depot_info, needs_map = true},
         ['trade.broker'] = {namespace = 'trade', handler = broker, needs_map = true},
+        ['trade.screen'] = {namespace = 'trade', handler = screen, needs_map = true},
         ['trade.request_broker'] = {namespace = 'trade_write', handler = request_broker, needs_map = true},
         ['trade.bring'] = {namespace = 'trade_write', handler = bring, needs_map = true},
         ['trade.unbring'] = {namespace = 'trade_write', handler = unbring, needs_map = true},
         ['trade.offer'] = {namespace = 'trade_write', handler = offer, needs_map = true},
+        ['trade.select'] = {namespace = 'trade_write', handler = select_goods, needs_map = true},
     }
 end

@@ -111,6 +111,8 @@ def test_server_registers_expected_tools():
         "bring_to_depot",
         "cancel_bring",
         "offer_trade",
+        "get_trade_screen",
+        "select_trade_goods",
         "dev_create_item",
         "dev_exterminate",
     }
