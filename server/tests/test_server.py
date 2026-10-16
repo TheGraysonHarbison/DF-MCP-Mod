@@ -24,6 +24,9 @@ def test_server_registers_expected_tools():
         "set_unit_nickname",
         "list_nobles",
         "assign_noble",
+        "list_work_details",
+        "assign_work_detail",
+        "set_work_detail_mode",
         "list_squads",
         "get_squad",
         "create_squad",
@@ -130,5 +133,7 @@ def test_server_registers_expected_tools():
     assert nick.idempotent_hint is True
     assert by_name["assign_noble"].annotations.read_only_hint is False
     assert by_name["list_nobles"].annotations.read_only_hint is True
+    assert by_name["list_work_details"].annotations.read_only_hint is True
+    assert by_name["assign_work_detail"].annotations.read_only_hint is False
     assert by_name["delete_work_order"].annotations.destructive_hint is True
     assert by_name["create_work_order"].annotations.destructive_hint is False
