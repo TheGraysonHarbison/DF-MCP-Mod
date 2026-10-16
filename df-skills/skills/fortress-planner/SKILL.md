@@ -95,6 +95,7 @@ Status: <fort name>, <in-game date>, population <n>, last updated <in-game date>
 - <one line of what it will contain>
 
 ## Standing rules
+- Seed check every season (fortress-quirks, Sustainable farming)
 - <what this fort has taught you, and player instructions that persist>
 
 ## Log
@@ -106,7 +107,9 @@ Status: <fort name>, <in-game date>, population <n>, last updated <in-game date>
 - The file is capped at 64 KB. When `get_plan_info` shows it past about 48 KB, rewrite it with
   `write_plan`: fold the log into `Standing rules` and the phase states, and keep only the
   last few log entries.
-- Standing rules are for things the game taught you about this fort (a cavern at z 90, the
+- Every fort's `Standing rules` start with "Seed check every season (fortress-quirks,
+  Sustainable farming)".
+- Other standing rules are for things the game taught you about this fort (a cavern at z 90, the
   river floods in spring, the player wants no animal slaughter). Rules that apply to every
   fort live in the `fortress-quirks` skill, not here.
 
@@ -117,7 +120,7 @@ Status: <fort name>, <in-game date>, population <n>, last updated <in-game date>
 | A `goals` channel message | `read_goals`, update the `Goals` section, re-plan the phases if the goals changed, reply with `send_message` |
 | A `timer` channel message | Status check: `get_time`, `get_fort_status`, `get_stock_bar`, `list_others` for hostiles, then advance the active tasks, append a `Log` entry, and `send_message` a two-line summary |
 | An `events` channel message | Read what each event names with the tools (units, tiles, caravans), act if it needs action now, and note it under `Log` if it changed the plan |
-| Season change | Review food, drink, farm crops for the new season, and the phase list |
+| Season change | Seed check (`fortress-quirks`, Sustainable farming), then review food, drink, farm crops for the new season, and the phase list |
 | No task active | Pick the next `todo` task of the active phase; when the phase is done, mark it and activate the next |
 
 Without a channel (events and prompts never arrive), poll with `poll_events` on a `/loop`
