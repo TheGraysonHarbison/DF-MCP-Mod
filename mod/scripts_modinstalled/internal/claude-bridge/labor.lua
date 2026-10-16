@@ -51,8 +51,10 @@ local function work_details()
     return safe(function() return df.global.plotinfo.labor_info.work_details end)
 end
 
+-- Strings stay CP437 inside this module: rpc.dispatch converts every outgoing string with
+-- df2utf (to_utf8), so converting here too would garble accented names.
 local function detail_name(wd)
-    return safe(function() return dfhack.df2utf(wd.name) end) or ''
+    return safe(function() return wd.name end) or ''
 end
 
 local function mode_word(wd)
@@ -73,13 +75,11 @@ local function labor_names(array_of)
 end
 
 local function unit_name(unit)
-    local name = safe(U.getReadableName, unit)
-    return name and dfhack.df2utf(name) or nil
+    return safe(U.getReadableName, unit)
 end
 
 local function profession_name(unit)
-    local name = safe(U.getProfessionName, unit)
-    return name and dfhack.df2utf(name) or nil
+    return safe(U.getProfessionName, unit)
 end
 
 local function is_member(wd, id)
@@ -111,7 +111,9 @@ local function resolve_detail(wanted)
         end
         return details[as_number - 1], as_number
     end
-    local needle = tostring(wanted):lower():match('^%s*(.-)%s*$')
+    -- `wanted` arrives as UTF-8; the names are CP437, and so are the messages below.
+    local wanted_df = safe(dfhack.utf2df, tostring(wanted)) or tostring(wanted)
+    local needle = wanted_df:lower():match('^%s*(.-)%s*$')
     for i, name in ipairs(names) do
         if name:lower() == needle then return details[i - 1], i end
     end
@@ -122,14 +124,14 @@ local function resolve_detail(wanted)
     if #hits == 1 then return details[hits[1] - 1], hits[1] end
     if #hits == 0 then
         return nil, nil, rpc.error_result(rpc.ERR_NOT_FOUND,
-            ('no work detail matches "%s"; details: %s'):format(tostring(wanted),
+            ('no work detail matches "%s"; details: %s'):format(wanted_df,
                 table.concat(names, ', ')))
     end
     local candidates = {}
     for _, i in ipairs(hits) do table.insert(candidates, names[i]) end
     return nil, nil, rpc.error_result(rpc.ERR_BAD_REQUEST,
         ('"%s" matches several work details: %s; give the full name or the index')
-            :format(tostring(wanted), table.concat(candidates, ', ')))
+            :format(wanted_df, table.concat(candidates, ', ')))
 end
 
 local function describe(wd, index, limit)
