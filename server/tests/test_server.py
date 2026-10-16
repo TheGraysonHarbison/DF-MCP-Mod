@@ -103,6 +103,7 @@ def test_server_registers_expected_tools():
         "read_goals",
         "send_message",
         "list_message_badges",
+        "get_timer_status",
         "dev_create_item",
         "dev_exterminate",
     }

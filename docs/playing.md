@@ -20,6 +20,10 @@ How to run a session where Claude reacts to the game on its own (Phase 13 onward
    Confirm the warning dialog with "I am using this for local development". The `.mcp.json` here starts the `df-mcp` server, which declares the channel.
 3. Ask Claude to `ping`. From then on, every batch of enabled events reaches Claude as a channel message, two quiet seconds or 50 events at a time; Claude handles them when it is idle and queues them while it is busy. The terminal shows one line per batch.
 
+## The prompt timer
+
+The settings Timer tab (or `claude-bridge timer on|off|days N|month|minutes N`) makes the mod prompt Claude on its own: every N in-game days, at each change of month, or every N real minutes of unpaused play, with the prompt written on that tab. Any event batch sent to Claude re-arms it, so a busy fort is driven by its events and a quiet one by the timer. Off by default.
+
 ## Without the channel
 
 Everything still works by hand: `list_event_kinds` shows the kinds and queue, `poll_events` reads batches (first without `after_seq`, then with the last sequence received), and `/loop` can drive a polling loop.
