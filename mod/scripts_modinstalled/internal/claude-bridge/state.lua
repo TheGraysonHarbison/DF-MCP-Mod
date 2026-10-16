@@ -5,8 +5,8 @@ local json = require('json')
 local scriptmanager = require('script-manager')
 
 MOD_ID = 'claude-bridge'
-MOD_VERSION = '0.3.0'
-PROTOCOL_VERSION = 24
+MOD_VERSION = '1.0.0-alpha'
+PROTOCOL_VERSION = 25
 
 -- Settings groups, in display order.
 GROUPS = {'General', 'Units', 'Items', 'Logistics', 'World', 'Commands'}
@@ -29,6 +29,8 @@ NAMESPACES = {
      label = 'Read units'},
     {key = 'units_write', group = 'Units', hotkey = 'CUSTOM_N', default = false,
      label = 'Rename units (nickname)'},
+    {key = 'labor_write', group = 'Units', hotkey = 'CUSTOM_SHIFT_L', default = false,
+     label = 'Assign work details (labors)'},
     {key = 'nobles',   group = 'Units',    hotkey = 'CUSTOM_B', default = true,
      label = 'Read noble positions'},
     {key = 'nobles_write', group = 'Units', hotkey = 'CUSTOM_M', default = false,

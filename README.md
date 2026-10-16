@@ -166,10 +166,7 @@ situation matches, and each can be invoked by hand as `/claude-df:<name>`.
 
 ## Known bugs and open issues
 
-Open bugs:
-
-- `ping` reports mod version 0.3.0: `MOD_VERSION` in `state.lua` was not bumped with Alpha 1.0.0. Fixed in the first
-  Patch 1 branch.
+No bugs open.
 
 Open issues (features without a DFHack API, or where the game offers only mouse-driven UI):
 
@@ -187,6 +184,8 @@ Open issues (features without a DFHack API, or where the game offers only mouse-
 
 Fixed 2026-10-13: a work order created without a material showed in the game as "unknown material"; `create_work_order`
 now takes plain words and refuses orders the game would label that way.
+
+Fixed 2026-10-16: `ping` reported mod version 0.3.0; `MOD_VERSION` now follows `info.txt`.
 
 Fixed: allowlisting `claude-bridge` used to let the console tool run `claude-bridge perm`, `allow`, and `deny`; the
 console op now refuses those subcommands regardless of the allowlist (only `status`, `help`, `reload`, and `test` pass).
@@ -430,7 +429,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 20 | MIT license, README reordered for players (Requirements, Installation, Playing, Settings, Skills, open issues, then the feature list and progress) | built 2026-10-15 |
 | 20.1 | Release workflow (`.github/workflows/release.yml`): lint, test, zip `LICENSE`, `README.md`, `.gitignore`, `server/`, `mod/`, `tools/`, `df-skills/` without `CLAUDE.md`, `docs/`, `.mcp.json`, `.claude/`, or caches; artifact on every run, draft prerelease on a `v*` tag | built 2026-10-16 |
 | 21 | Alpha 1.0.0 release (version bumps, tag `v1.0.0-alpha`, draft prerelease) | tagged 2026-10-16 (PR #58) |
-| P1.0 | Work details: list, assign and remove citizens, set mode (`list_work_details`, `assign_work_detail`, `set_work_detail_mode`, `labor_write` permission) | planned 2026-10-16; design in [plan section 15](docs/ProjectPlan.md#15-patch-1-addendum-labor-migrants-screens-popups-hotkeys-planned-2026-10-16) |
+| P1.0 | Work details: list, assign and remove citizens, set mode (`list_work_details`, `assign_work_detail`, `set_work_detail_mode`, `labor_write` permission) | verified in-game 2026-10-16: the 11 default details read back with modes and members; a metalcrafter was added to Woodcutters and CUTWOOD appeared in his labors, then removed; Haulers set to nobody cleared hauling on all seven citizens and everybody restored it; everybody on Miners and an unknown mode were refused |
 | P1.1 | Sustainable farming section in the fortress-quirks skill | planned 2026-10-16 |
 | P1.2 | `migrants_arrived` event kind with the newcomers | planned 2026-10-16 |
 | P2.0 | Trade screen: open, press Trade, Offer, Seize, answer counter-offers, read the reply, close (`open_trade_screen`, `press_trade`, `screens_write` permission) | planned 2026-10-16; live test on the owner's caravan save |

@@ -37,6 +37,7 @@ Then write or update the plan, and only then start work.
 | Area | Tools | What you are looking for |
 |---|---|---|
 | People | `list_citizens`, `list_nobles` | Population, children, idle or unhappy dwarves, vacant manager, bookkeeper, broker, and militia seats |
+| Labor | `list_work_details` | Who mines and who cuts wood (empty Miners or Woodcutters means no digging or felling), newcomers on no detail; put them on details with `assign_work_detail` |
 | Food and drink | `get_stock_bar`, `list_kitchen`, `list_farms` | Months of food and drink in stock, seeds, plots per season, kitchen bans |
 | Shelter | `list_buildings`, `list_zones` | Beds, dining, doors, bedrooms assigned, outdoors exposure |
 | Industry | `list_workshops`, `list_work_orders`, `list_building_materials` | Which shops exist, orders waiting on a manager, materials on hand |
