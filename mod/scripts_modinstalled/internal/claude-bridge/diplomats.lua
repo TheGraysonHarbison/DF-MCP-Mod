@@ -92,41 +92,120 @@ local function creature_names(vec)
     return out
 end
 
--- entity_sell_category name -> function(resources) -> {[i] = name}
-local NAMERS = {
+-- Anvils: the civ's metals whose material allows anvils (iron and steel for dwarves).
+local function anvil_names(r)
+    local out = {}
+    pcall(function()
+        local n = 0
+        for i = 0, #r.metals - 1 do
+            local inorg = df.global.world.raws.inorganics.all[r.metals[i]]
+            if inorg.material.flags.ITEMS_ANVIL then
+                out[n] = (dfhack.matinfo.decode(0, r.metals[i]):toString()) .. ' anvil'
+                n = n + 1
+            end
+        end
+    end)
+    return out
+end
+
+-- Garden vegetables: tree fruit growths then shrub fruit growths, as the game lists them.
+local function growth_names(r)
+    local out = {}
+    pcall(function()
+        local n = 0
+        local plants = df.global.world.raws.plants.all
+        for i = 0, #r.tree_fruit_plants - 1 do
+            out[n] = safe(function() return plants[r.tree_fruit_plants[i]].growths[r.tree_fruit_growths[i]].name end)
+            n = n + 1
+        end
+        for i = 0, #r.shrub_fruit_plants - 1 do
+            out[n] = safe(function() return plants[r.shrub_fruit_plants[i]].growths[r.shrub_fruit_growths[i]].name end)
+            n = n + 1
+        end
+    end)
+    return out
+end
+
+-- Miscellaneous: the wood products list (lye, charcoal, potash, pearlash, coke).
+local function wood_product_names(r)
+    local out = {}
+    pcall(function()
+        local wp = r.wood_products
+        for i = 0, #wp.item_type - 1 do
+            local mat = safe(function()
+                return dfhack.matinfo.decode(wp.material.mat_type[i], wp.material.mat_index[i]):toString()
+            end) or 'unknown'
+            local it = enum_name(df.item_type, wp.item_type[i]) or ''
+            out[i] = it == 'BAR' and (mat .. ' bar') or mat
+        end
+    end)
+    return out
+end
+
+-- entity_sell_category name -> function(resources) -> {[i] = name}. Category names as the
+-- game's enum spells them (read live 2026-10-15); categories not listed fall back to "item n".
+NAMERS = {
     Leather = function(r) return matref_names(r.organic.leather) end,
+    BagsLeather = function(r) return matref_names(r.organic.leather) end,
+    FlasksWaterskins = function(r) return matref_names(r.organic.leather) end,
+    Quivers = function(r) return matref_names(r.organic.leather) end,
+    Backpacks = function(r) return matref_names(r.organic.leather) end,
     ClothPlant = function(r) return matref_names(r.organic.fiber) end,
+    BagsPlant = function(r) return matref_names(r.organic.fiber) end,
+    ThreadPlant = function(r) return matref_names(r.organic.fiber) end,
+    RopesPlant = function(r) return matref_names(r.organic.fiber) end,
     ClothSilk = function(r) return matref_names(r.organic.silk) end,
+    BagsSilk = function(r) return matref_names(r.organic.silk) end,
+    ThreadSilk = function(r) return matref_names(r.organic.silk) end,
+    RopesSilk = function(r) return matref_names(r.organic.silk) end,
+    ClothYarn = function(r) return matref_names(r.organic.wool) end,
+    BagsYarn = function(r) return matref_names(r.organic.wool) end,
+    ThreadYarn = function(r) return matref_names(r.organic.wool) end,
+    RopesYarn = function(r) return matref_names(r.organic.wool) end,
+    Parchment = function(r) return matref_names(r.organic.parchment) end,
     Crafts = function(r) return matref_names(r.misc_mat.crafts) end,
+    CupsMugsGoblets = function(r) return matref_names(r.misc_mat.crafts) end,
     Wood = function(r) return matref_names(r.organic.wood) end,
+    Barrels = function(r) return matref_names(r.organic.wood) end,
+    Buckets = function(r) return matref_names(r.organic.wood) end,
+    Splints = function(r) return matref_names(r.organic.wood) end,
+    Crutches = function(r) return matref_names(r.organic.wood) end,
     MetalBars = function(r) return inorganic_names(r.metals) end,
     SmallCutGems = function(r) return inorganic_names(r.gems) end,
     LargeCutGems = function(r) return inorganic_names(r.gems) end,
     StoneBlocks = function(r) return inorganic_names(r.stones) end,
     Stone = function(r) return inorganic_names(r.stones) end,
-    Weapon = function(r) return itemdef_names(r.weapon_type, 'weapons') end,
+    Anvils = anvil_names,
+    GardenVegetables = growth_names,
+    Miscellaneous = wood_product_names,
+    Weapons = function(r) return itemdef_names(r.weapon_type, 'weapons') end,
     TrainingWeapons = function(r) return itemdef_names(r.training_weapon_type, 'weapons') end,
     Ammo = function(r) return itemdef_names(r.ammo_type, 'ammo') end,
-    Trapcomp = function(r) return itemdef_names(r.trapcomp_type, 'trapcomps') end,
-    Digger = function(r) return itemdef_names(r.digger_type, 'weapons') end,
-    Armor = function(r) return itemdef_names(r.armor_type, 'armor') end,
-    Helm = function(r) return itemdef_names(r.helm_type, 'helms') end,
-    Gloves = function(r) return itemdef_names(r.gloves_type, 'gloves') end,
-    Shoes = function(r) return itemdef_names(r.shoes_type, 'shoes') end,
-    Pants = function(r) return itemdef_names(r.pants_type, 'pants') end,
-    Shield = function(r) return itemdef_names(r.shield_type, 'shields') end,
-    Toy = function(r) return itemdef_names(r.toy_type, 'toys') end,
-    Instrument = function(r) return itemdef_names(r.instrument_type, 'instruments') end,
+    TrapComponents = function(r) return itemdef_names(r.trapcomp_type, 'trapcomps') end,
+    DiggingImplements = function(r) return itemdef_names(r.digger_type, 'weapons') end,
+    Bodywear = function(r) return itemdef_names(r.armor_type, 'armor') end,
+    Headwear = function(r) return itemdef_names(r.helm_type, 'helms') end,
+    Handwear = function(r) return itemdef_names(r.gloves_type, 'gloves') end,
+    Footwear = function(r) return itemdef_names(r.shoes_type, 'shoes') end,
+    Legwear = function(r) return itemdef_names(r.pants_type, 'pants') end,
+    Shields = function(r) return itemdef_names(r.shield_type, 'shields') end,
+    Toys = function(r) return itemdef_names(r.toy_type, 'toys') end,
+    Instruments = function(r) return itemdef_names(r.instrument_type, 'instruments') end,
+    Tools = function(r) return itemdef_names(r.tool_type, 'tools') end,
     Pets = function(r) return creature_names(r.animals.pet_races) end,
     Drinks = function(r) return matref_names(r.misc_mat.booze) end,
-    Cheeses = function(r) return matref_names(r.misc_mat.cheese) end,
+    Cheese = function(r) return matref_names(r.misc_mat.cheese) end,
     Powders = function(r) return matref_names(r.misc_mat.powders) end,
     Extracts = function(r) return matref_names(r.misc_mat.extracts) end,
     Meat = function(r) return matref_names(r.misc_mat.meat) end,
     Fish = function(r) return creature_names(r.fish_races) end,
+    Eggs = function(r) return creature_names(r.egg_races) end,
     Plants = function(r) return matref_names(r.plants) end,
+    Seeds = function(r) return matref_names(r.seeds) end,
     Cages = function(r) return matref_names(r.misc_mat.cages) end,
-    BagsLeather = function(r) return matref_names(r.organic.leather) end,
+    Glass = function(r) return matref_names(r.misc_mat.glass) end,
+    Sand = function(r) return matref_names(r.misc_mat.sand) end,
+    Clay = function(r) return matref_names(r.misc_mat.clay) end,
 }
 
 local function category_names(entity, cat_name)
@@ -201,59 +280,73 @@ local function find_meeting(args)
 end
 
 -- The standing agreement with a civilization: the latest export and import events.
+-- Agreements are named from the civilization's side: its ExportAgreement event carries the
+-- fort's requests (`sell_prices`, what the civ will sell us), its ImportAgreement the price
+-- changes on what it buys from the fort (`buy_prices`). The newest event of each type wins.
+-- They sit in the meeting's own event list while the diplomat is still on the map, and on
+-- the civilization's `meeting_events` after the liaison reports home (verified 2026-10-15).
+local function fort_requests(he, ev, limit)
+    local asked = {}
+    pcall(function()
+        for cat = 0, df.entity_sell_category._last_item do
+            local pr = ev.sell_prices.items.priority[cat]
+            local names = category_names(he, enum_name(df.entity_sell_category, cat) or '')
+            for j = 0, #pr - 1 do
+                if pr[j] > 0 and #asked < limit then
+                    table.insert(asked, {category = enum_name(df.entity_sell_category, cat),
+                                         item = names[j] or ('item ' .. j), priority = pr[j],
+                                         price_percent = safe(function()
+                                             return math.floor(ev.sell_prices.price[cat][j] * 100 / 128)
+                                         end)})
+                end
+            end
+        end
+    end)
+    return asked
+end
+
+local function fort_export_prices(ev, limit)
+    local wanted = {}
+    pcall(function()
+        local items = ev.buy_prices.items
+        for j = 0, #ev.buy_prices.price - 1 do
+            local pct = math.floor(ev.buy_prices.price[j] * 100 / 128)
+            if pct ~= 100 and #wanted < limit then
+                local name = safe(function()
+                    local token = enum_name(df.item_type, items.item_type[j]) or '?'
+                    local mat = items.mat_types[j] >= 0
+                        and dfhack.matinfo.decode(items.mat_types[j], items.mat_indices[j]):toString() or nil
+                    return (mat and (mat .. ' ') or '') .. token:lower()
+                end)
+                table.insert(wanted, {item = name or ('item ' .. j), price_percent = pct})
+            end
+        end
+    end)
+    return wanted
+end
+
+local function scan_agreements(he, events, out, limit, where)
+    for i = #events - 1, 0, -1 do
+        local ev = events[i]
+        local kind = enum_name(df.meeting_event_type, ev.type)
+        if kind == 'ExportAgreement' and not out.imports then
+            out.imports = {year = ev.year, where = where, requested = fort_requests(he, ev, limit),
+                           note = 'what the fort asked the next caravan to bring; price_percent is what it will charge'}
+        elseif kind == 'ImportAgreement' and not out.exports then
+            out.exports = {year = ev.year, where = where, price_changes = fort_export_prices(ev, limit),
+                           note = 'what the next caravan pays more or less for from the fort'}
+        end
+    end
+end
+
 local function agreement_summary(civ_id, limit)
     local out = {}
     pcall(function()
         local he = df.historical_entity.find(civ_id)
-        for i = #he.meeting_events - 1, 0, -1 do
-            local ev = he.meeting_events[i]
-            local kind = enum_name(df.meeting_event_type, ev.type)
-            if (kind == 'ExportAgreement' and not out.exports) or (kind == 'ImportAgreement' and not out.imports) then
-                local entry = {year = ev.year, quota_total = safe(function() return ev.quota_total end),
-                               quota_remaining = safe(function() return ev.quota_remaining end)}
-                if kind == 'ImportAgreement' then
-                    -- What the fort asked the caravan to bring: priorities per category.
-                    local asked = {}
-                    pcall(function()
-                        for cat = 0, df.entity_sell_category._last_item do
-                            local pr = ev.sell_prices.items.priority[cat]
-                            local names = category_names(he, enum_name(df.entity_sell_category, cat) or '')
-                            for j = 0, #pr - 1 do
-                                if pr[j] > 0 and #asked < limit then
-                                    table.insert(asked, {category = enum_name(df.entity_sell_category, cat),
-                                                         item = names[j] or ('item ' .. j), priority = pr[j],
-                                                         price_percent = safe(function()
-                                                             return math.floor(ev.sell_prices.price[cat][j] * 100 / 128)
-                                                         end)})
-                                end
-                            end
-                        end
-                    end)
-                    entry.requested = asked
-                    out.imports = entry
-                else
-                    -- What the caravan pays more for: the fort's exports by price multiplier.
-                    local wanted = {}
-                    pcall(function()
-                        local items = ev.buy_prices.items
-                        for j = 0, #ev.buy_prices.price - 1 do
-                            local pct = math.floor(ev.buy_prices.price[j] * 100 / 128)
-                            if pct ~= 100 and #wanted < limit then
-                                local name = safe(function()
-                                    local token = enum_name(df.item_type, items.item_type[j]) or '?'
-                                    local mat = items.mat_types[j] >= 0
-                                        and dfhack.matinfo.decode(items.mat_types[j], items.mat_indices[j]):toString() or nil
-                                    return (mat and (mat .. ' ') or '') .. token:lower()
-                                end)
-                                table.insert(wanted, {item = name or ('item ' .. j), price_percent = pct})
-                            end
-                        end
-                    end)
-                    entry.price_changes = wanted
-                    out.exports = entry
-                end
-            end
+        for _, info in ipairs(df.global.plotinfo.dip_meeting_info) do
+            if info.civ_id == civ_id then scan_agreements(he, info.events, out, limit, 'meeting') end
         end
+        scan_agreements(he, he.meeting_events, out, limit, 'civilization')
     end)
     return out
 end
@@ -395,6 +488,8 @@ local function set_requests(args)
     return {civ = civ_ref(info.civ_id), applied = applied, problems = problems,
             note = 'written to the meeting\'s request list; the game takes it when the player finishes the liaison meeting'}
 end
+
+
 
 function ops()
     return {

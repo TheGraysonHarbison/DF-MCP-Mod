@@ -144,8 +144,8 @@ weapon traps, upright spikes, catapults, ballistae, and the trade depot through 
 open issue.
 
 **Phase 17: Trade.** See caravans, the depot, and the broker; request the broker; bring goods to the depot; perform the
-trade through a mod-side API (17.0). See diplomats and the trade agreement, set next year's requests, hold the
-meeting (17.1).
+trade through a mod-side API (17.0). See diplomats, the pending meeting, and the trade agreement; set next year's import requests while
+the player holds the meeting (17.1).
 
 **Phase 18: Mods.** The active Dwarf Fortress mods and loaded DFHack plugins.
 
@@ -214,7 +214,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 15 | Prompt timer (settings Timer tab, `claude-bridge timer`, `get_timer_status`) | verified in-game 2026-10-15: set to one real minute, the prompt arrived as a `timer` channel message after a minute of unpaused play and fired once; the settings window became four scrolling tabs (Permissions, Console, Events, Timer) with no per-row hotkeys after the player found cropping and a stale interval field |
 | 16 | Traps, siege engines, trade depot (`place_furniture` types lever, pressure_plate, cage_trap, stone_fall_trap, weapon_trap, upright_spike, catapult, ballista, trade_depot; pressure plate trigger settings) | verified in-game 2026-10-15: dry runs named the missing mechanisms, spikes, and siege parts with the work orders that make them; two granite mechanisms were created with the dev tool and a lever and a units-only pressure plate were placed in the east loam room; the trade depot and siege engines dry-ran with their 5 by 5 and 3 by 3 footprints |
 | 17.0 | Trade: caravans, depot, broker, bring goods, evaluate and select a deal (`list_caravans`, `get_trade_depot`, `get_broker`, `get_trade_screen`, `request_broker`, `bring_to_depot`, `cancel_bring`, `offer_trade`, `select_trade_goods`, `trade` and `trade_write` permissions) | verified in-game 2026-10-15 against two forced dwarven caravans: caravan, depot, and broker states read back; the broker request and the game's TradeAtDepot job; five boulders and ten figurines hauled to the depot; the weight model matched the game's "too heavy" refusal to the kilogram (1,095 over a 2,100 kg capacity); then ten figurines were selected for a black bronze flask on the player's open trade screen, the player pressed Trade, and the merchant accepted (mood 50 to 53, depot used once). Opening the screen and pressing Trade stay with the player for now |
-| 17.1 | Diplomats: list, set requests, hold the meeting (`list_diplomats`, `set_trade_requests`, `hold_meeting`) | planned 2026-10-15 |
+| 17.1 | Diplomats: list, request options, set requests (`list_diplomats`, `get_trade_request_options`, `set_trade_requests`) | verified in-game 2026-10-15 on a liaison meeting between the outpost liaison and the expedition leader: the waiting diplomat, site leader, and open meeting read back; all 61 request categories listed with item names; steel bars and an iron anvil at priority 4 and all drinks at 2 were set on the open Requests step and showed selected in the game; after the player pressed Done the agreement read back with the game's prices (steel 205%, iron anvil 208%, drinks 142 to 150%, and sheets bought at 207%). Holding the meeting stays with the player |
 | 18 | Active mods and plugins (`list_mods`) | planned 2026-10-15 |
 
 ## Known bugs and open issues
@@ -230,8 +230,12 @@ plan section 13):
 - Lever linking and pulling (Phase 16): the link job has no DFHack reference outside adventure-mode code.
 - Multi-weapon weapon traps (Phase 16): DFHack's input table models one weapon per trap.
 - Siege engine aiming: DFHack's siege-engine plugin is unavailable on 53.16-r2.
-- The trade itself (17.0), the diplomat meeting (17.1), and answering petitions (13.1) are built as mod-side APIs;
-  any of them that the game refuses to honour headlessly moves to this list with its reads kept.
+- Headless trade and meetings (17.0, 17.1): the Trade button and the liaison meeting's dialog are mouse-driven UI with
+  no DFHack code behind them, so the player opens the depot screen, presses Trade, and clicks through the meeting;
+  the mod selects the goods and sets the requests on the open screens. A `hold_meeting` tool and storing requests
+  before the meeting opens are not built. Deferred by the owner on 2026-10-15, not blocked.
+- Answering petitions (13.1) is built as a mod-side API; if the game refuses it headlessly it moves to this list
+  with its reads kept.
 
 Fixed 2026-10-13: a work order created without a material showed in the game as "unknown material" (for example
 "make unknown material rock blocks") because "any stone" was not expressible; `create_work_order` now takes plain
