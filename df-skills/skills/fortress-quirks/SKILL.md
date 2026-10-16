@@ -140,6 +140,16 @@ What the game and the bridge have taught us. Each line was learned by doing it w
   floor.
 - Refuse and corpses need their own pile outdoors; bars, blocks, and stone their own indoors.
 
+## Points of interest
+
+- Hotkeys are the game's 16 F-key zoom slots; `list_hotkeys` shows them with the key each one
+  sits on. Slot 1 is the game's wagon default.
+- Name the places the plan talks about (entrance, depot, farms, barracks, the current project)
+  with `set_hotkey` and short names, so the player can jump there.
+- The slots are the player's too: never overwrite one silently. Take a free slot; if you must
+  replace one, pass `overwrite=True` and say so with `send_message`.
+- Writes need `hotkeys_write`, off by default, and are refused while the Hotkeys window is open.
+
 ## Military
 
 - A new squad needs a vacant military position (militia commander or captain); `list_squads`
