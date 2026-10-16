@@ -6,7 +6,7 @@ local scriptmanager = require('script-manager')
 
 MOD_ID = 'claude-bridge'
 MOD_VERSION = '1.0.0-alpha'
-PROTOCOL_VERSION = 26
+PROTOCOL_VERSION = 27
 
 -- Settings groups, in display order.
 GROUPS = {'General', 'Units', 'Items', 'Logistics', 'World', 'Commands'}
@@ -69,6 +69,8 @@ NAMESPACES = {
      label = 'Read zones'},
     {key = 'zones_write', group = 'World', hotkey = 'CUSTOM_Y', default = false,
      label = 'Paint, edit, assign, delete zones'},
+    {key = 'hotkeys_write', group = 'World', hotkey = 'CUSTOM_SHIFT_K', default = false,
+     label = 'Name and place zoom hotkeys (points of interest)'},
     {key = 'console',  group = 'Commands', hotkey = 'CUSTOM_C', default = false,
      label = 'Run allowlisted console cmds'},
     {key = 'lua_eval', group = 'Commands', hotkey = 'CUSTOM_L', default = false,

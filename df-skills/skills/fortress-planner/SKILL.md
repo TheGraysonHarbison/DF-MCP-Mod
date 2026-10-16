@@ -55,6 +55,8 @@ Then write or update the plan, and only then start work.
   caravan traded, militia armed). A task is one thing you can do with a few tool calls and
   verify by reading back. Number both. Give every task a state word: `todo`, `active`,
   `done`, `blocked`. A blocked task names what unblocks it.
+- **Name the sites.** Record a hotkey slot (`set_hotkey`) for each site a phase works on and
+  refer to it in `plan.md` by its slot and name (slot 3 "Depot").
 - **Pause while planning.** When `pause_write` is on, `set_paused(true)` before taking stock
   and `set_paused(false)` once the plan is written. Never leave the game paused when you
   finish a turn unless the player asked for it.

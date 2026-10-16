@@ -11,6 +11,9 @@ def test_server_registers_expected_tools():
     assert names == {
         "ping",
         "get_permissions",
+        "list_hotkeys",
+        "set_hotkey",
+        "clear_hotkey",
         "get_time",
         "set_paused",
         "list_units",

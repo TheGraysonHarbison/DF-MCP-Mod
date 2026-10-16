@@ -23,6 +23,7 @@ from df_mcp.tools import (
     events,
     farms,
     furniture,
+    hotkeys,
     kitchen,
     labor,
     map,
@@ -60,7 +61,10 @@ Squads: `list_squads`, `get_squad`, and with `military_write` `create_squad`, `r
 `find_job_types`, and with `orders_write` `create_work_order`, `edit_work_order`,
 `delete_work_order`; only the manager dwarf approves them. `list_workshops` and
 `get_workshop` show built workshops, their jobs, and their contents. The map: `get_map_bounds`
-first, then `get_wagon`, `get_tile`, `get_area_map`, and `find_build_space`. `place_workshop`
+first, then `get_wagon`, `get_tile`, `get_area_map`, and `find_build_space`. `list_hotkeys`
+shows the player's 16 F-key zoom points; with `hotkeys_write` name the fort's points of interest
+with `set_hotkey` (never overwrite the player's slots silently) and free one with `clear_hotkey`.
+`place_workshop`
 (needs `build_write`) queues a blueprint at a spot `find_build_space` returned.
 `list_stockpiles` and `get_stockpile` show where goods are stored and what each pile accepts.
 `list_farms`, `get_farm`, and `set_farm_crops` cover farm plots (place one with
@@ -112,6 +116,7 @@ TOOL_MODULES = (
     orders,
     workshops,
     map,
+    hotkeys,
     build,
     stockpiles,
     dig,
