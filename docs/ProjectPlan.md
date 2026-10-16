@@ -1,6 +1,6 @@
 # Project Plan: DFHack Claude Integration Mod
 
-Status: Phases 0 through 21 are built and released as Alpha 1.0.0 (tag `v1.0.0-alpha`, PRs #38 to #58, 13.1 petitions deferred to a README open issue). Patch 1 items P1.0 to P5.0 (labor, seeds, migrant events, trade screen, diplomacy dialog, popups, hotkeys) were planned, built by seven agents, verified in-game, and merged on 2026-10-16 (PRs #59 to #66, protocol 30, design and live findings in section 15); P6.0, the owner's Alpha 1.0.1 release, is next. Last updated 2026-10-16.
+Status: Phases 0 through 21 are built and released as Alpha 1.0.0 (tag `v1.0.0-alpha`, PRs #38 to #58, 13.1 petitions deferred to a README open issue). Patch 1 items P1.0 to P5.0 (labor, seeds, migrant events, trade screen, diplomacy dialog, popups, hotkeys) were planned, built by seven agents, verified in-game, and merged on 2026-10-16 (PRs #59 to #66, protocol 30, design and live findings in section 15); P6.0 released Alpha 1.0.1 (tag `v1.0.1-alpha`) the same day. Last updated 2026-10-16.
 
 This document is the agreed plan for the project. The README describes the idea and current progress for readers; this file describes how we build it. When the two disagree, fix this file first, then the README.
 

@@ -360,7 +360,7 @@ drives a game screen).
 - P4.0 Popups: the pausing box popups (embark message, first caravan, megabeasts, sieges) arrive as events with their
   text and Claude closes them, unpausing if allowed.
 - P5.0 Hotkeys: list the game's 16 zoom hotkeys and name, place, and clear them as points of interest.
-- P6.0 Release: Alpha 1.0.1.
+- P6.0 Release: Alpha 1.0.1, released 2026-10-16.
 
 **Future plans** (after Patch 1, not scheduled):
 
@@ -439,4 +439,4 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | P3.0 | Diplomacy dialog: availability event, open, read text and choices, step, finish (`get_meeting_dialog`, `open_meeting_dialog`, `step_meeting_dialog`) | verified in-game 2026-10-16 on two liaison meetings: the opener replayed the player's recorded alert click and the dialog appeared; the bridge pressed the game's Okay and Done buttons by their on-screen labels, set a seed request on the requests step (priced 116% by the game), read the export agreement, and the farewell press closed the meeting with the agreement recorded; Escape part-way and a reopen resumed it. The land-holder step is untested (no barony offered) |
 | P4.0 | Popups: `popup` event with the text, `list_popups`, `close_popup` with optional unpause | verified in-game 2026-10-16: three boxes raised through DFHack while the game was paused were caught by the frame poller, reached the channel, listed with their text, and closed from the bridge; close without unpause left the game paused, close with unpause resumed it; focus stays dwarfmode/Default under a box |
 | P5.0 | Hotkeys: list the 16 slots, set and clear zoom hotkeys (`list_hotkeys`, `set_hotkey`, `clear_hotkey`, `hotkeys_write` permission) | verified in-game 2026-10-16: 16 slots read back with their keys (F1 to F8, Shift+F1 to Shift+F8) and F1 as the wagon; a point of interest written to F2 showed in the game's Hotkeys window and F2 jumped to it; F1 refused without overwrite, an off-map position refused, names clip at the game's 16 characters, clear emptied the slot |
-| P6.0 | Alpha 1.0.1 release | owner's |
+| P6.0 | Alpha 1.0.1 release (version bumps to 1.0.1a1 and 1.0.1-alpha, protocol 30, tag `v1.0.1-alpha`) | released 2026-10-16 |
