@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **21**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **22**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -70,6 +70,8 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `dig_write` | off | `dig.designate`, `dig.erase` (`dig.plan` is under `map`) |
 | `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space`, `map.exposed_walls`, `map.designations`, `map.plants` |
 | `build_write` | off | `build.workshop`, `build.remove`, `build.construct`, `build.place`, `build.suspend`, `build.remove_constructions`, `farms.set_crops` |
+| `trade` | on | `trade.caravans`, `trade.depot`, `trade.broker` |
+| `trade_write` | off | `trade.request_broker`, `trade.bring`, `trade.unbring`, `trade.offer` |
 | `stockpiles` | on | `stockpiles.list`, `stockpiles.get`, `stockpiles.presets` |
 | `stockpiles_write` | off | `stockpiles.create`, `stockpiles.configure`, `stockpiles.rename`, `stockpiles.delete` |
 | `console` | off | `console.run` (plus a per-command allowlist) |
@@ -692,6 +694,38 @@ Args: the box or `circle` `{x, y, z, radius}`, `dry_run` (default false on the w
 Per tile: a finished construction (`dfhack.constructions.findAtTile`, ignoring the `top_of_wall` records above constructed walls) is designated for removal with `designateRemove` unless the tile already carries a dig designation; a planned construction building is removed at once with `deconstruct` (unless a strange mood holds it); other tiles are skipped. `checkDesignationsNow` runs when anything was designated.
 
 Result: `box`, `shape`, `dry_run`, `applied`, `cancelled`, `designated`, `already_designated`, `skipped`, `tiles` `[{pos, action, material | building}]` (first 25), `skipped_tiles` (first 25), `note`.
+
+### Trade (Phase 17.0)
+
+Reads follow DFHack's caravan script (`hack/scripts/internal/caravan`, checked 2026-10-15). Values use `dfhack.items.getValue(item, caravan)` with the active caravan (at the depot, else approaching) so agreement prices apply.
+
+### `trade.caravans`
+
+Args: none. Needs a map. Result: `count`, `caravans` `[{index, civ {id, name, race, home}, state (none, approaching, at_depot, leaving, stuck), active, days_remaining (time_remaining / 120), mood, haggle_failures, animals, import_value, export_value, flags, depot_notified}]`, `merchants_on_map`, `season`, `note`.
+
+### `trade.depot`
+
+Args: `depot_id` (optional; the first depot otherwise), `limit` (default 25). Needs a map. Result: `id`, `pos`, `bounds`, `built`, `accessible` (the game's wagon-access flag), `broker_requested`, `anyone_can_trade` (`trade_flags`), `trade_job` (`{id, worker}` when a `TradeAtDepot` job sits on the depot), `times_used`, `fort_goods` and `merchant_goods` (`{count, value, items [{id, description, value, requested, merchant_goods}], truncated}` from `contained_items` in `TEMP` use mode, split by the `trader` flag), `pending` (`BringItemToDepot` jobs with their workers), `caravan`, `note`.
+
+### `trade.broker`
+
+Args: none. Needs a map. Result: `assigned`, `broker` `{id, name, pos}` (from `getUnitByNobleRole('broker')`, else the BROKER position holder), `job`, `trading` (a `TradeAtDepot` job), `at_depot`, `appraisal`, `depot_id`, `broker_requested`, `anyone_can_trade`, `note`.
+
+### `trade.request_broker`
+
+Args: `requested` (default true), `anyone` (default false), `depot_id`. Needs a map and `trade_write`. Writes `trade_flags.trader_requested` and `anyone_can_trade`; the game creates the `TradeAtDepot` job once a caravan is at the depot (to be confirmed with the first caravan). Result: `depot_id`, `before`, `broker_requested`, `anyone_can_trade`, `caravan_present`, `note`.
+
+### `trade.bring`
+
+Args: `item_ids`, or `query` (description substring) with optional `item_type` (an item type token), `limit` (default 25), `depot_id`. Needs a map and `trade_write`. Each item passes DFHack's move-goods rule (not hostile, removed, dead_dwarf, spider_web, construction, encased, murder, trader, owned, garbage_collect, on_fire, forbidden, in a job, in a building, or carried outside a container; mandates checked with `checkMandates`; reachable from the depot by `canWalkBetween`), then `dfhack.items.markForTrade(item, depot)` creates its `BringItemToDepot` job. Result: `depot_id`, `marked`, `value`, `items`, `skipped [{id, description, reason}]`, `note`.
+
+### `trade.unbring`
+
+Args: `item_ids`, `depot_id`. Needs a map and `trade_write`. Removes the item's `BringItemToDepot` job through its specific JOB ref, or clears `in_building` for an item already at the depot (movegoods' release). Result: `depot_id`, `released`, `skipped`.
+
+### `trade.offer`
+
+Args: `give` (fort item ids at the depot), `take` (merchant item ids at the depot), `depot_id`. Needs a map and `trade_write`. Evaluates the deal at the caravan's prices: `give {count, value, items}`, `take {...}`, `profit`, `margin`, `verdict` (no caravan; invalid; refused, merchants never accept a loss; accepted at 50% profit; likely at 10%; marginal below), `problems`, `executed` (always false for now: the Trade button has no DFHack path and the headless drive of the game's trade screen is unverified until a caravan is at the depot), `note`.
 
 ### `stockpiles.list`
 

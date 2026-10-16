@@ -34,6 +34,7 @@ from df_mcp.tools import (
     stocks,
     time,
     timer,
+    trade,
     units,
     workshops,
     zones,
@@ -67,6 +68,9 @@ shows the trees and shrubs in a box.
 Your plan: `read_plan` at the start of a session; keep plans, rules, and memory about this fort in
 it with `write_plan` and `append_plan`; `read_goals` holds the player's goals, which also arrive as
 `goals` channel messages when the player sends them.
+Trade: `list_caravans`, `get_trade_depot`, `get_broker`; with `trade_write` `request_broker`,
+`bring_to_depot`, `cancel_bring`, and `offer_trade` (evaluates a deal; the trade itself is still
+the player's button).
 `send_message` tells the player something inside the game (short, light red, on the left-side
 alerts, with an optional position to zoom to); use it when a plan is made or a decision is
 needed.
@@ -106,6 +110,7 @@ TOOL_MODULES = (
     plan,
     messages,
     timer,
+    trade,
     console,
     dev,
 )
