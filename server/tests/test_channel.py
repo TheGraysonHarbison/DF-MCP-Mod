@@ -105,6 +105,29 @@ def test_poller_establishes_sequence_then_sends_batches():
     assert sent[0].message.params["meta"]["count"] == "2"
 
 
+def test_poller_rewinds_when_sequence_restarts():
+    holder = {}
+
+    def factory(host, port):
+        holder["client"] = ScriptedClient(host, port)
+        return holder["client"]
+
+    bridge = Bridge("h", 1, client_factory=factory)
+    poller = EventPoller(bridge, lambda m: None, poll_seconds=0, startup_delay=0)
+    bridge._ensure_client()  # noqa: SLF001
+    client = holder["client"]
+    poller.after_seq = 40
+    client.replies = [
+        {"next_seq": 3, "events": [], "waiting": 0},
+        {"next_seq": 3, "events": [{"seq": 1, "kind": "timer", "text": "t"},
+                                   {"seq": 2, "kind": "petition", "text": "p"}],
+         "last_seq": 2, "remaining": 0, "tick": 1},
+    ]
+    result = poller.step()
+    assert client.requests[-1]["args"] == {"after_seq": 0}
+    assert result is not None and poller.after_seq == 2
+
+
 def test_event_tools_send_args():
     mcp, holder = make()
     run(mcp, "list_event_kinds")

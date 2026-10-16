@@ -62,13 +62,26 @@ KINDS = {
     {key = 'petition', label = 'Petition', default = true, poll = true},
 }
 
--- Module state survives `claude-bridge reload` (re-read of this file).
-queue = queue or {}
-next_seq = next_seq or 1
-dropped = dropped or 0
+-- Queue state lives in a table on the real global environment so that `claude-bridge
+-- reload` (which drops this module and re-reads it) keeps the sequence and the waiting
+-- events; a restarted sequence would make the server's bookmark skip events (seen live
+-- 2026-10-15). Scalars are copied back with persist() after every change.
+local store = rawget(_G, 'claude_bridge_event_store')
+if not store then
+    store = {queue = {}, next_seq = 1, dropped = 0, last_handed_seq = 0}
+    rawset(_G, 'claude_bridge_event_store', store)
+end
+queue = store.queue
+next_seq = store.next_seq
+dropped = store.dropped
+last_handed_seq = store.last_handed_seq
 running = running or false
 baseline = baseline or nil
 fight_seen = fight_seen or {}
+
+local function persist()
+    store.queue, store.next_seq, store.dropped, store.last_handed_seq = queue, next_seq, dropped, last_handed_seq
+end
 
 local function safe(fn, ...)
     local ok, value = pcall(fn, ...)
@@ -134,11 +147,11 @@ function push(kind, fields)
         table.remove(queue, 1)
         dropped = dropped + 1
     end
+    persist()
     return entry
 end
 
 -- Whether an event of this kind is still waiting (queued after the last batch handed out).
-last_handed_seq = last_handed_seq or 0
 function has_pending(kind)
     for _, e in ipairs(queue) do
         if e.seq > last_handed_seq and e.kind == kind then return true end
@@ -159,6 +172,7 @@ function push_special(kind, text, extra)
         table.remove(queue, 1)
         dropped = dropped + 1
     end
+    persist()
     return entry
 end
 
@@ -400,6 +414,7 @@ function reset()
     baseline = nil
     fight_seen = {}
     last_handed_seq = 0
+    persist()
 end
 
 ----------------------------------------------------------------------------------------------
@@ -466,7 +481,10 @@ local function poll_op(args)
     base.events = out
     base.last_seq = out[#out].seq
     base.remaining = #pending - #out
-    if base.last_seq > last_handed_seq then last_handed_seq = base.last_seq end
+    if base.last_seq > last_handed_seq then
+        last_handed_seq = base.last_seq
+        persist()
+    end
     -- Anything handed to Claude re-arms the prompt timer (Phase 15), timer prompts included.
     pcall(function() reqscript('internal/claude-bridge/timer').reset('events sent') end)
     return base
