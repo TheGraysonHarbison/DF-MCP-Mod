@@ -104,6 +104,13 @@ def test_server_registers_expected_tools():
         "send_message",
         "list_message_badges",
         "get_timer_status",
+        "list_caravans",
+        "get_trade_depot",
+        "get_broker",
+        "request_broker",
+        "bring_to_depot",
+        "cancel_bring",
+        "offer_trade",
         "dev_create_item",
         "dev_exterminate",
     }

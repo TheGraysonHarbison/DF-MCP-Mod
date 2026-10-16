@@ -6,7 +6,7 @@ local scriptmanager = require('script-manager')
 
 MOD_ID = 'claude-bridge'
 MOD_VERSION = '0.3.0'
-PROTOCOL_VERSION = 21
+PROTOCOL_VERSION = 22
 
 -- Settings groups, in display order.
 GROUPS = {'General', 'Units', 'Items', 'Logistics', 'World', 'Commands'}
@@ -51,6 +51,10 @@ NAMESPACES = {
      label = 'Read workshops'},
     {key = 'build_write', group = 'Logistics', hotkey = 'CUSTOM_D', default = false,
      label = 'Place workshop blueprints'},
+    {key = 'trade',    group = 'Logistics', hotkey = 'CUSTOM_CTRL_T', default = true,
+     label = 'Read caravans, depot, broker'},
+    {key = 'trade_write', group = 'Logistics', hotkey = 'CUSTOM_CTRL_R', default = false,
+     label = 'Request the broker, haul goods, offer trades'},
     {key = 'stockpiles', group = 'Logistics', hotkey = 'CUSTOM_E', default = true,
      label = 'Read stockpiles'},
     {key = 'stockpiles_write', group = 'Logistics', hotkey = 'CUSTOM_F', default = false,
