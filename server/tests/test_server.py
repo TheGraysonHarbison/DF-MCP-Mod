@@ -102,6 +102,8 @@ def test_server_registers_expected_tools():
         "run_console_command",
         "list_event_kinds",
         "poll_events",
+        "list_popups",
+        "close_popup",
         "get_plan_info",
         "read_plan",
         "write_plan",

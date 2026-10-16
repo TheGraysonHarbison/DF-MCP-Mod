@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **27**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **28**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -39,6 +39,7 @@ Notes on JSON from Lua: an empty table encodes as `[]`, so an empty object-value
 | `NO_MAP` | The op needs a loaded fortress map. |
 | `NOT_FOUND` | Unknown op, or the requested object does not exist. |
 | `INTERNAL` | The handler raised. The message holds the Lua error. |
+| `SCREEN_BUSY` | A screen-driving op found another screen open; the message names it. The player's menu is never closed. |
 
 Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_FAILED`.
 
@@ -51,7 +52,8 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `settings` | on | `settings.get`, `settings.mods` |
 | `time` | on | `time.now` |
 | `pause_write` | off | `time.set_pause` |
-| `events` | on | `events.kinds`, `events.poll`, `events.emit`, `timer.status` |
+| `screens_write` | off | `popups.close` |
+| `events` | on | `events.kinds`, `events.poll`, `events.emit`, `timer.status`, `popups.list` |
 | `plan` | on | `plan.info`, `plan.read`, `plan.write`, `plan.append`, `goals.read` |
 | `units` | on | `units.list`, `units.find`, `units.get`, `units.sheet`, `units.full_sheet`, `labor.details` |
 | `units_write` | off | `units.set_nickname` |
@@ -83,15 +85,15 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 
 ### Events
 
-The mod queues in-game events (plan section 13, Phase 13) and the server pushes them to Claude Code as channel notifications (`notifications/claude/channel`, declared through the experimental `claude/channel` capability at the handshake). The queue is a ring of 200 entries; `events.poll` hands out a batch once the newest waiting event is two seconds old or 50 are waiting. Each kind has a player toggle (settings window, Events tab, or `claude-bridge event <kind> on|off`); defaults on: `mineral_discovered`, `migrants_arrived`, `units_fighting`, `petition`.
+The mod queues in-game events (plan section 13, Phase 13) and the server pushes them to Claude Code as channel notifications (`notifications/claude/channel`, declared through the experimental `claude/channel` capability at the handshake). The queue is a ring of 200 entries; `events.poll` hands out a batch once the newest waiting event is two seconds old or 50 are waiting. Each kind has a player toggle (settings window, Events tab, or `claude-bridge event <kind> on|off`); defaults on: `mineral_discovered`, `popup`, `units_fighting`, `petition`.
 
-Sources: `eventful.onReport` (announcements mapped by `announcement_type` to kinds; continuation lines skipped; units standing on the report's position are attached), `onUnitDeath` (citizens, `citizen_dead`), `onInvasion` (`invaders_arrived`), `onUnitAttack` (`units_fighting`, or `sparring` when both units are fort-controlled; one event per unit pair per ten seconds), and a poller every 100 ticks for `petition` (new ids in `plotinfo.petitions`), `ghost_appeared` and `ghost_rested` (the set of ghost units), `mood_item_missing` (citizens whose strange-mood job stalled waiting for an item), `artifact_found` (artifact items on the map whose tile became revealed), and `season_changed` (`cur_season`); it also keeps the set of citizen ids (`dfhack.units.getCitizens(true)`) for `migrants_arrived`. The poller's first run only records a baseline. Hooks are installed on enable and reload and removed on disable; the queue is cleared on map unload.
+Sources: `eventful.onReport` (announcements mapped by `announcement_type` to kinds; continuation lines skipped; units standing on the report's position are attached), `onUnitDeath` (citizens, `citizen_dead`), `onInvasion` (`invaders_arrived`), `onUnitAttack` (`units_fighting`, or `sparring` when both units are fort-controlled; one event per unit pair per ten seconds), and a poller every 100 ticks for `petition` (new ids in `plotinfo.petitions`), `ghost_appeared` and `ghost_rested` (the set of ghost units), `mood_item_missing` (citizens whose strange-mood job stalled waiting for an item), `artifact_found` (artifact items on the map whose tile became revealed), and `season_changed` (`cur_season`). The poller's first run only records a baseline. A second poller every 30 frames (a `frames` timer, so it runs while the game is paused) watches `world.status.popups` for `popup` (below). Hooks are installed on enable and reload and removed on disable; the queue is cleared on map unload.
 
 ### `events.kinds`
 
 Args: none. Namespace `events`.
 
-Result: `kinds` `[{key, label, enabled, default, source (announcement, hook, attack hook, poll), announcement_types, missing_types (names this build lacks)}]`, `running`, `queued`, `next_seq`, `dropped`.
+Result: `kinds` `[{key, label, enabled, default, source (announcement, hook, attack hook, poll, poll (frames)), announcement_types, missing_types (names this build lacks)}]`, `running`, `queued`, `next_seq`, `dropped`.
 
 `migrants_arrived` (Patch 1, P1.2; default on; source `announcement`) maps six types: `MIGRANT_ARRIVAL`, `MIGRANT_ARRIVAL_NAMED`, `D_MIGRANTS_ARRIVAL`, `D_MIGRANT_ARRIVAL`, `D_MIGRANT_ARRIVAL_DISCOURAGED`, `D_NO_MIGRANT_ARRIVAL` (all present on DFHack 53.16-r2). The discouraged and no-arrival texts arrive as the same kind; `extra.announcement` tells them apart.
 
@@ -106,6 +108,26 @@ Announcement events carry `extra.announcement` (the `announcement_type` name). A
 ### `events.emit`
 
 Args: `kind` (an event kind, or `test`), `text`, `pos`. Namespace `events`. Queues one event by hand (disabled kinds are refused with `queued: false`); used by tests and by the goals and timer features. Result: `queued`, `seq`.
+
+### Popups
+
+Box popups (plan section 15.2, P4.0) are the game's `world.status.popups` vector (`popup_message`: `text` CP437, `color`, `bright`, `portrait_hfid`, -1 when none); `world.status.mega_text` is the rendered box and is never written. The game pauses while a box is up. The left-side alert buttons (`world.status.announcement_alert`) are not popups.
+
+Event kind `popup` (default on, source `poll (frames)`): the frames poller keeps the texts of the open popups already reported (kept across `claude-bridge reload`, cleared on map unload); every open popup whose text is not yet reported is queued with `text` (first 400 characters) and `extra` `{popup_index (1-based), popup_count, portrait (figure name or absent), text_truncated}`. A text leaves the reported list when its box closes. The channel carries a popup's text whole (other kinds are cut at 300 characters).
+
+### `popups.list`
+
+Args: `limit` (default 25). Needs a map. Namespace `events`.
+
+Result: `count`, `popups` `[{index (1-based, 1 is the box on screen), text (up to 4000 characters), text_truncated, color, bright, portrait {hist_figure_id, name} or absent}]`, `paused`, `truncated` (more than `limit` open), `note` (the game stays paused while a popup is up).
+
+### `popups.close`
+
+Args: `unpause` (boolean, default false). Needs a map and `screens_write`.
+
+Checks the focus first: anything other than `dwarfmode/Default` is refused with `SCREEN_BUSY` naming the open screen, and the player's menu is left alone. `NOT_FOUND` when no popup is open. Otherwise removes the front entry the way the Close button does (`popups:erase(0)` and the entry freed). With `unpause` and `pause_write` on, unpauses; with `pause_write` off the game stays paused and `pause_note` says so.
+
+Result: `closed` `{text (first 400 characters), color, portrait}`, `remaining`, `unpaused`, `paused`, `pause_note`, `note`. Not yet verified in-game (the Close button's other effects are checked on the first live box).
 
 ### Plan and goals
 

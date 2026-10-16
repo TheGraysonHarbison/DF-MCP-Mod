@@ -34,6 +34,7 @@ from df_mcp.tools import (
     orders,
     plan,
     plants,
+    popups,
     stockpiles,
     stocks,
     time,
@@ -96,6 +97,7 @@ player enabled (see `list_event_kinds`) arrive on their own as channel messages;
 units, tiles, or petitions they name with the tools and act. `poll_events` is the fallback.
 A `migrants_arrived` event names the newcomers and their professions; give them work, work
 details, and beds.
+A `popup` event means the game paused on a box: read it (`list_popups`), act, then `close_popup`.
 `run_console_command` only runs commands the player has allowlisted in-game. For dev testing,
 `dev_create_item` and `dev_exterminate` build `modtools/create-item` and `exterminate` lines
 and run them the same way; they change the game outside its rules, so use them only when the
@@ -127,6 +129,7 @@ TOOL_MODULES = (
     zones,
     kitchen,
     events,
+    popups,
     plan,
     messages,
     timer,

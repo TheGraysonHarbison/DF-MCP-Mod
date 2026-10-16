@@ -32,6 +32,7 @@ BACKOFF_SECONDS = 10.0
 STARTUP_DELAY_SECONDS = 3.0
 TEXT_LIMIT = 300
 PROMPT_KINDS = ("goals", "timer")
+UNCUT_KINDS = ("popup",)
 
 
 def format_newcomers(extra: Any) -> str:
@@ -78,7 +79,8 @@ def format_batch(result: dict[str, Any]) -> tuple[str, dict[str, str]]:
     ]
     for e in events:
         text = str(e.get("text") or e.get("kind") or "").strip()
-        if len(text) > TEXT_LIMIT:
+        # Popup texts arrive already cut by the mod (400 characters) and are carried whole.
+        if e.get("kind") not in UNCUT_KINDS and len(text) > TEXT_LIMIT:
             text = text[: TEXT_LIMIT - 3] + "..."
         parts = [f"- [{e.get('kind')}] {text}"]
         pos = e.get("pos")
@@ -95,6 +97,11 @@ def format_batch(result: dict[str, Any]) -> tuple[str, dict[str, str]]:
         newcomers = format_newcomers(extra)
         if newcomers:
             parts.append(newcomers)
+        if e.get("kind") == "popup" and isinstance(extra, dict):
+            if extra.get("portrait"):
+                parts.append(f"(portrait: {extra['portrait']})")
+            if extra.get("text_truncated"):
+                parts.append("(text cut; read it whole with list_popups)")
         lines.append(" ".join(parts))
     remaining = result.get("remaining") or 0
     if remaining:

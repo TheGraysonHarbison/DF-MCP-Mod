@@ -26,6 +26,8 @@ What the game and the bridge have taught us. Each line was learned by doing it w
   skipped and reported. A repeat of the same order is refused, not duplicated.
 - **Permissions are the player's.** `get_permissions` shows the namespaces. `NOT_ALLOWED`
   names the toggle; tell the player once, do not retry.
+- **`SCREEN_BUSY` means the player has another screen open** (a menu, a sheet). Never close
+  it for them; retry later, or tell the player what you are waiting for.
 - **Text is CP437.** Names come back with the English surname in quotes ("Urist
   Scourgears"); the quoted part is not a nickname. Some accented capitals become `?`. Do not
   "fix" spellings.
@@ -211,7 +213,7 @@ What the game and the bridge have taught us. Each line was learned by doing it w
   A `goals` message is the player's goals in their prompt; a `timer` message is the prompt
   timer asking for a status check.
 - The player chooses which kinds are on (`list_event_kinds`); mineral discovered, migrants
-  arrived, units fighting, and petition are on by default. Do not ask for kinds to be enabled unless the
+  arrived, popup, units fighting, and petition are on by default. Do not ask for kinds to be enabled unless the
   plan needs them.
 - `migrants_arrived` names the newcomers (`newcomers: Name (Profession)`, ids in
   `unit_ids`). Greet them with work: check their professions, put them on work details,
@@ -223,6 +225,11 @@ What the game and the bridge have taught us. Each line was learned by doing it w
   `after_seq`, then with the last sequence received, on a `/loop`.
 - `send_message` is your voice in the game: short, with a position when there is one. It
   does not pause or recenter the game.
+- A `popup` event means the game paused on a box: the embark message at a new fort, the
+  first caravan, a megabeast, a siege, an artifact. The event text stops at 400 characters;
+  read the rest with `list_popups` when it was cut. Act on it first, then
+  `close_popup(unpause=True)` when `pause_write` is on, else tell the player the game is
+  paused on a popup.
 
 ## Early fort priorities
 
@@ -251,6 +258,7 @@ monuments.
 | A list says `truncated` | The 25-row cap | Repeat with a higher `limit` |
 | A write says skipped tiles | Existing orders, buildings, or open space in the footprint | Read the skipped list; adjust the box, do not force it |
 | No events ever arrive | The session lacks the channel flag, or the organization's Channels switch is off | Tell the player: start with `claude --dangerously-load-development-channels server:dfhack`; an Owner enables Channels under Organization settings > Claude Code; the log is in `~/.cache/claude-cli-nodejs/<project>/mcp-logs-dfhack/`. Meanwhile poll with `poll_events` |
+| The game seems frozen and `get_time` says paused | A popup box may be up | `list_popups`, then `close_popup` |
 | The game seems frozen | It is paused | `get_time` shows `paused`; `set_paused(false)` if `pause_write` is on, else ask the player |
 | A crop write changed nothing | The plot is not built yet | Wait for the planter; set crops after `list_farms` shows it built |
 
