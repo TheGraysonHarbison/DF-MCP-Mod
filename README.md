@@ -431,7 +431,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 21 | Alpha 1.0.0 release (version bumps, tag `v1.0.0-alpha`, draft prerelease) | tagged 2026-10-16 (PR #58) |
 | P1.0 | Work details: list, assign and remove citizens, set mode (`list_work_details`, `assign_work_detail`, `set_work_detail_mode`, `labor_write` permission) | verified in-game 2026-10-16: the 11 default details read back with modes and members; a metalcrafter was added to Woodcutters and CUTWOOD appeared in his labors, then removed; Haulers set to nobody cleared hauling on all seven citizens and everybody restored it; everybody on Miners and an unknown mode were refused |
 | P1.1 | Sustainable farming section in the fortress-quirks skill | built 2026-10-16 |
-| P1.2 | `migrants_arrived` event kind with the newcomers | planned 2026-10-16 |
+| P1.2 | `migrants_arrived` event kind with the newcomers | verified in-game 2026-10-16: the kind lists all six announcement types on 53.16-r2; a MIGRANT_ARRIVAL announcement raised from Lua became a migrants_arrived event with the type, position, and newcomer fields and reached the channel; the newcomer names fill at the first real wave |
 | P2.0 | Trade screen: open, press Trade, Offer, Seize, answer counter-offers, read the reply, close (`open_trade_screen`, `press_trade`, `screens_write` permission) | planned 2026-10-16; live test on the owner's caravan save |
 | P3.0 | Diplomacy dialog: availability event, open, read text and choices, step, finish (`get_meeting_dialog`, `open_meeting_dialog`, `step_meeting_dialog`) | planned 2026-10-16; live test on the owner's liaison save |
 | P4.0 | Popups: `popup` event with the text, `list_popups`, `close_popup` with optional unpause | planned 2026-10-16 |

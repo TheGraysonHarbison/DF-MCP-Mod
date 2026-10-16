@@ -34,6 +34,27 @@ TEXT_LIMIT = 300
 PROMPT_KINDS = ("goals", "timer")
 
 
+def format_newcomers(extra: Any) -> str:
+    """``newcomers: Name (Profession), ...`` for an event whose extra names new citizens."""
+    if not isinstance(extra, dict):
+        return ""
+    people = extra.get("new_citizens")
+    if not isinstance(people, list) or not people:
+        return ""
+    names = []
+    for p in people:
+        if not isinstance(p, dict):
+            continue
+        name = str(p.get("name") or f"unit {p.get('id')}")
+        profession = p.get("profession")
+        names.append(f"{name} ({profession})" if profession else name)
+    text = "newcomers: " + ", ".join(names)
+    count = extra.get("new_citizens_count")
+    if extra.get("new_citizens_truncated") and isinstance(count, int) and count > len(names):
+        text += f" and {count - len(names)} more"
+    return text
+
+
 def format_batch(result: dict[str, Any]) -> tuple[str, dict[str, str]]:
     """Turn one ``events.poll`` result into channel content and meta attributes."""
     events: list[dict[str, Any]] = result.get("events") or []
@@ -71,6 +92,9 @@ def format_batch(result: dict[str, Any]) -> tuple[str, dict[str, str]]:
         extra = e.get("extra")
         if isinstance(extra, dict) and extra.get("agreement_id") is not None:
             parts.append(f"agreement {extra['agreement_id']}")
+        newcomers = format_newcomers(extra)
+        if newcomers:
+            parts.append(newcomers)
         lines.append(" ".join(parts))
     remaining = result.get("remaining") or 0
     if remaining:

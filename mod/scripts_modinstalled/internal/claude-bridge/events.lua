@@ -2,7 +2,8 @@
 -- eventful.onReport and are mapped to kinds by announcement type; deaths, invasions, and
 -- fights through the other eventful hooks; what the game never announces (petitions,
 -- ghosts, moody dwarves missing an item, artifacts dug up, season changes) is polled every
--- 100 ticks. Events sit in a ring of 200 and events.poll hands them out once the newest is
+-- 100 ticks. Migrant announcements (plan section 15.2, P1.2) also carry the citizens who
+-- were absent at the last poll. Events sit in a ring of 200 and events.poll hands them out once the newest is
 -- two seconds old or 50 are waiting. Only kinds the player enabled are queued.
 --@ module = true
 
@@ -43,6 +44,11 @@ KINDS = {
      types = {'CITIZEN_DEATH'}, death = true},
     {key = 'ghost_appeared', label = 'Ghost appeared', default = false, poll = true},
     {key = 'ghost_rested', label = 'Ghost put to rest', default = false, poll = true},
+    -- Six types on DFHack 53.16-r2 (values 50, 49, 69, 70, 71, 72; checked 2026-10-16); the
+    -- discouraged and no-arrival texts arrive as this kind too (plan section 15.2).
+    {key = 'migrants_arrived', label = 'Migrants arrived', default = true,
+     types = {'MIGRANT_ARRIVAL', 'MIGRANT_ARRIVAL_NAMED', 'D_MIGRANTS_ARRIVAL', 'D_MIGRANT_ARRIVAL',
+              'D_MIGRANT_ARRIVAL_DISCOURAGED', 'D_NO_MIGRANT_ARRIVAL'}, migrants = true},
     {key = 'caravan_arrived', label = 'Caravan arrived', default = false,
      types = {'CARAVAN_ARRIVAL', 'FIRST_CARAVAN_ARRIVAL', 'MERCHANTS_UNLOADING',
               'MERCHANTS_NEED_DEPOT', 'MERCHANT_WAGONS_BYPASSED'}},
@@ -189,6 +195,44 @@ local function pos_of(thing)
     return {x = x, y = y, z = z}
 end
 
+-- Ids of the fort's citizens (residents excluded), as a set.
+local function citizen_set()
+    local set = {}
+    pcall(function()
+        for _, unit in ipairs(dfhack.units.getCitizens(true)) do set[unit.id] = true end
+    end)
+    return set
+end
+
+local NEWCOMER_CAP = 25
+
+-- Citizens present now that the last poll did not see; advances the baseline so a second
+-- announcement in the same wave does not list them again. Before the poller's first run
+-- there is no baseline and the list is empty.
+-- VERIFY LIVE: that the wave's units already count as citizens (getCitizens(true)) when the
+-- migrant report fires, and that an empty new_citizens encodes as [] (or {}) in events.poll.
+local function take_newcomers()
+    local current = citizen_set()
+    local list, ids, count = {}, {}, 0
+    if baseline and baseline.citizens then
+        local new = {}
+        for id in pairs(current) do
+            if not baseline.citizens[id] then table.insert(new, id) end
+        end
+        table.sort(new)
+        count = #new
+        for i = 1, math.min(count, NEWCOMER_CAP) do
+            local id = new[i]
+            local unit = df.unit.find(id)
+            table.insert(list, {id = id, name = unit and safe(dfhack.units.getReadableName, unit) or nil,
+                                profession = unit and safe(dfhack.units.getProfessionName, unit) or nil})
+            table.insert(ids, id)
+        end
+        baseline.citizens = current
+    end
+    return list, ids, count
+end
+
 ----------------------------------------------------------------------------------------------
 -- eventful hooks
 
@@ -207,8 +251,21 @@ local function on_report(report_id)
             end
         end)
     end
-    push(kind, {text = report.text, pos = pos, unit_ids = #units > 0 and units or nil,
-                extra = {announcement = enum_name(df.announcement_type, report.type)}})
+    local extra = {announcement = enum_name(df.announcement_type, report.type)}
+    local spec = kind_spec(kind)
+    if spec and spec.migrants then
+        local ok, list, ids, count = pcall(take_newcomers)
+        if ok then
+            extra.new_citizens = list
+            extra.new_citizens_count = count
+            extra.new_citizens_truncated = count > #list
+            if #list > 0 then
+                units = ids
+                extra.note = 'a birth in the same hundred ticks would also be listed'
+            end
+        end
+    end
+    push(kind, {text = report.text, pos = pos, unit_ids = #units > 0 and units or nil, extra = extra})
 end
 
 local function on_unit_death(unit_id)
@@ -327,6 +384,7 @@ local function poll()
         petitions = petition_set(), ghosts = ghost_set(), moody = moody_waiting_set(),
         artifacts = revealed_artifact_set(),
         season = safe(function() return df.global.cur_season end),
+        citizens = citizen_set(),
     }
     if not baseline then
         baseline = current

@@ -90,6 +90,8 @@ fort and your plan, act, and report with `send_message`. `get_timer_status` show
 Events: when the session was started with the channel flag, batches of in-game events the
 player enabled (see `list_event_kinds`) arrive on their own as channel messages; read the
 units, tiles, or petitions they name with the tools and act. `poll_events` is the fallback.
+A `migrants_arrived` event names the newcomers and their professions; give them work, work
+details, and beds.
 `run_console_command` only runs commands the player has allowlisted in-game. For dev testing,
 `dev_create_item` and `dev_exterminate` build `modtools/create-item` and `exterminate` lines
 and run them the same way; they change the game outside its rules, so use them only when the

@@ -200,9 +200,13 @@ What the game and the bridge have taught us. Each line was learned by doing it w
   batches two quiet seconds or 50 events apart, each line `[kind] text (x,y,z) units ...`.
   A `goals` message is the player's goals in their prompt; a `timer` message is the prompt
   timer asking for a status check.
-- The player chooses which kinds are on (`list_event_kinds`); mineral discovered, units
-  fighting, and petition are on by default. Do not ask for kinds to be enabled unless the
+- The player chooses which kinds are on (`list_event_kinds`); mineral discovered, migrants
+  arrived, units fighting, and petition are on by default. Do not ask for kinds to be enabled unless the
   plan needs them.
+- `migrants_arrived` names the newcomers (`newcomers: Name (Profession)`, ids in
+  `unit_ids`). Greet them with work: check their professions, put them on work details,
+  and add beds before they sleep on the floor. The "no one came" and "discouraged" texts
+  are the same kind with no newcomers.
 - Any batch sent to you re-arms the prompt timer, so a busy fort is driven by events and a
   quiet one by the timer. The timer counts only while the game is unpaused.
 - Without the channel, `poll_events` returns the same batches: call it first without
