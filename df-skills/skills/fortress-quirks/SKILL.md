@@ -171,9 +171,16 @@ What the game and the bridge have taught us. Each line was learned by doing it w
 - Caravans need a built trade depot and an appointed broker; `request_broker` calls them
   to the depot. `bring_to_depot` hauls goods; `offer_trade` prices a set and tells you
   whether the merchant would accept, including the weight limit.
-- **The Trade button is the player's.** `select_trade_goods` picks goods on the open trade
-  screen; the player opens the depot's trade screen and presses Trade. Say so with
-  `send_message` when a deal is ready.
+- **The trade flow** (needs `trade_write` and `screens_write`): bring goods, `request_broker`,
+  wait until `get_broker` shows the broker at the depot and the merchants have finished
+  unloading, `open_trade_screen`, `select_trade_goods`, `offer_trade` to check the verdict,
+  `press_trade("trade")`, read `reply_meaning` and `mood_after`, answer a counter-offer with
+  `accept_counter` or `decline_counter`, then `press_trade("close", unpause=True)`.
+- `trade` is final, `offer` is a gift, and `seize` angers the civilization: never seize
+  unless the player asked. Without `screens_write`, select the goods and tell the player
+  with `send_message` to press Trade.
+- `SCREEN_BUSY` means the player has a menu open. Their menu is never closed; try later or
+  ask them.
 - **The liaison meeting is the player's.** `set_trade_requests` sets next year's requests
   while the meeting's Requests step is open; the player clicks through the rest.
 - Elves refuse anything made of wood; offering it offends the caravan.
@@ -243,7 +250,9 @@ monuments.
 
 - Petitions cannot be read or answered through the bridge yet; the player answers them in
   the game. Petition events still arrive.
-- The Trade button and the liaison meeting are the player's (above).
+- The liaison meeting is the player's (above) until P3.0 lands. The trade screen is driven
+  by the mod but its live verification is pending: if `press_trade` says nothing changed,
+  or the counter-offer answers come back `NOT_FOUND`, the player presses the button.
 - Levers cannot be linked, weapon traps hold one weapon, siege engines cannot be aimed.
 - Dev tools cannot spawn units on this DFHack build.
 

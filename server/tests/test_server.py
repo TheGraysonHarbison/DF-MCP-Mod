@@ -121,6 +121,8 @@ def test_server_registers_expected_tools():
         "offer_trade",
         "get_trade_screen",
         "select_trade_goods",
+        "open_trade_screen",
+        "press_trade",
         "list_diplomats",
         "get_trade_request_options",
         "set_trade_requests",

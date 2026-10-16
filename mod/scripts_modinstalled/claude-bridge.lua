@@ -22,11 +22,16 @@ Usage::
     claude-bridge deny <command>
     claude-bridge reload
     claude-bridge test <json request>
+    claude-bridge trade-snapshot
 
 ``send`` queues a test event carrying the text, which reaches Claude through the
 channel like any other event (a way to check the push path from the game). ``reload``
 re-reads the mod's Lua modules from disk and re-registers the ops without
-disabling the bridge. For development.
+disabling the bridge. For development. ``trade-snapshot`` prints the game's trade
+screen state (every scalar field of ``main_interface.trade``, vector lengths, pointer
+ids) with the screen focus, interface rect, mouse position, and pause state as one JSON
+object; it reads only and exists for the P2.0 live diff (run it before and after
+pressing Trade on the depot, and while hovering a button to measure its frame).
 ]====]
 
 local GLOBAL_KEY = 'claude-bridge'
@@ -234,6 +239,9 @@ elseif command == 'test' then
     if not enabled then qerror('claude-bridge is not enabled') end
     local request = table.concat(args, ' ', 2)
     print(rpc.dispatch(request))
+elseif command == 'trade-snapshot' then
+    if not dfhack.isMapLoaded() then qerror('no map is loaded') end
+    print(json.encode(reqscript('internal/claude-bridge/trade').snapshot()))
 else
     qerror('unknown command: ' .. command .. ' (try: claude-bridge help)')
 end

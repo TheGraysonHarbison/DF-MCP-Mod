@@ -79,9 +79,10 @@ Your plan: `read_plan` at the start of a session; keep plans, rules, and memory 
 it with `write_plan` and `append_plan`; `read_goals` holds the player's goals, which also arrive as
 `goals` channel messages when the player sends them.
 Trade: `list_caravans`, `get_trade_depot`, `get_broker`; with `trade_write` `request_broker`,
-`bring_to_depot`, `cancel_bring`, `offer_trade` (prices and weighs a deal), and once the player
-has opened the depot's trade screen, `get_trade_screen` and `select_trade_goods`; the player
-presses Trade.
+`bring_to_depot`, `cancel_bring`, `offer_trade` (prices and weighs a deal), and on the open trade
+screen `get_trade_screen` and `select_trade_goods`; with `screens_write` you can open the screen
+yourself with `open_trade_screen` and press Trade, Offer, Seize, a counter-offer answer, or close
+with `press_trade`, and the player can still do all of it by hand.
 Diplomats: `list_diplomats`, `get_trade_request_options`, and with `trade_write`
 `set_trade_requests`; the liaison meeting itself is held by the site leader and finished by the
 player.

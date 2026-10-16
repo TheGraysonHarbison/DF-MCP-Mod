@@ -11,7 +11,9 @@ local state = reqscript('internal/claude-bridge/state')
 local gui = require('gui')
 
 MAIN_FOCUS = 'dwarfmode/Default'
-CONFIRM_FOCUS = 'dfhack/lua/confirm'
+-- DFHack's confirm plugin answers a caught click with a showYesNoPrompt MessageBox (focus
+-- dfhack/lua/MessageBox, verified live 2026-10-16 on the Trade button); SELECT accepts it.
+CONFIRM_FOCUS = 'dfhack/lua/MessageBox'
 -- _MOUSE_L is the click DF's buttons and DFHack's confirm plugin react to. If the first
 -- live click does nothing, add _MOUSE_L_DOWN = true here (the owner decides).
 CLICK_KEYS = {_MOUSE_L = true}
@@ -77,7 +79,7 @@ function click_frame(frame)
 end
 
 -- If DFHack's confirm plugin put its dialog on top of the game screen after a click, answer
--- it with SELECT (its confirm key; the first live test verifies). Returns true when a
+-- it with SELECT (gui/dialogs MessageBox: SELECT runs on_accept). Returns true when a
 -- dialog was answered. confirm.json is never edited (rule 8).
 function answer_confirm()
     if not safe(function() return dfhack.gui.matchFocusString(CONFIRM_FOCUS, dfhack.gui.getCurViewscreen(true)) end) then
