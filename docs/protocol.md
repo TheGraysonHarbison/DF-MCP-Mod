@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **24**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **25**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -53,8 +53,9 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `pause_write` | off | `time.set_pause` |
 | `events` | on | `events.kinds`, `events.poll`, `events.emit`, `timer.status` |
 | `plan` | on | `plan.info`, `plan.read`, `plan.write`, `plan.append`, `goals.read` |
-| `units` | on | `units.list`, `units.find`, `units.get`, `units.sheet`, `units.full_sheet` |
+| `units` | on | `units.list`, `units.find`, `units.get`, `units.sheet`, `units.full_sheet`, `labor.details` |
 | `units_write` | off | `units.set_nickname` |
+| `labor_write` | off | `labor.assign`, `labor.set_mode` |
 | `nobles` | on | `nobles.list` |
 | `nobles_write` | off | `nobles.assign` |
 | `military` | on | `military.list`, `military.get`, `military.routes`, `military.equipment` |
@@ -287,6 +288,32 @@ Refused with `BAD_REQUEST` when the position is military (`squad_size` above zer
 The change mirrors what DFHack's `make-monarch` does: the assignment's `histfig` is swapped, the previous holder's position link is removed from their historical figure, and a new position link is added to the appointee. `histfig2` records the previous holder. No former-position record is written for the previous holder.
 
 Result: `changed`, `previous` (holder object or absent), `position` (as in `nobles.list`, after the change).
+
+### Labor
+
+The game's Labor screen: since v50 a unit's labors follow the fort's work details (`plotinfo.labor_info.work_details`). These ops edit only a detail's membership (`assigned_units`, kept sorted) and its mode, then call `dfhack.units.setAutomaticProfessions` so the game recomputes labors, the same way DFHack's `gui/manipulator` does. They never write `unit.status.labors`, never create, delete, rename, or re-icon a detail, and never change a detail's labor set. A detail is named by its 1-based index from `labor.details`, its exact name (case-insensitive), or a unique case-insensitive substring; a substring that matches several details is `BAD_REQUEST` naming the candidates, no match is `NOT_FOUND`.
+
+### `labor.details`
+
+Args: `detail` (optional, as above; omitted lists every detail), `limit` (members per detail, default 25). Needs a map.
+
+Result: `count`, `details` (array of `{index, name, mode, locked, cannot_be_everybody, icon, labors, members, member_count, members_truncated}`), `children_do_chores`, `note`. `mode` is `default`, `everybody`, `nobody`, or `only_selected`; membership only matters for `only_selected`. `locked` is the game's `no_modify` flag (the default details). `cannot_be_everybody` marks the tool-using details (Miners, Woodcutters, Hunters, Fisherdwarves on a new fort). `icon` is the `work_detail_icon_type` name; `labors` the `unit_labor` names the detail grants; `members` `[{id, name, profession}]` capped at `limit`.
+
+### `labor.assign`
+
+Args: `detail`, `add` (list of unit ids), `remove` (list of unit ids); at least one of `add`/`remove` is non-empty. Needs a map and the `labor_write` permission.
+
+Each id is checked on its own and a failure goes to `skipped` with a reason instead of failing the call: unknown id, dead, not a citizen, baby or child, already a member (add), not a member (remove). Every touched unit then gets `setAutomaticProfessions`.
+
+Result: `detail` `{index, name, mode}`, `added` `[{id, name}]`, `removed` `[{id, name}]`, `skipped` `[{id, reason}]`, `recomputed` (false when `setAutomaticProfessions` is missing or failed), `labors_after` (object keyed by unit id string, each the enabled `unit_labor` names after the recompute, at most 25 units), `note` (warns when the detail's mode is `everybody` or `nobody`, so membership has no effect).
+
+### `labor.set_mode`
+
+Args: `detail`, `mode` (`everybody`, `nobody`, or `only_selected`). Needs a map and the `labor_write` permission.
+
+`everybody` on a `cannot_be_everybody` detail is `BAD_REQUEST`. After the write every citizen (`dfhack.units.getCitizens(true)`) gets `setAutomaticProfessions`.
+
+Result: `detail` `{index, name, mode}`, `before`, `after`, `recomputed_citizens`, `note`.
 
 ### Military
 
