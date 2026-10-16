@@ -210,7 +210,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 13.1 | Petitions: list and answer (`list_petitions`, `answer_petition`, `petitions_write` permission) | planned 2026-10-15 |
 | 14.0 | Plan and goals files in the save, goals window with Send (`get_plan_info`, `read_plan`, `write_plan`, `append_plan`, `read_goals`, `plan` permission, `claude-bridge goals`) | verified in-game 2026-10-15: `claude-df/plan.md` and `goals.md` created inside the save on enable, plan written, appended (accents intact), read back, and a 70 KB write refused; goals window and Ctrl+S delivery checked by the player |
 | 14.1 | No server buffer; the channel queue holds batches until Claude is idle | planned 2026-10-15, delivered with 13 |
-| 14.2 | In-game messages from Claude (`send_message`) | planned 2026-10-15 |
+| 14.2 | In-game messages from Claude (`send_message`, `list_message_badges`, no permission needed) | verified in-game 2026-10-15: four messages posted under the rumor, research, deity, and general badges showed in light red in the announcement log and the left-side alerts, the plan message carrying a zoom position; the player approved the look and the rumor default. The owner's icon lives in `mod/assets/` for a later overlay |
 | 15 | Prompt timer (settings only) | planned 2026-10-15 |
 | 16 | Traps, siege engines, trade depot (`place_furniture` new types) | planned 2026-10-15 |
 | 17.0 | Trade: caravans, depot, broker, bring goods, offer (`list_caravans`, `get_trade_depot`, `get_broker`, `request_broker`, `bring_to_depot`, `cancel_bring`, `offer_trade`, `trade` and `trade_write` permissions) | planned 2026-10-15 |
