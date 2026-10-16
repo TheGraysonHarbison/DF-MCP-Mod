@@ -484,20 +484,9 @@ local function poll()
             end
         end
     end
-    if baseline.alerts and not meeting_pushed then
-        local dip = diplomats_module()
-        for id, alert_type in pairs(current.alerts) do
-            if baseline.alerts[id] == nil then
-                local report = safe(df.report.find, id)
-                if report and dip and safe(dip.is_meeting_report, report, alert_type or nil) then
-                    push('meeting_ready', {text = report.text, extra = {
-                        source = 'alerts', report_id = id,
-                        announcement = enum_name(df.announcement_type, report.type)}})
-                    break
-                end
-            end
-        end
-    end
+    -- The alerts are not a meeting signal: the liaison-arrival alert outlives the meeting (live
+    -- 2026-10-16), so only a new pending popup fires meeting_ready; the alert set stays in the
+    -- baseline for diplomats.lua's information rows.
     if current.season ~= nil and baseline.season ~= nil and current.season ~= baseline.season then
         local name = enum_name(df.season, current.season)
         push('season_changed', {text = (name or 'A new season') .. ' has arrived', extra = {season = name}})

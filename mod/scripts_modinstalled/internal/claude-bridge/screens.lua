@@ -103,3 +103,63 @@ function maybe_unpause(args)
     out.paused = safe(dfhack.world.ReadPauseState) == true
     return out
 end
+
+-- The interface text grid as rows of plain characters (dfhack.screen.readTile over the
+-- interface rect; the UI layer keeps its text as characters on this build, verified live
+-- 2026-10-16). Returns {rows = {[y] = string}, rect}.
+function screen_rows()
+    local ir = gui.get_interface_rect()
+    local rows = {}
+    for y = ir.y1, ir.y2 do
+        local chars = {}
+        for x = ir.x1, ir.x2 do
+            local pen = dfhack.screen.readTile(x, y)
+            local ch = pen and pen.ch or 32
+            if type(ch) ~= 'number' or ch < 32 or ch > 126 then ch = 32 end
+            chars[#chars + 1] = string.char(ch)
+        end
+        rows[y] = table.concat(chars)
+    end
+    return rows, ir
+end
+
+-- Rows that carry words, trimmed, as {{y, text}} capped at `limit` (for reading a dialog).
+function text_rows(limit)
+    local rows, ir = screen_rows()
+    local out = {}
+    for y = ir.y1, ir.y2 do
+        local text = rows[y]:gsub('%s+', ' '):match('^%s*(.-)%s*$')
+        if text:find('%a%a') then
+            if #out >= (limit or 40) then return out, true end
+            table.insert(out, {y = y, text = text})
+        end
+    end
+    return out, false
+end
+
+-- Interface tile at the centre of the first on-screen occurrence of `label` (plain text,
+-- case-sensitive, whole word), or nil. Buttons on the game's dialogs move with the text
+-- above them, so they are found by their label rather than by a fixed frame.
+function find_label(label)
+    local rows, ir = screen_rows()
+    local pattern = '%f[%w]' .. label:gsub('%W', '%%%0') .. '%f[%W]'
+    for y = ir.y1, ir.y2 do
+        local i, j = rows[y]:find(pattern)
+        if i then return ir.x1 + i - 1 + math.floor((j - i) / 2), y end
+    end
+    return nil
+end
+
+-- Click the button carrying `label`; returns the tile or nil, reason.
+function click_label(label)
+    local x, y = find_label(label)
+    if not x then return nil, ('no "%s" button is on screen'):format(label) end
+    click_at(x, y)
+    return {x = x, y = y, label = label}
+end
+
+-- Feed one key (for example LEAVESCREEN) to the topmost game screen.
+function press_key(key)
+    local ok, err = pcall(gui.simulateInput, dfhack.gui.getDFViewscreen(true), key)
+    if not ok then error(err, 0) end
+end

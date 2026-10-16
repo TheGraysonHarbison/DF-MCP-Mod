@@ -181,15 +181,16 @@ What the game and the bridge have taught us. Each line was learned by doing it w
   with `send_message` to press Trade.
 - `SCREEN_BUSY` means the player has a menu open. Their menu is never closed; try later or
   ask them.
-- **The liaison meeting.** A `meeting_ready` event says its left-side alert is up.
-  `get_meeting_dialog` shows whether it is available or open, its text, step, and the
-  land-holder candidates. With `screens_write`: `open_meeting_dialog`, then on the requests
-  step `set_trade_requests` and `step_meeting_dialog(action="done")`, `land_holder` with an
-  `hf_id` when asked, and `close` (with `unpause=True` when `pause_write` is on).
-- Until the owner verifies them in-game, the opener and every step are guesses:
-  `continue` and `choose` always answer "not yet replayable", so the player clicks through
-  the conversation; if the opener or a step does not show on screen, ask the player to click
-  it with `send_message`.
+- **The liaison meeting** (needs `screens_write`). A `meeting_ready` event says the liaison
+  is waiting to meet the leader. `get_meeting_dialog` shows whether it is waiting or open,
+  its text, its step, and `screen_rows` (the dialog as drawn, with its button labels).
+  `open_meeting_dialog`, then `step_meeting_dialog(action="continue")` presses the game's
+  Okay button and the liaison talks; on the requests step set next year's requests with
+  `set_trade_requests`, then `action="done"`; keep pressing `continue` until the farewell,
+  which closes the dialog itself. A reply button is pressed with `action="choose"` and its
+  exact `label` from `screen_rows`. `close` (Escape) leaves early; the meeting resumes with
+  `open_meeting_dialog`. A land-holder offer has not been seen yet: press the candidate's
+  name with `land_holder`, and if that fails tell the player.
 - Elves refuse anything made of wood; offering it offends the caravan.
 
 ## Units and names
@@ -258,9 +259,9 @@ monuments.
 - Petitions cannot be read or answered through the bridge yet; the player answers them in
   the game. Petition events still arrive.
 - Trade counter-offers: `accept_counter` and `decline_counter` come back `NOT_FOUND` until the
-  buttons are measured; the player answers a counter-offer by hand. The liaison conversation
-  (`continue`, `choose`) is the player's until the owner records it; opening, Done, the land
-  holder, and close are replays verified only as far as the README says.
+  buttons are measured; the player answers a counter-offer by hand.
+- The liaison meeting's land-holder step (a barony offer) has not been seen yet; if pressing
+  the candidate's name fails, the player clicks it.
 - Levers cannot be linked, weapon traps hold one weapon, siege engines cannot be aimed.
 - Dev tools cannot spawn units on this DFHack build.
 

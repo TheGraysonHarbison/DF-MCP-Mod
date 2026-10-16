@@ -30,8 +30,8 @@ def test_meeting_dialog_tools_send_args():
     run(mcp, "step_meeting_dialog", action="done")
     assert last_request(holder)["op"] == "trade.dialog_step"
     assert last_request(holder)["args"] == {"action": "done"}
-    run(mcp, "step_meeting_dialog", action="choose", choice=2)
-    assert last_request(holder)["args"] == {"action": "choose", "choice": 2}
+    run(mcp, "step_meeting_dialog", action="choose", label="Yes, we accept")
+    assert last_request(holder)["args"] == {"action": "choose", "label": "Yes, we accept"}
     run(mcp, "step_meeting_dialog", action="land_holder", hf_id=812, position_index=1)
     assert last_request(holder)["args"] == {
         "action": "land_holder",
@@ -49,7 +49,7 @@ def test_meeting_dialog_tools_refuse_bad_args():
     for kwargs in [
         {"action": "skip"},
         {"action": "choose"},
-        {"action": "choose", "choice": -1},
+        {"action": "choose"},
         {"action": "land_holder"},
         {"action": "land_holder", "hf_id": 3, "position_index": -1},
     ]:

@@ -7,10 +7,10 @@
 -- The liaison's diplomacy dialog (plan section 15.2, Patch 1 item P3.0): whether the
 -- meeting's left-side alert is up, the open dialog's text, step, script position, and
 -- request and land-holder state (trade.dialog); opening it (trade.open_dialog) and stepping
--- it (trade.dialog_step) as state replays. The replays are scaffolds until the owner records
--- the game's field changes on a liaison save (15.4 check 6): every write is a guess marked
--- VERIFY LIVE, saves what it overwrites, and restores it on error. Advancing the dipscript
--- (continue, choose) is refused until that diff is known. Sources (df-structures master,
+-- it (trade.dialog_step). The opener replays the field changes recorded from the player's
+-- click on a liaison save (2026-10-16); the steps press the dialog's real buttons, found by
+-- their labels on the screen grid, so the game's own script engine advances the meeting
+-- (verified live 2026-10-16 through a whole liaison meeting from the bridge). Sources (df-structures master,
 -- checked 2026-10-16): df.d_interface.xml (diplomacy_interfacest), df.markup_text_box.xml,
 -- df.diplomacy.xml (meeting_diplomat_info), df.dipscript.xml, df.script.xml (script_stepst
 -- subclasses), df.meetingmoment.xml (dipscript_popup), df.announcement.xml
@@ -29,8 +29,8 @@ MEETING_KINDS = {[0] = 'standard', [1] = 'first_contact', [2] = 'active_plot'}
 DIALOG_MAX_LINES = 200
 ALERT_TEXT_CHARS = 120
 -- Announcement types whose report is taken for the meeting's alert button.
--- VERIFY LIVE: which announcement the meeting button really is (15.4 check 6); trade.dialog
--- lists every current alert so the liaison session can see it.
+-- Live 2026-10-16: the alert is the LIAISON_ARRIVAL report under a NOBLE alert and it stays
+-- after the meeting, so alerts are information only; plotinfo.dipscript_popups is the signal.
 MEETING_ANNOUNCEMENTS = {DIPLOMAT_ARRIVAL = true, LIAISON_ARRIVAL = true, TRADE_DIPLOMAT_ARRIVAL = true}
 -- Matched by the DIPLOMA substring rule below but not a meeting: the diplomat has left.
 NOT_MEETING_ANNOUNCEMENTS = {DIPLOMAT_LEFT_UNHAPPY = true}
@@ -532,7 +532,7 @@ end
 -- announcement_alertst type the report sits under (name or value), or nil to take the
 -- report type's own alert attribute. Exported for events.lua (the meeting_ready kind); this
 -- module never requires events.lua.
--- VERIFY LIVE: which announcement and alert type the meeting button carries.
+-- Information only (see MEETING_ANNOUNCEMENTS); availability comes from the pending popups.
 function is_meeting_report(report, alert_type)
     if not report then return false end
     local name = enum_name(df.announcement_type, safe(function() return report.type end)) or ''
@@ -618,8 +618,8 @@ end
 
 -- The dialog's words as lines: a new line on NEW_LINE, an empty line on BLANK_LINE, an
 -- indent on INDENT, words joined by single spaces.
--- VERIFY LIVE: whether NEW_LINE words carry text or are bare markers, and whether the
--- px/py wrapping should be followed instead.
+-- Verified live 2026-10-16: the lines match what the dialog shows (speaker line, blank
+-- line, text).
 local function dialog_text(box, max_lines)
     local lines, cur, indent, truncated = {}, nil, false, false
     local function flush()
@@ -718,7 +718,8 @@ end
 -- plotinfo.dipscript_popups (df.plotinfo.xml, original name meetingmoment, "cause
 -- viewscreen_meetingst to pop up"): the meetings waiting for the player, the same struct
 -- diplomacy.mm points at. Likely the state behind the meeting's alert button.
--- VERIFY LIVE: that an entry appears when the meeting alert does and leaves when it opens.
+-- Verified live 2026-10-16: the entry is present while the meeting waits and through the
+-- dialog, and leaves when the farewell press closes it.
 local function popups_vector()
     return safe(function() return df.global.plotinfo.dipscript_popups end)
 end
@@ -769,11 +770,13 @@ local function dialog_state(args)
     local d = diplomacy()
     local alerts, meeting_ids, alerts_truncated = alert_rows(limit)
     local pending, pending_count = pending_popups(limit)
+    -- Only a pending popup means a meeting is waiting: the liaison-arrival alert stays on the
+    -- left after the meeting is over (seen live 2026-10-16), so the alerts are information only.
     local available_from = {}
-    if #meeting_ids > 0 then table.insert(available_from, 'alerts') end
     if pending_count > 0 then table.insert(available_from, 'dipscript_popups') end
+    if #meeting_ids > 0 then table.insert(available_from, 'alerts (information only)') end
     local out = {
-        available = #available_from > 0, available_from = available_from, meeting_report_ids = meeting_ids,
+        available = pending_count > 0, available_from = available_from, meeting_report_ids = meeting_ids,
         pending = pending, pending_truncated = pending_count > #pending or nil,
         alerts = alerts, alerts_truncated = alerts_truncated or nil,
         open = safe(function() return d.open end) == true,
@@ -799,7 +802,7 @@ local function dialog_state(args)
     out.text_truncated = text_truncated or nil
     local script, step = script_info(live_dipev(d))
     out.script = script
-    -- VERIFY LIVE: where the dialog's reply buttons live; the live diff decides.
+    -- The buttons are labels on the screen grid (screen_rows); text.link stays empty here.
     local choices = {links = {}}
     pcall(function()
         for _, link in ipairs(d.text.link) do
@@ -818,8 +821,11 @@ local function dialog_state(args)
         end)
     end
     out.choices = choices
-    out.choices_note = 'the reply buttons are not mapped yet; the live field diff of a player click decides how a '
-        .. 'choice is made, so continue and choose may answer that they are not replayable'
+    local rows, rows_truncated = screens.text_rows(limit * 2)
+    out.screen_rows = rows
+    out.screen_rows_truncated = rows_truncated or nil
+    out.choices_note = 'the buttons are the words on screen_rows (Continue, Done, the replies); step_meeting_dialog '
+        .. 'presses them by label'
     local tabs = {}
     pcall(function()
         for _, cat in ipairs(d.taking_requests_tablist) do
@@ -899,11 +905,12 @@ local function open_dialog(args)
         return rpc.error_result(rpc.ERR_NOT_FOUND,
             'no meeting is waiting (no meeting alert, no pending meeting popup); wait for a meeting_ready event')
     end
-    -- VERIFY LIVE: the opener. The field diff of the player's click on the alert is not
-    -- recorded yet. With diplomacy.mm already set the guess is that the click only sets
-    -- `open`. With mm unset and a pending plotinfo.dipscript_popups entry, the guess points
-    -- mm at that entry, sets actor and target from its two unit ids (actor =
-    -- meeting_holder_actor, target = meeting_holder_noble), then sets `open`.
+    -- The alert click, recorded live on 2026-10-16 (dialog-snapshot before and after): the
+    -- game points mm at the pending popup and raises its new_screen flag, sets actor and
+    -- target (meeting_holder_actor, meeting_holder_noble), attaches the civilization's
+    -- meeting record as dipev, raises flag.in_the_middle_of_stuff, opens, builds the text,
+    -- and runs the script's first step (cur_step 0 to 1). The text and the step are the
+    -- game's; everything else is replayed here.
     local writes
     if safe(function() return d.mm ~= nil end) then
         writes = {{d, 'open', true, 'diplomacy.open'}}
@@ -915,86 +922,98 @@ local function open_dialog(args)
             return rpc.error_result(rpc.ERR_NOT_FOUND, ('the pending meeting names units %d and %d, which are not '
                 .. 'both on the map; ask the player to click the meeting alert'):format(actor_id, noble_id))
         end
+        local record = nil
+        pcall(function()
+            for _, info in ipairs(df.global.plotinfo.dip_meeting_info) do
+                if info.civ_id == actor.civ_id then record = info end
+            end
+        end)
         writes = {
             {d, 'mm', popup, 'diplomacy.mm'},
+            {popup.flags, 'new_screen', true, 'mm.flags.new_screen'},
             {d, 'actor_unid', actor_id, 'diplomacy.actor_unid'},
             {d, 'actor', actor, 'diplomacy.actor'},
             {d, 'target_unid', noble_id, 'diplomacy.target_unid'},
             {d, 'target', noble, 'diplomacy.target'},
-            {d, 'open', true, 'diplomacy.open'},
         }
+        if record then
+            table.insert(writes, {d, 'dipev', record, 'diplomacy.dipev'})
+            table.insert(writes, {d.environment, 'dipev', record, 'diplomacy.environment.dipev'})
+        end
+        -- The script reads the speaker from the environment's popup (a bridge-opened dialog
+        -- without it showed the greeting with an empty name, live 2026-10-16).
+        table.insert(writes, {d.environment, 'mm', popup, 'diplomacy.environment.mm'})
+        table.insert(writes, {d.flag, 'in_the_middle_of_stuff', true, 'diplomacy.flag.in_the_middle_of_stuff'})
+        table.insert(writes, {d, 'open', true, 'diplomacy.open'})
     elseif safe(function() return d.dipev ~= nil end) then
         writes = {{d, 'open', true, 'diplomacy.open'}}
     else
         return rpc.error_result(rpc.ERR_NOT_FOUND,
-            'the game\'s meeting state is not populated; the live diff of a player click on the alert decides how to '
-            .. 'open it; run `claude-bridge dialog-snapshot` before and after')
+            'the game\'s meeting state is not populated and no meeting is pending; wait for a meeting_ready event')
     end
     local replayed, err = replay(writes)
     if not replayed then
         return rpc.error_result(rpc.ERR_INTERNAL, 'opening the dialog failed and was undone: ' .. err)
     end
     return {opened = true, replayed = replayed, meeting_report_ids = meeting_ids, dialog = dialog_state(args),
-            note = 'opened by a replay not yet verified against the game; if the dialog does not show, ask the '
-                .. 'player to click the meeting alert'}
+            note = 'the dialog is open; read it with get_meeting_dialog (text and screen_rows) and step it with '
+                .. 'step_meeting_dialog; if it did not show, ask the player to click the meeting alert'}
 end
 
-local NOT_REPLAYABLE = 'advancing the conversation is recorded from the player\'s first click-through; not yet replayable'
-
 -- One entry per action: function(d, args) -> {replayed = {...}} or an error result.
--- Every write is a guess marked VERIFY LIVE and is undone on error.
+-- Recorded live on 2026-10-16: every button of the dialog (Continue, Done, the replies) runs
+-- the game's script engine, so the buttons are pressed for real, found by their label on
+-- the screen grid (they move with the text above them). Done and the land-holder choice are
+-- buttons too.
+local function press_button(label)
+    local clicked, why = screens.click_label(label)
+    if not clicked then return rpc.error_result(rpc.ERR_NOT_FOUND, why .. '; read screen_rows from get_meeting_dialog') end
+    return {replayed = {{field = 'click', after = clicked}}, clicked = clicked}
+end
+
 REPLAY = {
-    -- Deliberately neither drives script_stepst execute/skip nor writes cur_step: a wrong
-    -- step corrupts the meeting. VERIFY LIVE: the diff of a Continue click.
+    -- The advance button reads "Okay" on this build (live 2026-10-16); "Continue" is kept
+    -- for other dialogs.
     continue = function(d, args)
-        return rpc.error_result(rpc.ERR_BAD_REQUEST, NOT_REPLAYABLE .. '; ask the player to click Continue')
+        for _, label in ipairs({'Okay', 'Continue', 'OK', 'Next'}) do
+            if screens.find_label(label) then return press_button(label) end
+        end
+        return rpc.error_result(rpc.ERR_NOT_FOUND, 'no Okay or Continue button is on screen; read screen_rows from get_meeting_dialog')
     end,
-    -- VERIFY LIVE: the diff of a reply choice.
+    -- `label` is the text on the reply button (see screen_rows); `choice` alone is not enough
+    -- because the game does not number its replies.
     choose = function(d, args)
-        return rpc.error_result(rpc.ERR_BAD_REQUEST, ('%s; ask the player to click choice %s'):format(
-            NOT_REPLAYABLE, tostring(args.choice)))
+        if type(args.label) ~= 'string' or args.label == '' then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST,
+                '"label" (the text on the reply button, from screen_rows) is required for choose')
+        end
+        return press_button(args.label)
     end,
-    -- VERIFY LIVE: what the game's Done button changes besides taking_requests.
     done = function(d, args)
         if not d.taking_requests then
             return rpc.error_result(rpc.ERR_BAD_REQUEST, 'done finishes the requests step and the dialog is not on it')
         end
-        local replayed, err = replay({{d, 'taking_requests', false, 'diplomacy.taking_requests'}})
-        if not replayed then return rpc.error_result(rpc.ERR_INTERNAL, 'done failed and was undone: ' .. err) end
-        return {replayed = replayed}
+        return press_button('Done')
     end,
-    -- VERIFY LIVE: the land-holder choice; whether the game confirms it from these fields.
+    -- The land-holder step has not come up live yet (no barony offered); the candidate's
+    -- name is expected to be the button label on that screen, so this presses it by name.
+    -- VERIFY LIVE: when a land-holder offer arrives.
     land_holder = function(d, args)
         if not d.selecting_land_holder_position then
             return rpc.error_result(rpc.ERR_BAD_REQUEST, 'the dialog is not asking for a land holder')
         end
         local hf_id = tonumber(args.hf_id)
-        if not hf_id then return rpc.error_result(rpc.ERR_BAD_REQUEST, '"hf_id" is required for land_holder') end
-        local found = false
-        for _, id in ipairs(d.land_holder_avail_hfid) do
-            if id == hf_id then found = true end
-        end
-        if not found then
-            return rpc.error_result(rpc.ERR_BAD_REQUEST, ('historical figure %d is not a candidate; pick one of '
-                .. 'land_holder.candidates from get_meeting_dialog'):format(hf_id))
-        end
-        local pos = math.floor(tonumber(args.position_index) or 0)
-        if pos < 0 or pos >= #d.land_holder_pos_id or pos >= #d.land_holder_assigned_hfid then
-            return rpc.error_result(rpc.ERR_BAD_REQUEST,
-                ('position_index must be 0-%d'):format(#d.land_holder_pos_id - 1))
-        end
-        local replayed, err = replay({
-            {d, 'land_holder_selected_pos', pos, 'diplomacy.land_holder_selected_pos'},
-            {d.land_holder_assigned_hfid, pos, hf_id, 'diplomacy.land_holder_assigned_hfid[' .. pos .. ']'},
-        })
-        if not replayed then return rpc.error_result(rpc.ERR_INTERNAL, 'land_holder failed and was undone: ' .. err) end
-        return {replayed = replayed}
+        local name = type(args.label) == 'string' and args.label or (hf_id and hf_name(hf_id)) or nil
+        if not name then return rpc.error_result(rpc.ERR_BAD_REQUEST, '"hf_id" or "label" is required for land_holder') end
+        return press_button(name)
     end,
-    -- VERIFY LIVE: whether mm.flags.close_screen must be set instead (not set in the guess).
+    -- VERIFY LIVE: Escape on the open dialog. The game's own last Continue clears mm, the
+    -- pending popup, the in-the-middle flag, and sets cur_step to -1; Escape is expected to
+    -- leave the meeting resumable from its alert.
     close = function(d, args)
-        local replayed, err = replay({{d, 'open', false, 'diplomacy.open'}})
-        if not replayed then return rpc.error_result(rpc.ERR_INTERNAL, 'close failed and was undone: ' .. err) end
-        return {replayed = replayed}
+        local ok, err = pcall(screens.press_key, 'LEAVESCREEN')
+        if not ok then return rpc.error_result(rpc.ERR_INTERNAL, 'close failed: ' .. tostring(err)) end
+        return {replayed = {{field = 'key', after = 'LEAVESCREEN'}}}
     end,
 }
 
@@ -1004,9 +1023,6 @@ local function dialog_step(args)
     local action = args.action
     if type(action) ~= 'string' or not REPLAY[action] then
         return rpc.error_result(rpc.ERR_BAD_REQUEST, '"action" must be one of ' .. table.concat(STEP_ACTIONS, ', '))
-    end
-    if action == 'choose' and tonumber(args.choice) == nil then
-        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"choice" (an index) is required for choose')
     end
     local d = diplomacy()
     -- Checked before the focus: a closed dialog has no Diplomacy focus to find.
@@ -1019,7 +1035,7 @@ local function dialog_step(args)
         end
         return rpc.error_result(rpc.ERR_BAD_REQUEST, 'the meeting dialog is not open; open it with open_meeting_dialog')
     end
-    -- VERIFY LIVE: the focus string of the open dialog (DFHack's overlays use dwarfmode/Diplomacy).
+    -- Focus is dwarfmode/Diplomacy/Default or .../Requests while open (verified live 2026-10-16).
     local busy = screens.require_focus({'dwarfmode/Diplomacy'}, 'step_meeting_dialog')
     if busy then return busy end
     local result = REPLAY[action](d, args)
@@ -1027,9 +1043,12 @@ local function dialog_step(args)
     local out = screens.maybe_unpause(action == 'close' and args or {})
     out.action = action
     out.replayed = result.replayed
+    out.clicked = result.clicked
     out.dialog = dialog_state(args)
-    out.note = 'replayed from a guess not yet verified against the game; check dialog.step and tell the player '
-        .. 'if the screen did not follow'
+    -- screen_rows come from the last rendered frame, so right after a press they still show
+    -- the previous page while the text and step fields are already current.
+    out.dialog.screen_rows_note = 'screen_rows lag one frame behind a press; read get_meeting_dialog again for the new page'
+    out.note = 'the button was pressed on the game screen; dialog shows the new state (text, step, screen_rows)'
     if args.unpause == true and action ~= 'close' then
         out.pause_note = 'unpause applies to close only; the game stays paused while the dialog is open'
     end

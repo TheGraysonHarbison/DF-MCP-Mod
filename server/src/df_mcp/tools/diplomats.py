@@ -71,13 +71,15 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         meeting with its actor and noble, or its left-side alert; `available_from` says
         which; `alerts` lists every current alert with its report texts), `open`, `step` (`text`,
         `requests`, `land_holder`, or `closed`), the dialog `text` as lines, the dipscript
-        position (`script`), what can be seen of the reply `choices`, the `requests` tabs,
+        position (`script`), `screen_rows` (the dialog as rendered on screen: its lines and
+        the button labels such as Continue, Done, and the replies), the `requests` tabs,
         the `land_holder` positions and candidates (`hist_figure_id`, name), and `paused`.
         The open dialog pauses the game. Flow: a `meeting_ready` event, then
         `open_meeting_dialog`, read this, set next year's requests with
         `set_trade_requests` on the requests step, finish that step with
-        `step_meeting_dialog(action="done")`, choose a land holder when asked, and
-        `close` at the end.
+        `step_meeting_dialog(action="done")`, press `continue` until the liaison says
+        farewell (the last Continue closes the dialog itself), choose a land holder when
+        asked, and `close` only to leave early.
         """
         if limit < 1:
             raise ValueError("limit must be at least 1")
@@ -89,41 +91,44 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         (needs `screens_write`). Answers `already_open` when it is open, NOT_FOUND when no
         meeting alert is up or the game has not prepared the meeting yet, and SCREEN_BUSY
         when the player has another screen open (the player's menu is never closed; try
-        later or tell the player). Returns the dialog as `get_meeting_dialog` reads it. The
-        opener is not yet verified in-game: if the dialog does not show, ask the player to
-        click the meeting alert.
+        later or tell the player). Returns the dialog as `get_meeting_dialog` reads it. If
+        the dialog does not show, ask the player to click the meeting alert.
         """
         return call(bridge, "trade.open_dialog", {})
 
     @mcp.tool(name="step_meeting_dialog", annotations=WRITE_SAFE)
     def step_meeting_dialog(
         action: str,
-        choice: int | None = None,
+        label: str | None = None,
         hf_id: int | None = None,
         position_index: int | None = None,
         unpause: bool = False,
     ) -> dict[str, Any]:
-        """Step the open meeting dialog (needs `screens_write`). `action`: `continue`
-        (advance the text), `choose` (a reply, with `choice` as its index), `done` (finish
-        the requests step after `set_trade_requests`), `land_holder` (appoint `hf_id`, one
-        of `land_holder.candidates`, to the position at `position_index`, default 0), or
-        `close` (close the dialog; with `unpause=True` the game resumes when `pause_write`
-        is on, otherwise it stays paused and `pause_note` says so). `continue` and
-        `choose` may answer that they are not yet replayable: then tell the player to
-        click through that part with `send_message`. Returns `replayed` (the fields
-        written) and the dialog read afterwards; SCREEN_BUSY when another screen is open.
+        """Press a button on the open meeting dialog (needs `screens_write`). The buttons
+        are pressed for real, found by their label on the screen. `action`: `continue`
+        (the Continue button; the game runs its script one step), `choose` (a reply, with
+        `label` as the exact text on its button, read from `screen_rows`), `done` (the
+        Done button of the requests step, after `set_trade_requests`), `land_holder` (the
+        candidate's button, by `hf_id` from `land_holder.candidates` or by `label`), or
+        `close` (Escape; with `unpause=True` the game resumes when `pause_write` is on,
+        otherwise it stays paused and `pause_note` says so). NOT_FOUND names a button that
+        is not on screen; SCREEN_BUSY means another screen is open. Returns `clicked`, and
+        the dialog read afterwards.
         """
         if action not in MEETING_ACTIONS:
             raise ValueError("action must be one of " + ", ".join(MEETING_ACTIONS))
         args: dict[str, Any] = {"action": action}
         if action == "choose":
-            if choice is None or choice < 0:
-                raise ValueError("choose needs choice, a non-negative index")
-            args["choice"] = choice
+            if not label:
+                raise ValueError("choose needs label, the text on the reply button")
+            args["label"] = label
         if action == "land_holder":
-            if hf_id is None:
-                raise ValueError("land_holder needs hf_id")
-            args["hf_id"] = hf_id
+            if hf_id is None and not label:
+                raise ValueError("land_holder needs hf_id or label")
+            if hf_id is not None:
+                args["hf_id"] = hf_id
+            if label:
+                args["label"] = label
             if position_index is not None:
                 if position_index < 0:
                     raise ValueError("position_index must be non-negative")
