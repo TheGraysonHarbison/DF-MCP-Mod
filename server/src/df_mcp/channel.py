@@ -120,6 +120,11 @@ class EventPoller:
             self.after_seq = int(result.get("next_seq", 1)) - 1
             return None
         result = self.bridge.call("events.poll", {"after_seq": self.after_seq})
+        if int(result.get("next_seq", 1)) - 1 < self.after_seq:
+            # The mod restarted its sequence (reload or new map): start over from its first event.
+            log.info("channel: event sequence restarted; rewinding")
+            self.after_seq = 0
+            result = self.bridge.call("events.poll", {"after_seq": 0})
         events = result.get("events") or []
         if not events:
             return None
