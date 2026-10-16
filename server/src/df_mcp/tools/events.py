@@ -13,10 +13,11 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
     @mcp.tool(name="list_event_kinds", annotations=READ_ONLY)
     def list_event_kinds() -> dict[str, Any]:
         """List the in-game event kinds the mod can send (mineral discovered, strange mood,
-        caravan arrived, units fighting, petition, ...), which ones the player enabled, how
-        each is detected, and the queue state. Enabled events arrive on their own as channel
-        messages while the session runs with the channel flag; `poll_events` reads them by
-        hand otherwise.
+        migrants arrived, caravan arrived, units fighting, petition, ...), which ones the
+        player enabled, how each is detected, and the queue state. `migrants_arrived` is on
+        by default and also covers the "no one came" and "discouraged" migrant texts.
+        Enabled events arrive on their own as channel messages while the session runs with
+        the channel flag; `poll_events` reads them by hand otherwise.
         """
         return call(bridge, "events.kinds")
 
@@ -30,7 +31,11 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         next_seq - 1 and keep passing the last `last_seq` you received. A batch is returned
         once the newest waiting event is two seconds old or 50 are waiting; `force` returns
         whatever is waiting now. Each event: `seq`, `kind`, `tick`, `text`, `pos`,
-        `unit_ids`, `item_id`, `extra`.
+        `unit_ids`, `item_id`, `extra`. A `migrants_arrived` event's `extra.new_citizens` is
+        `[{id, name, profession}]` (the citizens who were not there at the last 100-tick poll,
+        capped at 25, with `new_citizens_count` and `new_citizens_truncated`; empty for the
+        no-arrival text) and its `unit_ids` are their ids; `extra.announcement` names the
+        announcement type.
         """
         if limit < 1:
             raise ValueError("limit must be at least 1")

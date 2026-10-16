@@ -44,6 +44,69 @@ def test_format_batch_lists_events_with_positions_and_ids():
     }
 
 
+def test_format_batch_names_migrant_newcomers():
+    # Recorded shape of an events.poll batch carrying one migrant wave.
+    result = {
+        "tick": 40321,
+        "events": [
+            {"seq": 12, "kind": "migrants_arrived", "tick": 40310,
+             "text": "Some migrants have arrived.", "unit_ids": [301, 302],
+             "extra": {"announcement": "MIGRANT_ARRIVAL",
+                       "new_citizens": [
+                           {"id": 301, "name": "Urist McMiner", "profession": "Miner"},
+                           {"id": 302, "name": "Doren Ustuthbomrek", "profession": "Peasant"},
+                       ],
+                       "new_citizens_count": 2, "new_citizens_truncated": False,
+                       "note": "a birth in the same hundred ticks would also be listed"}},
+        ],
+        "remaining": 0,
+        "dropped": 0,
+    }
+    content, meta = format_batch(result)
+    lines = content.splitlines()
+    assert lines[1] == (
+        "- [migrants_arrived] Some migrants have arrived. units 301,302 "
+        "newcomers: Urist McMiner (Miner), Doren Ustuthbomrek (Peasant)"
+    )
+    assert meta["kinds"] == "migrants_arrived"
+
+
+def test_format_batch_no_migrants_renders_cleanly():
+    result = {
+        "tick": 80000,
+        "events": [
+            {"seq": 20, "kind": "migrants_arrived",
+             "text": ("No one even considered making the journey to such a cold, "
+                      "desolate place this season."),
+             "extra": {"announcement": "D_NO_MIGRANT_ARRIVAL", "new_citizens": [],
+                       "new_citizens_count": 0, "new_citizens_truncated": False}},
+            {"seq": 21, "kind": "migrants_arrived", "text": "Migrants arrived.",
+             "extra": {"announcement": "MIGRANT_ARRIVAL", "new_citizens": {},
+                       "new_citizens_count": 0}},
+        ],
+    }
+    content, _ = format_batch(result)
+    lines = content.splitlines()
+    assert lines[1] == (
+        "- [migrants_arrived] No one even considered making the journey to such a cold, "
+        "desolate place this season."
+    )
+    assert lines[2] == "- [migrants_arrived] Migrants arrived."
+    assert "newcomers" not in content
+
+
+def test_format_batch_newcomers_truncated():
+    people = [{"id": i, "name": f"Dwarf {i}", "profession": None} for i in range(25)]
+    result = {"tick": 1, "events": [
+        {"seq": 1, "kind": "migrants_arrived", "text": "Migrants",
+         "extra": {"new_citizens": people, "new_citizens_count": 30,
+                   "new_citizens_truncated": True}},
+    ]}
+    content, _ = format_batch(result)
+    assert content.splitlines()[1].endswith("Dwarf 24 and 5 more")
+    assert "Dwarf 0, Dwarf 1," in content
+
+
 def test_notification_shape():
     msg = notification("hello", {"kind": "events"})
     data = msg.message.model_dump(by_alias=True, exclude_none=True)

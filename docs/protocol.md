@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **25**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **26**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -82,9 +82,9 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 
 ### Events
 
-The mod queues in-game events (plan section 13, Phase 13) and the server pushes them to Claude Code as channel notifications (`notifications/claude/channel`, declared through the experimental `claude/channel` capability at the handshake). The queue is a ring of 200 entries; `events.poll` hands out a batch once the newest waiting event is two seconds old or 50 are waiting. Each kind has a player toggle (settings window, Events tab, or `claude-bridge event <kind> on|off`); defaults on: `mineral_discovered`, `units_fighting`, `petition`.
+The mod queues in-game events (plan section 13, Phase 13) and the server pushes them to Claude Code as channel notifications (`notifications/claude/channel`, declared through the experimental `claude/channel` capability at the handshake). The queue is a ring of 200 entries; `events.poll` hands out a batch once the newest waiting event is two seconds old or 50 are waiting. Each kind has a player toggle (settings window, Events tab, or `claude-bridge event <kind> on|off`); defaults on: `mineral_discovered`, `migrants_arrived`, `units_fighting`, `petition`.
 
-Sources: `eventful.onReport` (announcements mapped by `announcement_type` to kinds; continuation lines skipped; units standing on the report's position are attached), `onUnitDeath` (citizens, `citizen_dead`), `onInvasion` (`invaders_arrived`), `onUnitAttack` (`units_fighting`, or `sparring` when both units are fort-controlled; one event per unit pair per ten seconds), and a poller every 100 ticks for `petition` (new ids in `plotinfo.petitions`), `ghost_appeared` and `ghost_rested` (the set of ghost units), `mood_item_missing` (citizens whose strange-mood job stalled waiting for an item), `artifact_found` (artifact items on the map whose tile became revealed), and `season_changed` (`cur_season`). The poller's first run only records a baseline. Hooks are installed on enable and reload and removed on disable; the queue is cleared on map unload.
+Sources: `eventful.onReport` (announcements mapped by `announcement_type` to kinds; continuation lines skipped; units standing on the report's position are attached), `onUnitDeath` (citizens, `citizen_dead`), `onInvasion` (`invaders_arrived`), `onUnitAttack` (`units_fighting`, or `sparring` when both units are fort-controlled; one event per unit pair per ten seconds), and a poller every 100 ticks for `petition` (new ids in `plotinfo.petitions`), `ghost_appeared` and `ghost_rested` (the set of ghost units), `mood_item_missing` (citizens whose strange-mood job stalled waiting for an item), `artifact_found` (artifact items on the map whose tile became revealed), and `season_changed` (`cur_season`); it also keeps the set of citizen ids (`dfhack.units.getCitizens(true)`) for `migrants_arrived`. The poller's first run only records a baseline. Hooks are installed on enable and reload and removed on disable; the queue is cleared on map unload.
 
 ### `events.kinds`
 
@@ -92,11 +92,15 @@ Args: none. Namespace `events`.
 
 Result: `kinds` `[{key, label, enabled, default, source (announcement, hook, attack hook, poll), announcement_types, missing_types (names this build lacks)}]`, `running`, `queued`, `next_seq`, `dropped`.
 
+`migrants_arrived` (Patch 1, P1.2; default on; source `announcement`) maps six types: `MIGRANT_ARRIVAL`, `MIGRANT_ARRIVAL_NAMED`, `D_MIGRANTS_ARRIVAL`, `D_MIGRANT_ARRIVAL`, `D_MIGRANT_ARRIVAL_DISCOURAGED`, `D_NO_MIGRANT_ARRIVAL` (all present on DFHack 53.16-r2). The discouraged and no-arrival texts arrive as the same kind; `extra.announcement` tells them apart.
+
 ### `events.poll`
 
 Args: `after_seq` (the last sequence the caller has; omit to learn `next_seq` without taking anything), `limit` (default 50), `force` (return what is waiting without the quiet window). Namespace `events`.
 
 Result: `next_seq`, `dropped`, `now_ms`, `running`, `tick`, `waiting`, `events` `[{seq, kind, tick, text, pos, unit_ids, building_id, item_id, extra}]` (empty with `quiet_ms_left` while the window runs), `last_seq`, `remaining`. Verified in-game 2026-10-15.
+
+Announcement events carry `extra.announcement` (the `announcement_type` name). A `migrants_arrived` event also carries `extra.new_citizens` `[{id, name, profession}]`: the citizens present at the report who were absent at the last 100-tick poll, capped at 25, with `extra.new_citizens_count` (all of them) and `extra.new_citizens_truncated`; `unit_ids` are the same ids (same cap). The baseline then advances, so a second announcement of the same wave lists no one again. The list is empty for the no-arrival text and before the poller's first run. When it is non-empty, `extra.note` says a birth in the same hundred ticks would also be listed. `text` stays the report text. Not yet verified in-game.
 
 ### `events.emit`
 
