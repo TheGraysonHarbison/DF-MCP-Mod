@@ -2,15 +2,38 @@
 -- map, who waits to meet whom, the meeting records, the game's diplomacy screen, and the
 -- standing agreement. Writes: next year's import requests, the priorities the Requests
 -- screen edits (DFHack's tradeagreement overlay writes the same vector, checked
--- 2026-10-15). The meeting itself, Done, and the land-holder choice stay with the player.
+-- 2026-10-15).
+--
+-- The liaison's diplomacy dialog (plan section 15.2, Patch 1 item P3.0): whether the
+-- meeting's left-side alert is up, the open dialog's text, step, script position, and
+-- request and land-holder state (trade.dialog); opening it (trade.open_dialog) and stepping
+-- it (trade.dialog_step). The opener replays the field changes recorded from the player's
+-- click on a liaison save (2026-10-16); the steps press the dialog's real buttons, found by
+-- their labels on the screen grid, so the game's own script engine advances the meeting
+-- (verified live 2026-10-16 through a whole liaison meeting from the bridge). Sources (df-structures master,
+-- checked 2026-10-16): df.d_interface.xml (diplomacy_interfacest), df.markup_text_box.xml,
+-- df.diplomacy.xml (meeting_diplomat_info), df.dipscript.xml, df.script.xml (script_stepst
+-- subclasses), df.meetingmoment.xml (dipscript_popup), df.announcement.xml
+-- (announcement_handlerst alerts), df.g_src.basics.xml (announcement types); DFHack 53.16-r2
+-- scripts/internal/caravan/tradeagreement.lua and lua/plugins/sort/diplomacy.lua (the
+-- focus strings dwarfmode/Diplomacy, .../Requests, .../ElevateLandHolder).
 --@ module = true
 
 local rpc = reqscript('internal/claude-bridge/rpc')
 local nobles = reqscript('internal/claude-bridge/nobles')
+local screens = reqscript('internal/claude-bridge/screens')
 
 DEFAULT_LIMIT = 25
 MAX_PRIORITY = 4
 MEETING_KINDS = {[0] = 'standard', [1] = 'first_contact', [2] = 'active_plot'}
+DIALOG_MAX_LINES = 200
+ALERT_TEXT_CHARS = 120
+-- Announcement types whose report is taken for the meeting's alert button.
+-- Live 2026-10-16: the alert is the LIAISON_ARRIVAL report under a NOBLE alert and it stays
+-- after the meeting, so alerts are information only; plotinfo.dipscript_popups is the signal.
+MEETING_ANNOUNCEMENTS = {DIPLOMAT_ARRIVAL = true, LIAISON_ARRIVAL = true, TRADE_DIPLOMAT_ARRIVAL = true}
+-- Matched by the DIPLOMA substring rule below but not a meeting: the diplomat has left.
+NOT_MEETING_ANNOUNCEMENTS = {DIPLOMAT_LEFT_UNHAPPY = true}
 
 local function safe(fn, ...)
     local ok, value = pcall(fn, ...)
@@ -402,8 +425,9 @@ local function diplomats(args)
         diplomats = units, waiting_to_meet = waiting, site_leader = leader_row,
         meetings = meetings, screen = screen, agreements = agreements,
         note = 'the leader meets the diplomat on their own (a Conduct Meeting job) when free; a leader who is also '
-            .. 'the broker cannot do both. Requests for next year are set with set_trade_requests; the meeting, '
-            .. 'Done, and any land-holder choice are the player\'s',
+            .. 'the broker cannot do both. When the meeting dialog is up (a meeting_ready event), read it with '
+            .. 'get_meeting_dialog, open it with open_meeting_dialog, set next year\'s requests with '
+            .. 'set_trade_requests, and finish it with step_meeting_dialog; steps it cannot replay yet are the player\'s',
     }
 end
 
@@ -489,12 +513,645 @@ local function set_requests(args)
             note = 'written to the meeting\'s request list; the game takes it when the player finishes the liaison meeting'}
 end
 
+----------------------------------------------------------------------------------------------
+-- the diplomacy dialog (P3.0)
+--
+-- Strings stay in the game's code page here: rpc.dispatch converts every string of a result
+-- to UTF-8 on the way out, so converting in the handler would convert twice.
 
+local function diplomacy()
+    return df.global.game.main_interface.diplomacy
+end
+
+local function name_of_enum(enum, value)
+    if type(value) == 'string' then return value end
+    return enum_name(enum, value)
+end
+
+-- True when a report belongs to the liaison meeting's alert button. `alert_type` is the
+-- announcement_alertst type the report sits under (name or value), or nil to take the
+-- report type's own alert attribute. Exported for events.lua (the meeting_ready kind); this
+-- module never requires events.lua.
+-- Information only (see MEETING_ANNOUNCEMENTS); availability comes from the pending popups.
+function is_meeting_report(report, alert_type)
+    if not report then return false end
+    local name = enum_name(df.announcement_type, safe(function() return report.type end)) or ''
+    if NOT_MEETING_ANNOUNCEMENTS[name] then return false end
+    if MEETING_ANNOUNCEMENTS[name] or name:find('MEETING', 1, true) or name:find('DIPLOMA', 1, true) then
+        return true
+    end
+    if alert_type == nil then
+        alert_type = safe(function() return df.announcement_type.attrs[report.type].alert_type end)
+    end
+    return name_of_enum(df.announcement_alert_type, alert_type) == 'AGREEMENT'
+end
+
+-- Every report id behind a left-side alert: {[report_id] = alert type name or false}. The ids
+-- inside world.status.announcement_alert[] carry their alert's type; ids only in
+-- alert_button_announcement_id carry false.
+function alert_report_ids()
+    local ids = {}
+    pcall(function()
+        local status = df.global.world.status
+        for _, alert in ipairs(status.announcement_alert) do
+            local kind = enum_name(df.announcement_alert_type, alert.type) or tostring(alert.type)
+            for _, id in ipairs(alert.announcement_id) do ids[id] = kind end
+        end
+        for _, id in ipairs(status.alert_button_announcement_id) do
+            if ids[id] == nil then ids[id] = false end
+        end
+    end)
+    return ids
+end
+
+local function clip(text, n)
+    if type(text) ~= 'string' then return nil end
+    if #text > n then return text:sub(1, n) end
+    return text
+end
+
+-- All current alerts as {type, report_ids, texts, announcements}, plus the meeting reports
+-- among them. Ids only in alert_button_announcement_id form one row of type 'button'.
+local function alert_rows(limit)
+    local rows, meeting_ids, truncated = {}, {}, false
+    local function add_row(kind, ids)
+        local row = {type = kind, report_ids = {}, texts = {}, announcements = {}}
+        for _, id in ipairs(ids) do
+            local report = safe(df.report.find, id)
+            if report and is_meeting_report(report, kind ~= 'button' and kind or nil) then
+                table.insert(meeting_ids, id)
+            end
+            if #row.report_ids >= limit then
+                row.truncated = true
+            else
+                table.insert(row.report_ids, id)
+                table.insert(row.texts, report and clip(report.text, ALERT_TEXT_CHARS) or '')
+                table.insert(row.announcements,
+                    report and (enum_name(df.announcement_type, report.type) or tostring(report.type)) or '')
+            end
+        end
+        if #rows >= limit then
+            truncated = true
+        else
+            table.insert(rows, row)
+        end
+    end
+    pcall(function()
+        local status = df.global.world.status
+        local in_alert = {}
+        for _, alert in ipairs(status.announcement_alert) do
+            local ids = {}
+            for _, id in ipairs(alert.announcement_id) do
+                table.insert(ids, id)
+                in_alert[id] = true
+            end
+            add_row(enum_name(df.announcement_alert_type, alert.type) or tostring(alert.type), ids)
+        end
+        local buttons = {}
+        for _, id in ipairs(status.alert_button_announcement_id) do
+            if not in_alert[id] then table.insert(buttons, id) end
+        end
+        if #buttons > 0 then add_row('button', buttons) end
+    end)
+    return rows, meeting_ids, truncated
+end
+
+-- The dialog's words as lines: a new line on NEW_LINE, an empty line on BLANK_LINE, an
+-- indent on INDENT, words joined by single spaces.
+-- Verified live 2026-10-16: the lines match what the dialog shows (speaker line, blank
+-- line, text).
+local function dialog_text(box, max_lines)
+    local lines, cur, indent, truncated = {}, nil, false, false
+    local function flush()
+        if cur ~= nil then table.insert(lines, cur) end
+        cur = nil
+    end
+    pcall(function()
+        for _, word in ipairs(box.word) do
+            if #lines >= max_lines then
+                truncated = true
+                cur = nil
+                break
+            end
+            local flags = word.flags
+            if flags.NEW_LINE or flags.BLANK_LINE then flush() end
+            if flags.BLANK_LINE then table.insert(lines, '') end
+            if flags.INDENT then indent = true end
+            local str = word.str
+            if str ~= '' then
+                if cur == nil then
+                    cur = (indent and '    ' or '') .. str
+                    indent = false
+                else
+                    cur = cur .. ' ' .. str
+                end
+            end
+        end
+    end)
+    flush()
+    while #lines > max_lines do
+        table.remove(lines)
+        truncated = true
+    end
+    return lines, truncated
+end
+
+-- Most derived first: the first match names the step.
+STEP_CLASSES = {
+    'script_step_textviewerst', 'script_step_discussst', 'script_step_conditionalst',
+    'script_step_dipeventst', 'script_step_invasionst', 'script_step_eventst',
+    'script_step_diphistoryst', 'script_step_topicdiscussionst', 'script_step_constructtopiclistst',
+    'script_step_setvarst', 'script_step_simpleactionst',
+}
+
+local function step_type(step)
+    for _, name in ipairs(STEP_CLASSES) do
+        local t = safe(function() return df[name] end)
+        if t and safe(function() return t:is_instance(step) end) then return name end
+    end
+    local raw = safe(function() return tostring(step._type) end)
+    return raw and (raw:match('<type: ([%w_]+)>') or raw) or nil
+end
+
+local function live_dipev(d)
+    return safe(function() return d.dipev end) or safe(function() return d.environment.dipev end)
+end
+
+local function script_info(dipev)
+    if not dipev then return nil, nil end
+    local info, step = {}, nil
+    pcall(function()
+        info.cur_step = dipev.cur_step
+        info.flags = {success = dipev.flags.success, failure = dipev.flags.failure}
+        local ds = dipev.dipscript
+        if ds then
+            info.code = ds.code
+            local steps = ds.script.steps
+            info.steps = #steps
+            if dipev.cur_step >= 0 and dipev.cur_step < #steps then
+                step = steps[dipev.cur_step]
+                info.step_type = step_type(step)
+                info.next_step_idx = step.next_step_idx
+            end
+        end
+    end)
+    return info, step
+end
+
+local function moment_row(mm)
+    local out = {}
+    pcall(function()
+        out.actor_unit_id = mm.meeting_holder_actor
+        out.noble_unit_id = mm.meeting_holder_noble
+        out.flags = {close_screen = mm.flags.close_screen, new_screen = mm.flags.new_screen}
+        out.moment_time_left = mm.moment_time_left
+    end)
+    return out
+end
+
+local function popup_info(d)
+    local mm = safe(function() return d.mm end)
+    if not mm then return nil end
+    return moment_row(mm)
+end
+
+-- plotinfo.dipscript_popups (df.plotinfo.xml, original name meetingmoment, "cause
+-- viewscreen_meetingst to pop up"): the meetings waiting for the player, the same struct
+-- diplomacy.mm points at. Likely the state behind the meeting's alert button.
+-- Verified live 2026-10-16: the entry is present while the meeting waits and through the
+-- dialog, and leaves when the farewell press closes it.
+local function popups_vector()
+    return safe(function() return df.global.plotinfo.dipscript_popups end)
+end
+
+-- Rows {index, actor_unit_id, noble_unit_id, actor, noble, flags, moment_time_left}, capped
+-- at `limit`; also the full count.
+function pending_popups(limit)
+    local rows, count = {}, 0
+    pcall(function()
+        local vec = df.global.plotinfo.dipscript_popups
+        count = #vec
+        for i = 0, count - 1 do
+            if #rows >= limit then break end
+            local row = moment_row(vec[i])
+            row.index = i
+            row.actor = row.actor_unit_id and unit_ref(safe(df.unit.find, row.actor_unit_id)) or nil
+            row.noble = row.noble_unit_id and unit_ref(safe(df.unit.find, row.noble_unit_id)) or nil
+            table.insert(rows, row)
+        end
+    end)
+    return rows, count
+end
+
+local function hf_name(hf_id)
+    local fig = safe(df.historical_figure.find, hf_id)
+    if not fig then return nil end
+    local unit = fig.unit_id >= 0 and safe(df.unit.find, fig.unit_id) or nil
+    return (unit and safe(dfhack.units.getReadableName, unit)) or translate(fig.name, false)
+end
+
+local function int_list(vec, limit)
+    local out, truncated = {}, false
+    pcall(function()
+        for i = 0, #vec - 1 do
+            if #out >= limit then
+                truncated = true
+                break
+            end
+            table.insert(out, vec[i])
+        end
+    end)
+    return out, truncated
+end
+
+local function dialog_state(args)
+    local limit = math.floor(tonumber(args.limit) or DEFAULT_LIMIT)
+    if limit < 1 then limit = DEFAULT_LIMIT end
+    local d = diplomacy()
+    local alerts, meeting_ids, alerts_truncated = alert_rows(limit)
+    local pending, pending_count = pending_popups(limit)
+    -- Only a pending popup means a meeting is waiting: the liaison-arrival alert stays on the
+    -- left after the meeting is over (seen live 2026-10-16), so the alerts are information only.
+    local available_from = {}
+    if pending_count > 0 then table.insert(available_from, 'dipscript_popups') end
+    if #meeting_ids > 0 then table.insert(available_from, 'alerts (information only)') end
+    local out = {
+        available = pending_count > 0, available_from = available_from, meeting_report_ids = meeting_ids,
+        pending = pending, pending_truncated = pending_count > #pending or nil,
+        alerts = alerts, alerts_truncated = alerts_truncated or nil,
+        open = safe(function() return d.open end) == true,
+        in_progress = safe(function() return d.flag.in_the_middle_of_stuff end) == true,
+        actor = safe(function() return d.actor and unit_ref(d.actor) or nil end),
+        target = safe(function() return d.target and unit_ref(d.target) or nil end),
+        popup = popup_info(d),
+        paused = safe(dfhack.world.ReadPauseState) == true,
+    }
+    local taking = safe(function() return d.taking_requests end) == true
+    local land = safe(function() return d.selecting_land_holder_position end) == true
+    if not out.open then
+        out.step = 'closed'
+    elseif taking then
+        out.step = 'requests'
+    elseif land then
+        out.step = 'land_holder'
+    else
+        out.step = 'text'
+    end
+    local lines, text_truncated = dialog_text(d.text, DIALOG_MAX_LINES)
+    out.text = lines
+    out.text_truncated = text_truncated or nil
+    local script, step = script_info(live_dipev(d))
+    out.script = script
+    -- The buttons are labels on the screen grid (screen_rows); text.link stays empty here.
+    local choices = {links = {}}
+    pcall(function()
+        for _, link in ipairs(d.text.link) do
+            if #choices.links >= limit then
+                choices.links_truncated = true
+                break
+            end
+            table.insert(choices.links, {type = enum_name(df.markup_text_link_type, link.type) or link.type,
+                                         id = link.id})
+        end
+    end)
+    if step and script and script.step_type == 'script_step_textviewerst' then
+        pcall(function()
+            choices.filename = step.filename
+            choices.outvar_name = step.outvar_name
+        end)
+    end
+    out.choices = choices
+    local rows, rows_truncated = screens.text_rows(limit * 2)
+    out.screen_rows = rows
+    out.screen_rows_truncated = rows_truncated or nil
+    out.choices_note = 'the buttons are the words on screen_rows (Continue, Done, the replies); step_meeting_dialog '
+        .. 'presses them by label'
+    local tabs = {}
+    pcall(function()
+        for _, cat in ipairs(d.taking_requests_tablist) do
+            table.insert(tabs, enum_name(df.entity_sell_category, cat) or tostring(cat))
+        end
+    end)
+    out.requests = {taking = taking, tabs = tabs,
+                    selected_tab = safe(function() return d.taking_requests_selected_tab end)}
+    local land_holder = {selecting = land, candidates = {}}
+    pcall(function()
+        land_holder.positions = int_list(d.land_holder_pos_id, limit)
+        land_holder.assigned = int_list(d.land_holder_assigned_hfid, limit)
+        land_holder.selected_pos = d.land_holder_selected_pos
+        for i = 0, #d.land_holder_avail_hfid - 1 do
+            if #land_holder.candidates >= limit then
+                land_holder.truncated = true
+                break
+            end
+            local id = d.land_holder_avail_hfid[i]
+            table.insert(land_holder.candidates, {hist_figure_id = id, name = hf_name(id)})
+        end
+    end)
+    out.land_holder = land_holder
+    if out.open then
+        out.note = 'the dialog pauses the game. On the requests step set the requests with set_trade_requests, '
+            .. 'then step_meeting_dialog done; choose a land holder when asked; close when finished'
+    elseif out.available then
+        out.note = 'the meeting dialog is waiting on its alert; open it with open_meeting_dialog'
+    else
+        out.note = 'no meeting dialog is waiting; a meeting_ready event says when one is'
+    end
+    return out
+end
+
+-- Write `writes` ({target, field, value, label}) in order; on an error put every field
+-- back and return nil, message. Returns [{field, before, after}].
+local function replay(writes)
+    local saved = {}
+    local ok, err = pcall(function()
+        for _, w in ipairs(writes) do
+            local before = w[1][w[2]]
+            table.insert(saved, {w[1], w[2], before})
+            w[1][w[2]] = w[3]
+        end
+    end)
+    if not ok then
+        for i = #saved, 1, -1 do
+            local s = saved[i]
+            pcall(function() s[1][s[2]] = s[3] end)
+        end
+        return nil, tostring(err)
+    end
+    local function shown(v)
+        if type(v) ~= 'userdata' then return v end
+        return safe(function() return v.id end) or tostring(v)
+    end
+    local out = {}
+    for i, s in ipairs(saved) do
+        table.insert(out, {field = writes[i][4], before = shown(s[3]), after = shown(writes[i][3])})
+    end
+    return out
+end
+
+local function open_dialog(args)
+    local d = diplomacy()
+    -- Checked before the focus: an open dialog has the Diplomacy focus, not the main map.
+    if safe(function() return d.open end) then
+        return {opened = false, already_open = true, replayed = {}, dialog = dialog_state(args),
+                note = 'the meeting dialog is already open'}
+    end
+    local busy = screens.require_focus({screens.MAIN_FOCUS}, 'open_meeting_dialog')
+    if busy then return busy end
+    local _, meeting_ids = alert_rows(DEFAULT_LIMIT)
+    local popups = popups_vector()
+    local popup = popups and #popups > 0 and popups[0] or nil
+    if #meeting_ids == 0 and not popup then
+        return rpc.error_result(rpc.ERR_NOT_FOUND,
+            'no meeting is waiting (no meeting alert, no pending meeting popup); wait for a meeting_ready event')
+    end
+    -- The alert click, recorded live on 2026-10-16 (dialog-snapshot before and after): the
+    -- game points mm at the pending popup and raises its new_screen flag, sets actor and
+    -- target (meeting_holder_actor, meeting_holder_noble), attaches the civilization's
+    -- meeting record as dipev, raises flag.in_the_middle_of_stuff, opens, builds the text,
+    -- and runs the script's first step (cur_step 0 to 1). The text and the step are the
+    -- game's; everything else is replayed here.
+    local writes
+    if safe(function() return d.mm ~= nil end) then
+        writes = {{d, 'open', true, 'diplomacy.open'}}
+    elseif popup then
+        local actor_id = safe(function() return popup.meeting_holder_actor end) or -1
+        local noble_id = safe(function() return popup.meeting_holder_noble end) or -1
+        local actor, noble = safe(df.unit.find, actor_id), safe(df.unit.find, noble_id)
+        if not actor or not noble then
+            return rpc.error_result(rpc.ERR_NOT_FOUND, ('the pending meeting names units %d and %d, which are not '
+                .. 'both on the map; ask the player to click the meeting alert'):format(actor_id, noble_id))
+        end
+        local record = nil
+        pcall(function()
+            for _, info in ipairs(df.global.plotinfo.dip_meeting_info) do
+                if info.civ_id == actor.civ_id then record = info end
+            end
+        end)
+        writes = {
+            {d, 'mm', popup, 'diplomacy.mm'},
+            {popup.flags, 'new_screen', true, 'mm.flags.new_screen'},
+            {d, 'actor_unid', actor_id, 'diplomacy.actor_unid'},
+            {d, 'actor', actor, 'diplomacy.actor'},
+            {d, 'target_unid', noble_id, 'diplomacy.target_unid'},
+            {d, 'target', noble, 'diplomacy.target'},
+        }
+        if record then
+            table.insert(writes, {d, 'dipev', record, 'diplomacy.dipev'})
+            table.insert(writes, {d.environment, 'dipev', record, 'diplomacy.environment.dipev'})
+        end
+        -- The script reads the speaker from the environment's popup (a bridge-opened dialog
+        -- without it showed the greeting with an empty name, live 2026-10-16).
+        table.insert(writes, {d.environment, 'mm', popup, 'diplomacy.environment.mm'})
+        table.insert(writes, {d.flag, 'in_the_middle_of_stuff', true, 'diplomacy.flag.in_the_middle_of_stuff'})
+        table.insert(writes, {d, 'open', true, 'diplomacy.open'})
+    elseif safe(function() return d.dipev ~= nil end) then
+        writes = {{d, 'open', true, 'diplomacy.open'}}
+    else
+        return rpc.error_result(rpc.ERR_NOT_FOUND,
+            'the game\'s meeting state is not populated and no meeting is pending; wait for a meeting_ready event')
+    end
+    local replayed, err = replay(writes)
+    if not replayed then
+        return rpc.error_result(rpc.ERR_INTERNAL, 'opening the dialog failed and was undone: ' .. err)
+    end
+    return {opened = true, replayed = replayed, meeting_report_ids = meeting_ids, dialog = dialog_state(args),
+            note = 'the dialog is open; read it with get_meeting_dialog (text and screen_rows) and step it with '
+                .. 'step_meeting_dialog; if it did not show, ask the player to click the meeting alert'}
+end
+
+-- One entry per action: function(d, args) -> {replayed = {...}} or an error result.
+-- Recorded live on 2026-10-16: every button of the dialog (Continue, Done, the replies) runs
+-- the game's script engine, so the buttons are pressed for real, found by their label on
+-- the screen grid (they move with the text above them). Done and the land-holder choice are
+-- buttons too.
+local function press_button(label)
+    local clicked, why = screens.click_label(label)
+    if not clicked then return rpc.error_result(rpc.ERR_NOT_FOUND, why .. '; read screen_rows from get_meeting_dialog') end
+    return {replayed = {{field = 'click', after = clicked}}, clicked = clicked}
+end
+
+REPLAY = {
+    -- The advance button reads "Okay" on this build (live 2026-10-16); "Continue" is kept
+    -- for other dialogs.
+    continue = function(d, args)
+        for _, label in ipairs({'Okay', 'Continue', 'OK', 'Next'}) do
+            if screens.find_label(label) then return press_button(label) end
+        end
+        return rpc.error_result(rpc.ERR_NOT_FOUND, 'no Okay or Continue button is on screen; read screen_rows from get_meeting_dialog')
+    end,
+    -- `label` is the text on the reply button (see screen_rows); `choice` alone is not enough
+    -- because the game does not number its replies.
+    choose = function(d, args)
+        if type(args.label) ~= 'string' or args.label == '' then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST,
+                '"label" (the text on the reply button, from screen_rows) is required for choose')
+        end
+        return press_button(args.label)
+    end,
+    done = function(d, args)
+        if not d.taking_requests then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST, 'done finishes the requests step and the dialog is not on it')
+        end
+        return press_button('Done')
+    end,
+    -- The land-holder step has not come up live yet (no barony offered); the candidate's
+    -- name is expected to be the button label on that screen, so this presses it by name.
+    -- VERIFY LIVE: when a land-holder offer arrives.
+    land_holder = function(d, args)
+        if not d.selecting_land_holder_position then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST, 'the dialog is not asking for a land holder')
+        end
+        local hf_id = tonumber(args.hf_id)
+        local name = type(args.label) == 'string' and args.label or (hf_id and hf_name(hf_id)) or nil
+        if not name then return rpc.error_result(rpc.ERR_BAD_REQUEST, '"hf_id" or "label" is required for land_holder') end
+        return press_button(name)
+    end,
+    -- VERIFY LIVE: Escape on the open dialog. The game's own last Continue clears mm, the
+    -- pending popup, the in-the-middle flag, and sets cur_step to -1; Escape is expected to
+    -- leave the meeting resumable from its alert.
+    close = function(d, args)
+        local ok, err = pcall(screens.press_key, 'LEAVESCREEN')
+        if not ok then return rpc.error_result(rpc.ERR_INTERNAL, 'close failed: ' .. tostring(err)) end
+        return {replayed = {{field = 'key', after = 'LEAVESCREEN'}}}
+    end,
+}
+
+STEP_ACTIONS = {'continue', 'choose', 'done', 'land_holder', 'close'}
+
+local function dialog_step(args)
+    local action = args.action
+    if type(action) ~= 'string' or not REPLAY[action] then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"action" must be one of ' .. table.concat(STEP_ACTIONS, ', '))
+    end
+    local d = diplomacy()
+    -- Checked before the focus: a closed dialog has no Diplomacy focus to find.
+    if not safe(function() return d.open end) then
+        if action == 'close' then
+            local out = screens.maybe_unpause(args)
+            out.action, out.replayed, out.dialog = action, {}, dialog_state(args)
+            out.note = 'the dialog was already closed; nothing was written'
+            return out
+        end
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, 'the meeting dialog is not open; open it with open_meeting_dialog')
+    end
+    -- Focus is dwarfmode/Diplomacy/Default or .../Requests while open (verified live 2026-10-16).
+    local busy = screens.require_focus({'dwarfmode/Diplomacy'}, 'step_meeting_dialog')
+    if busy then return busy end
+    local result = REPLAY[action](d, args)
+    if result.__error then return result end
+    local out = screens.maybe_unpause(action == 'close' and args or {})
+    out.action = action
+    out.replayed = result.replayed
+    out.clicked = result.clicked
+    out.dialog = dialog_state(args)
+    -- screen_rows come from the last rendered frame, so right after a press they still show
+    -- the previous page while the text and step fields are already current.
+    out.dialog.screen_rows_note = 'screen_rows lag one frame behind a press; read get_meeting_dialog again for the new page'
+    out.note = 'the button was pressed on the game screen; dialog shows the new state (text, step, screen_rows)'
+    if args.unpause == true and action ~= 'close' then
+        out.pause_note = 'unpause applies to close only; the game stays paused while the dialog is open'
+    end
+    return out
+end
+
+----------------------------------------------------------------------------------------------
+-- dev snapshot (claude-bridge dialog-snapshot): every scalar of the diplomacy interface, the
+-- meeting moment and meeting, the alerts, focus, interface rect, and mouse, so the owner can
+-- diff before and after a click. Read-only. Printed directly, so strings are converted here.
+
+local function utf(value)
+    if type(value) == 'string' then return (value:gsub('[^%c]+', dfhack.df2utf)) end
+    return value
+end
+
+local function describe(value)
+    local t = type(value)
+    if t == 'boolean' or t == 'number' then return value end
+    if t == 'string' then return utf(value) end
+    if t ~= 'userdata' then return nil end
+    local kind = safe(function() return value._kind end)
+    if kind == 'container' then return {length = safe(function() return #value end)} end
+    if kind == 'bitfield' then
+        local set = {}
+        pcall(function()
+            for k, v in pairs(value) do
+                if v == true then table.insert(set, k) end
+            end
+        end)
+        return {flags = set}
+    end
+    if kind == 'struct' then
+        local id = safe(function() return value.id end)
+        return {struct = utf(safe(function() return tostring(value._type) end)),
+                id = type(id) == 'number' and id or nil}
+    end
+    return {ref = utf(tostring(value))}
+end
+
+local function scalars(obj, skip)
+    local out = {}
+    pcall(function()
+        for k, v in pairs(obj) do
+            if not (skip and skip[k]) then out[k] = describe(v) end
+        end
+    end)
+    return out
+end
+
+function dialog_snapshot()
+    local d = diplomacy()
+    local snap = {fields = scalars(d, {text = true, environment = true})}
+    snap.fields.text = {words = safe(function() return #d.text.word end),
+                        links = safe(function() return #d.text.link end),
+                        max_y = safe(function() return d.text.max_y end)}
+    snap.fields.environment = {dipev = safe(function() return d.environment.dipev ~= nil end),
+                               mm = safe(function() return d.environment.mm ~= nil end)}
+    local mm = safe(function() return d.mm end)
+    snap.mm = mm and scalars(mm, {activity = true}) or nil
+    local dipev = live_dipev(d)
+    if dipev then
+        snap.dipev = {
+            civ_id = safe(function() return dipev.civ_id end),
+            cur_step = safe(function() return dipev.cur_step end),
+            standard_type = safe(function() return dipev.standard_type end),
+            flags = describe(safe(function() return dipev.flags end)),
+            events = safe(function() return #dipev.events end),
+            active_script_vars = safe(function() return #dipev.active_script_vars end),
+            from = safe(function() return d.dipev ~= nil end) and 'diplomacy.dipev' or 'diplomacy.environment.dipev',
+        }
+    end
+    local alerts = {}
+    pcall(function()
+        for _, alert in ipairs(df.global.world.status.announcement_alert) do
+            local ids = {}
+            for _, id in ipairs(alert.announcement_id) do table.insert(ids, id) end
+            table.insert(alerts, {type = enum_name(df.announcement_alert_type, alert.type) or alert.type, ids = ids})
+        end
+    end)
+    snap.announcement_alert = alerts
+    local pending, pending_count = pending_popups(1000)
+    snap.dipscript_popups = {count = pending_count, entries = pending}
+    snap.alert_button_announcement_id = int_list(safe(function()
+        return df.global.world.status.alert_button_announcement_id
+    end) or {}, 1000)
+    snap.focus = screens.focus()
+    snap.interface_rect = safe(function()
+        local r = require('gui').get_interface_rect()
+        return {x1 = r.x1, y1 = r.y1, x2 = r.x2, y2 = r.y2, width = r.width, height = r.height}
+    end)
+    snap.mouse = {dfhack.screen.getMousePos()}
+    snap.paused = safe(dfhack.world.ReadPauseState) == true
+    return snap
+end
 
 function ops()
     return {
         ['trade.diplomats'] = {namespace = 'trade', handler = diplomats, needs_map = true},
         ['trade.request_options'] = {namespace = 'trade', handler = request_options, needs_map = true},
         ['trade.set_requests'] = {namespace = 'trade_write', handler = set_requests, needs_map = true},
+        ['trade.dialog'] = {namespace = 'trade', handler = dialog_state, needs_map = true},
+        ['trade.open_dialog'] = {namespace = 'screens_write', handler = open_dialog, needs_map = true},
+        ['trade.dialog_step'] = {namespace = 'screens_write', handler = dialog_step, needs_map = true},
     }
 end

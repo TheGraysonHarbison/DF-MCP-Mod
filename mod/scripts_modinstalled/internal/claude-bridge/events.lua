@@ -1,7 +1,8 @@
 -- Event capture and batching (plan section 13, Phase 13). Announcements arrive through
 -- eventful.onReport and are mapped to kinds by announcement type; deaths, invasions, and
 -- fights through the other eventful hooks; what the game never announces (petitions,
--- ghosts, moody dwarves missing an item, artifacts dug up, season changes) is polled every
+-- ghosts, moody dwarves missing an item, artifacts dug up, season changes, the liaison
+-- meeting's alert button) is polled every
 -- 100 ticks. Migrant announcements (plan section 15.2, P1.2) also carry the citizens who
 -- were absent at the last poll. Box popups (plan section 15.2, P4.0) are polled every 30
 -- frames instead, since the game pauses while a box is up and a ticks timer would not run
@@ -61,6 +62,7 @@ KINDS = {
      types = {'MERCHANTS_LEAVING_SOON', 'MERCHANTS_EMBARKED'}},
     {key = 'diplomat_arrived', label = 'Diplomat arrived', default = false,
      types = {'DIPLOMAT_ARRIVAL', 'LIAISON_ARRIVAL', 'TRADE_DIPLOMAT_ARRIVAL', 'DIPLOMAT_LEFT_UNHAPPY'}},
+    {key = 'meeting_ready', label = 'Diplomat meeting dialog available', default = true, poll = true},
     {key = 'monster_arrived', label = 'Hostile monster arrived', default = false,
      types = {'MEGABEAST_ARRIVAL', 'WEREBEAST_ARRIVAL', 'BEAST_AMBUSH', 'AMBUSH_DEFENDER',
               'AMBUSH_RESIDENT', 'UNDEAD_ATTACK', 'NAMED_RESIDENT_CREATURE'}},
@@ -376,6 +378,30 @@ local function revealed_artifact_set()
     return set
 end
 
+-- Report ids behind the left-side alerts, {[id] = alert type name or false}, and the
+-- meeting rule, both from diplomats.lua (P3.0). Required lazily: diplomats.lua never
+-- requires this module, so there is no cycle.
+local function diplomats_module()
+    return safe(reqscript, 'internal/claude-bridge/diplomats')
+end
+
+local function alert_set()
+    local dip = diplomats_module()
+    return dip and safe(dip.alert_report_ids) or {}
+end
+
+-- Pending meeting popups as {["actor:noble"] = {actor, noble}} (plotinfo.dipscript_popups).
+local function popup_pairs()
+    local set = {}
+    pcall(function()
+        for _, mm in ipairs(df.global.plotinfo.dipscript_popups) do
+            set[mm.meeting_holder_actor .. ':' .. mm.meeting_holder_noble] =
+                {mm.meeting_holder_actor, mm.meeting_holder_noble}
+        end
+    end)
+    return set
+end
+
 local function describe_petition(id)
     local text = 'A petition awaits an answer'
     pcall(function()
@@ -394,6 +420,8 @@ local function poll()
         artifacts = revealed_artifact_set(),
         season = safe(function() return df.global.cur_season end),
         citizens = citizen_set(),
+        alerts = alert_set(),
+        popups = popup_pairs(),
     }
     if not baseline then
         baseline = current
@@ -438,6 +466,27 @@ local function poll()
                                     extra = {artifact_id = id}})
         end
     end
+    -- A baseline from before this kind existed has no alerts or popups; take this poll as
+    -- the baseline. One meeting_ready per poll: one meeting can raise both signals and put
+    -- several reports under its alert. A new pending meeting popup wins.
+    local meeting_pushed = false
+    if baseline.popups then
+        for key, pair in pairs(current.popups) do
+            if not baseline.popups[key] then
+                local actor, noble = unit_ref(pair[1]), unit_ref(pair[2])
+                push('meeting_ready', {
+                    text = ('%s is waiting to meet %s'):format((actor and actor.name) or ('unit ' .. pair[1]),
+                                                               (noble and noble.name) or ('unit ' .. pair[2])),
+                    unit_ids = {pair[1], pair[2]},
+                    extra = {source = 'dipscript_popups', actor_unit_id = pair[1], noble_unit_id = pair[2]}})
+                meeting_pushed = true
+                break
+            end
+        end
+    end
+    -- The alerts are not a meeting signal: the liaison-arrival alert outlives the meeting (live
+    -- 2026-10-16), so only a new pending popup fires meeting_ready; the alert set stays in the
+    -- baseline for diplomats.lua's information rows.
     if current.season ~= nil and baseline.season ~= nil and current.season ~= baseline.season then
         local name = enum_name(df.season, current.season)
         push('season_changed', {text = (name or 'A new season') .. ' has arrived', extra = {season = name}})

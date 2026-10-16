@@ -84,8 +84,10 @@ screen `get_trade_screen` and `select_trade_goods`; with `screens_write` you can
 yourself with `open_trade_screen` and press Trade, Offer, Seize, a counter-offer answer, or close
 with `press_trade`, and the player can still do all of it by hand.
 Diplomats: `list_diplomats`, `get_trade_request_options`, and with `trade_write`
-`set_trade_requests`; the liaison meeting itself is held by the site leader and finished by the
-player.
+`set_trade_requests`; when a `meeting_ready` event says the liaison's dialog is up,
+`get_meeting_dialog` reads it and with `screens_write` `open_meeting_dialog` and
+`step_meeting_dialog` open, finish, and close it; steps they answer as not yet replayable are
+the player's.
 `list_mods` shows the active Dwarf Fortress mods and loaded DFHack plugins, so check it before
 assuming vanilla raws or tools.
 `send_message` tells the player something inside the game (short, light red, on the left-side

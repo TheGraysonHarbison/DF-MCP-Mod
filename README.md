@@ -114,7 +114,8 @@ in-game days, at each change of month, or every N real minutes of unpaused play,
 event batch sent to Claude re-arms it, so a busy fort is driven by its events and a quiet one by the timer. Off by default.
 
 Two things stay with you: pressing Trade on the depot's trade screen once Claude has selected the goods, and clicking
-through the outpost liaison's meeting once Claude has set the import requests. Claude tells you when either is ready.
+through the outpost liaison's meeting once Claude has set the import requests, or let Claude drive both with the
+`screens_write` toggle. Claude tells you when either is ready.
 
 Without the channel (no flag, or a login that cannot use channels) everything still works by hand: Claude can read
 batches with `poll_events`, and `/loop` can drive a polling loop.
@@ -172,13 +173,11 @@ Open issues (features without a DFHack API, or where the game offers only mouse-
 
 - Petitions: reading and answering petitions through the bridge is not built. Petition events still arrive, and the
   player answers them in the game. The design is in the plan (13.1).
-- Headless meetings: the liaison meeting's dialog is mouse-driven UI with no DFHack code behind it, so for now the
-  player clicks through the meeting and the mod sets the requests on the open Requests step. Patch 1 item P3.0 is
-  planned to close this (plan section 15). The trade screen is now driven by the mod (P2.0, live verification
-  pending).
 - Trade counter-offers: the Accept and Decline buttons of a merchant counter-offer are not measured yet, so
   `press_trade` refuses `accept_counter` and `decline_counter`; the player answers a counter-offer by hand until a live
   session measures them (`claude-bridge trade-snapshot` while hovering).
+- Liaison land-holder offers: the bridge presses the candidate's name on the land-holder step, but no save has offered a
+  barony yet, so that one step is unverified; the player can click it if it fails.
 - Lever linking and pulling: the link job has no DFHack reference outside adventure-mode code.
 - Multi-weapon weapon traps: DFHack's input table models one weapon per trap.
 - Siege engine aiming: DFHack's siege-engine plugin is unavailable on 53.16-r2.
@@ -191,7 +190,8 @@ now takes plain words and refuses orders the game would label that way.
 Fixed 2026-10-16: `ping` reported mod version 0.3.0; `MOD_VERSION` now follows `info.txt`.
 
 Fixed: allowlisting `claude-bridge` used to let the console tool run `claude-bridge perm`, `allow`, and `deny`; the
-console op now refuses those subcommands regardless of the allowlist (only `status`, `help`, `reload`, and `test` pass).
+console op now refuses those subcommands regardless of the allowlist (only `status`, `help`, `reload`, `test`, `send`,
+`trade-snapshot`, and `dialog-snapshot` pass).
 
 ## Resources
 
@@ -436,7 +436,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | P1.1 | Sustainable farming section in the fortress-quirks skill | built 2026-10-16 |
 | P1.2 | `migrants_arrived` event kind with the newcomers | verified in-game 2026-10-16: the kind lists all six announcement types on 53.16-r2; a MIGRANT_ARRIVAL announcement raised from Lua became a migrants_arrived event with the type, position, and newcomer fields and reached the channel; the newcomer names fill at the first real wave |
 | P2.0 | Trade screen: open, press Trade, Offer, Seize, answer counter-offers, read the reply, close (`open_trade_screen`, `press_trade`, `screens_write` permission) | verified in-game 2026-10-16 on a dwarven caravan: the opener replayed the depot's Trade press (field diff recorded live) and the screen appeared; ten figurines were selected against eight merchant goods, the bridge's Trade click answered DFHack's confirm dialog itself and the merchant accepted (mood 50 to 52, goods swapped); Offer was greyed out by the game for a two-rope gift and the click correctly did nothing; close from the bridge matched Escape. Counter-offer buttons are unmeasured (open issue) |
-| P3.0 | Diplomacy dialog: availability event, open, read text and choices, step, finish (`get_meeting_dialog`, `open_meeting_dialog`, `step_meeting_dialog`) | planned 2026-10-16; live test on the owner's liaison save |
+| P3.0 | Diplomacy dialog: availability event, open, read text and choices, step, finish (`get_meeting_dialog`, `open_meeting_dialog`, `step_meeting_dialog`) | verified in-game 2026-10-16 on two liaison meetings: the opener replayed the player's recorded alert click and the dialog appeared; the bridge pressed the game's Okay and Done buttons by their on-screen labels, set a seed request on the requests step (priced 116% by the game), read the export agreement, and the farewell press closed the meeting with the agreement recorded; Escape part-way and a reopen resumed it. The land-holder step is untested (no barony offered) |
 | P4.0 | Popups: `popup` event with the text, `list_popups`, `close_popup` with optional unpause | verified in-game 2026-10-16: three boxes raised through DFHack while the game was paused were caught by the frame poller, reached the channel, listed with their text, and closed from the bridge; close without unpause left the game paused, close with unpause resumed it; focus stays dwarfmode/Default under a box |
 | P5.0 | Hotkeys: list the 16 slots, set and clear zoom hotkeys (`list_hotkeys`, `set_hotkey`, `clear_hotkey`, `hotkeys_write` permission) | verified in-game 2026-10-16: 16 slots read back with their keys (F1 to F8, Shift+F1 to Shift+F8) and F1 as the wagon; a point of interest written to F2 showed in the game's Hotkeys window and F2 jumped to it; F1 refused without overwrite, an off-map position refused, names clip at the game's 16 characters, clear emptied the slot |
 | P6.0 | Alpha 1.0.1 release | owner's |
