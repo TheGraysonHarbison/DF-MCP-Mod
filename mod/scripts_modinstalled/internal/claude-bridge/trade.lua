@@ -13,6 +13,7 @@
 --@ module = true
 
 local rpc = reqscript('internal/claude-bridge/rpc')
+local utils = require('utils')
 local nobles = reqscript('internal/claude-bridge/nobles')
 local screens = reqscript('internal/claude-bridge/screens')
 
