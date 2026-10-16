@@ -19,6 +19,7 @@ from df_mcp.tools import (
     core,
     dev,
     dig,
+    diplomats,
     events,
     farms,
     furniture,
@@ -72,6 +73,9 @@ Trade: `list_caravans`, `get_trade_depot`, `get_broker`; with `trade_write` `req
 `bring_to_depot`, `cancel_bring`, `offer_trade` (prices and weighs a deal), and once the player
 has opened the depot's trade screen, `get_trade_screen` and `select_trade_goods`; the player
 presses Trade.
+Diplomats: `list_diplomats`, `get_trade_request_options`, and with `trade_write`
+`set_trade_requests`; the liaison meeting itself is held by the site leader and finished by the
+player.
 `send_message` tells the player something inside the game (short, light red, on the left-side
 alerts, with an optional position to zoom to); use it when a plan is made or a decision is
 needed.
@@ -112,6 +116,7 @@ TOOL_MODULES = (
     messages,
     timer,
     trade,
+    diplomats,
     console,
     dev,
 )

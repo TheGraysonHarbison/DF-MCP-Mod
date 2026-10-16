@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **22**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **23**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -70,8 +70,8 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `dig_write` | off | `dig.designate`, `dig.erase` (`dig.plan` is under `map`) |
 | `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space`, `map.exposed_walls`, `map.designations`, `map.plants` |
 | `build_write` | off | `build.workshop`, `build.remove`, `build.construct`, `build.place`, `build.suspend`, `build.remove_constructions`, `farms.set_crops` |
-| `trade` | on | `trade.caravans`, `trade.depot`, `trade.broker`, `trade.screen` |
-| `trade_write` | off | `trade.request_broker`, `trade.bring`, `trade.unbring`, `trade.offer`, `trade.select` |
+| `trade` | on | `trade.caravans`, `trade.depot`, `trade.broker`, `trade.screen`, `trade.diplomats`, `trade.request_options` |
+| `trade_write` | off | `trade.request_broker`, `trade.bring`, `trade.unbring`, `trade.offer`, `trade.select`, `trade.set_requests` |
 | `stockpiles` | on | `stockpiles.list`, `stockpiles.get`, `stockpiles.presets` |
 | `stockpiles_write` | off | `stockpiles.create`, `stockpiles.configure`, `stockpiles.rename`, `stockpiles.delete` |
 | `console` | off | `console.run` (plus a per-command allowlist) |
@@ -734,6 +734,20 @@ Args: none. Needs a map. Namespace `trade`. Reads `df.global.game.main_interface
 ### `trade.select`
 
 Args: `give` (fort item ids), `take` (merchant item ids), `clear` (default true: unselect everything else), `depot_id`. Needs a map and `trade_write`, and the trade screen open (`BAD_REQUEST` otherwise). Sets `goodflag[1][i].selected` for the fort's list and `goodflag[0][i].selected` for the merchants', as DFHack's trade overlay does; the player then presses Trade or Offer. Result: `give {selected, value, missing}`, `take {...}`, `profit`, `note`. Verified in-game 2026-10-15: the selection showed on the player's screen and the Trade press got the game's weight refusal, which `trade.screen` then reported.
+
+### Diplomats (Phase 17.1)
+
+### `trade.diplomats`
+
+Args: `limit` (default 25). Needs a map. Namespace `trade`. Result: `diplomats` `[{id, name, pos, civ, job}]` (units with `isDiplomat`), `waiting_to_meet` (`plotinfo.meeting_requests`), `site_leader` `{id, name, pos, position, job}` (the highest of monarch, duke, count, baron, mayor, expedition leader), `meetings` `[{index, civ, diplomat, kind (standard, first_contact, active_plot), step, flags, has_requests, requests_set, events}]` from `plotinfo.dip_meeting_info`, `screen` (`main_interface.diplomacy`: `open`, `taking_requests`, `choosing_land_holder`, `actor`, `target`, `land_holder_candidates`), `agreements` per civilization, scanning the meeting's own `events` while the diplomat is on the map and the civilization's `meeting_events` afterwards (`where` says which): `imports {year, where, requested [{category, item, priority, price_percent}], note}` from the newest `ExportAgreement` event (named from the civilization's side: its `sell_prices` hold what the fort asked for and what the caravan will charge) and `exports {year, where, price_changes [{item, price_percent}], note}` from the newest `ImportAgreement` (its `buy_prices`, what the caravan pays for the fort's goods; prices are fixed point over 128). Item names per category come from the civilization's resources: materials lists for cloth, leather, drinks, and the like, item definitions for weapons, armor, and tools, creatures for pets, fish, and eggs, the metals flagged `ITEMS_ANVIL` for anvils, fruit and leaf growths for garden vegetables, and the wood products list for miscellaneous. `note`.
+
+### `trade.request_options`
+
+Args: `category` (optional `entity_sell_category` name), `civ_id`, `limit`. Needs a map. Namespace `trade`. Uses the live meeting on the open diplomacy screen (`diplomacy.environment.dipev`), else the recorded meeting. Each category's priority vector in `sell_requests` is listed with item names resolved from the civilization's `resources` (metals, gems, stones, leather, fiber, silk, wood, crafts, item definitions per armor and weapon category, pets, booze, cheese, powders, extracts, meat, fish, plants, cages; other categories fall back to "item n"). Result: `civ`, `categories [{category, count, items [{index, item, priority}], truncated}]`, `max_priority`, `note`. `NOT_FOUND` until the meeting has created the request list.
+
+### `trade.set_requests`
+
+Args: `requests` `[{category, item (index, name substring, or "all"), priority 0-4}]`, `civ_id`. Needs a map and `trade_write`. Writes `sell_requests.priority[category][index]`, the vector DFHack's trade-agreement overlay edits on the Requests screen. Result: `civ`, `applied`, `problems`, `note`.
 
 ### `stockpiles.list`
 
