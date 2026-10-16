@@ -28,6 +28,11 @@ def test_trade_writes():
     run(mcp, "cancel_bring", item_ids=[5])
     assert last_request(holder)["op"] == "trade.unbring"
     assert last_request(holder)["args"] == {"item_ids": [5]}
+    run(mcp, "get_trade_screen")
+    assert last_request(holder)["op"] == "trade.screen"
+    run(mcp, "select_trade_goods", give=[1], take=[9], clear=False)
+    assert last_request(holder)["op"] == "trade.select"
+    assert last_request(holder)["args"] == {"give": [1], "take": [9], "clear": False}
     run(mcp, "offer_trade", give=[1, 2], take=[9])
     assert last_request(holder)["op"] == "trade.offer"
     assert last_request(holder)["args"] == {"give": [1, 2], "take": [9]}

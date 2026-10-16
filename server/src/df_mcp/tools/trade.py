@@ -45,6 +45,32 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         """
         return call(bridge, "trade.broker")
 
+    @mcp.tool(name="get_trade_screen", annotations=READ_ONLY)
+    def get_trade_screen() -> dict[str, Any]:
+        """Read the game's own trade screen while the player has it open: whether it is open,
+        the two traders, whether unloading is finished, the merchant's last reply in plain
+        words (too heavy, not enough value, deal accepted, ...), the caravan's carrying
+        capacity, and both goods lists with what is selected, its value, and its weight.
+        """
+        return call(bridge, "trade.screen")
+
+    @mcp.tool(name="select_trade_goods", annotations=WRITE_SAFE)
+    def select_trade_goods(
+        give: list[int] | None = None,
+        take: list[int] | None = None,
+        clear: bool = True,
+        depot_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Select goods on the player's open trade screen: `give` fort item ids, `take`
+        merchant item ids (both from `get_trade_depot`). Needs `trade_write` and the screen
+        open (ask the player to open the depot and press Trade). Check the deal first with
+        `offer_trade` (value, profit, weight). The player then presses Trade or Offer.
+        """
+        args: dict[str, Any] = {"give": give or [], "take": take or [], "clear": clear}
+        if depot_id is not None:
+            args["depot_id"] = depot_id
+        return call(bridge, "trade.select", args)
+
     @mcp.tool(name="request_broker", annotations=WRITE_SAFE)
     def request_broker(
         requested: bool = True, anyone: bool = False, depot_id: int | None = None

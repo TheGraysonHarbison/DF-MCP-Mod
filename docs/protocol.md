@@ -70,8 +70,8 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `dig_write` | off | `dig.designate`, `dig.erase` (`dig.plan` is under `map`) |
 | `map` | on | `map.bounds`, `map.wagon`, `map.tile`, `map.area`, `map.find_space`, `map.exposed_walls`, `map.designations`, `map.plants` |
 | `build_write` | off | `build.workshop`, `build.remove`, `build.construct`, `build.place`, `build.suspend`, `build.remove_constructions`, `farms.set_crops` |
-| `trade` | on | `trade.caravans`, `trade.depot`, `trade.broker` |
-| `trade_write` | off | `trade.request_broker`, `trade.bring`, `trade.unbring`, `trade.offer` |
+| `trade` | on | `trade.caravans`, `trade.depot`, `trade.broker`, `trade.screen` |
+| `trade_write` | off | `trade.request_broker`, `trade.bring`, `trade.unbring`, `trade.offer`, `trade.select` |
 | `stockpiles` | on | `stockpiles.list`, `stockpiles.get`, `stockpiles.presets` |
 | `stockpiles_write` | off | `stockpiles.create`, `stockpiles.configure`, `stockpiles.rename`, `stockpiles.delete` |
 | `console` | off | `console.run` (plus a per-command allowlist) |
@@ -709,11 +709,11 @@ Args: `depot_id` (optional; the first depot otherwise), `limit` (default 25). Ne
 
 ### `trade.broker`
 
-Args: none. Needs a map. Result: `assigned`, `broker` `{id, name, pos}` (from `getUnitByNobleRole('broker')`, else the BROKER position holder), `job`, `trading` (a `TradeAtDepot` job), `at_depot`, `appraisal`, `depot_id`, `broker_requested`, `anyone_can_trade`, `note`.
+Args: none. Needs a map. Result: `assigned`, `broker` `{id, name, pos}` (from `getUnitByNobleRole('broker')`, else the BROKER position holder), `job`, `trading` (a `TradeAtDepot` job), `at_depot`, `appraisal`, `depot_id`, `broker_requested`, `anyone_can_trade`, `meetings_waiting` (`plotinfo.meeting_requests`), `is_site_leader`, `warning`, `note`.
 
 ### `trade.request_broker`
 
-Args: `requested` (default true), `anyone` (default false), `depot_id`. Needs a map and `trade_write`. Writes `trade_flags.trader_requested` and `anyone_can_trade`; the game creates the `TradeAtDepot` job once a caravan is at the depot (to be confirmed with the first caravan). Result: `depot_id`, `before`, `broker_requested`, `anyone_can_trade`, `caravan_present`, `note`.
+Args: `requested` (default true), `anyone` (default false), `depot_id`. Needs a map and `trade_write`. Writes `trade_flags.trader_requested` and `anyone_can_trade`, and when a caravan is at the depot and no `TradeAtDepot` job exists creates one the way DFHack's `lever` script creates a pull job (building holder ref, `linkIntoWorld`, `checkBuildingsNow`); withdrawing removes the job. Live on 2026-10-15 the game had created the job itself once the merchants finished unloading. A broker who is also the site leader never comes while a diplomat waits to meet them; `trade.broker` returns `warning` for that case. Result: `depot_id`, `before`, `broker_requested`, `anyone_can_trade`, `caravan_present`, `trade_job`, `job_created`, `job_removed`, `note`.
 
 ### `trade.bring`
 
@@ -725,7 +725,15 @@ Args: `item_ids`, `depot_id`. Needs a map and `trade_write`. Removes the item's 
 
 ### `trade.offer`
 
-Args: `give` (fort item ids at the depot), `take` (merchant item ids at the depot), `depot_id`. Needs a map and `trade_write`. Evaluates the deal at the caravan's prices: `give {count, value, items}`, `take {...}`, `profit`, `margin`, `verdict` (no caravan; invalid; refused, merchants never accept a loss; accepted at 50% profit; likely at 10%; marginal below), `problems`, `executed` (always false for now: the Trade button has no DFHack path and the headless drive of the game's trade screen is unverified until a caravan is at the depot), `note`.
+Args: `give` (fort item ids at the depot), `take` (merchant item ids at the depot), `depot_id`. Needs a map and `trade_write`. Evaluates the deal at the caravan's prices and weights: `give {count, value, items [{id, description, value, kg}]}`, `take {...}`, `profit`, `margin`, `weight {give_kg, take_kg, merchant_load_kg (the merchants' goods at the depot), capacity_kg (caravan_state.total_capacity), load_after_kg, fits, unknown_weights}` (item masses are `item.weight` in kilograms plus milligrams when `flags.weight_computed`), `verdict` (no caravan; invalid; refused, too heavy for the animals; refused, merchants never accept a loss; accepted at 50% profit; likely at 10%; marginal below), `problems`, `executed` (always false: the Trade button is the player's), `note`. Verified in-game 2026-10-15 against a forced dwarven caravan: five granite boulders were refused by the game with the weight reply, and the evaluation gave the same answer (1,095 kg over a 2,100 kg capacity).
+
+### `trade.screen`
+
+Args: none. Needs a map. Namespace `trade`. Reads `df.global.game.main_interface.trade`: `open`, `choosing_merchant`, `still_unloading`, `has_talker`, `fortress_trader`, `merchant_trader`, `depot_id`, `counter_offer`, `reply` (the `talk_line_type` the merchant last said) with `reply_meaning` in plain words (Weight: too heavy for the animals; Money: not enough value; Trade: deal accepted; ...), `capacity_kg`, `merchant_goods` and `fort_goods` `{count, selected, selected_value, selected_kg, total_kg}`, `load_after_kg`, `fits`. Meaningful while the player has the trade screen open.
+
+### `trade.select`
+
+Args: `give` (fort item ids), `take` (merchant item ids), `clear` (default true: unselect everything else), `depot_id`. Needs a map and `trade_write`, and the trade screen open (`BAD_REQUEST` otherwise). Sets `goodflag[1][i].selected` for the fort's list and `goodflag[0][i].selected` for the merchants', as DFHack's trade overlay does; the player then presses Trade or Offer. Result: `give {selected, value, missing}`, `take {...}`, `profit`, `note`. Verified in-game 2026-10-15: the selection showed on the player's screen and the Trade press got the game's weight refusal, which `trade.screen` then reported.
 
 ### `stockpiles.list`
 

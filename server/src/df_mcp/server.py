@@ -69,8 +69,9 @@ Your plan: `read_plan` at the start of a session; keep plans, rules, and memory 
 it with `write_plan` and `append_plan`; `read_goals` holds the player's goals, which also arrive as
 `goals` channel messages when the player sends them.
 Trade: `list_caravans`, `get_trade_depot`, `get_broker`; with `trade_write` `request_broker`,
-`bring_to_depot`, `cancel_bring`, and `offer_trade` (evaluates a deal; the trade itself is still
-the player's button).
+`bring_to_depot`, `cancel_bring`, `offer_trade` (prices and weighs a deal), and once the player
+has opened the depot's trade screen, `get_trade_screen` and `select_trade_goods`; the player
+presses Trade.
 `send_message` tells the player something inside the game (short, light red, on the left-side
 alerts, with an optional position to zoom to); use it when a plan is made or a decision is
 needed.
