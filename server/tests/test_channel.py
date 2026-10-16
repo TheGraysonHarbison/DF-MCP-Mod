@@ -230,3 +230,23 @@ def test_probe_before_initialize_is_refused_but_initialize_passes():
     assert is_pre_initialize_probe(probe, False) is probe.message
     assert is_pre_initialize_probe(init, False) is None
     assert is_pre_initialize_probe(probe, True) is None
+
+
+def test_format_batch_meeting_ready_event():
+    # Recorded shape of a meeting_ready entry from the mod's 100-tick alert poll.
+    result = {
+        "tick": 50400,
+        "events": [
+            {"seq": 12, "kind": "meeting_ready",
+             "text": "The outpost liaison Urist McLiaison has arrived.",
+             "extra": {"report_id": 3051, "announcement": "LIAISON_ARRIVAL"}},
+        ],
+        "remaining": 0,
+        "dropped": 0,
+    }
+    content, meta = format_batch(result)
+    lines = content.splitlines()
+    assert lines[1] == "- [meeting_ready] The outpost liaison Urist McLiaison has arrived."
+    assert len(lines) == 2
+    assert meta["kinds"] == "meeting_ready"
+    assert meta["kind"] == "events"

@@ -8,6 +8,8 @@ from df_mcp.bridge import Bridge
 from df_mcp.tools import call
 from df_mcp.tools.core import READ_ONLY, WRITE_SAFE
 
+MEETING_ACTIONS = ("continue", "choose", "done", "land_holder", "close")
+
 
 def register(mcp: MCPServer, bridge: Bridge) -> None:
     @mcp.tool(name="list_diplomats", annotations=READ_ONLY)
@@ -16,7 +18,9 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         to meet, the site leader (who holds the meeting) and what they are doing, the
         recorded meetings, the game's diplomacy screen state, and the standing trade
         agreements: what the fort asked the caravan to bring (`imports.requested`, with the
-        price mark-up) and what the caravan pays more for (`exports.price_changes`).
+        price mark-up) and what the caravan pays more for (`exports.price_changes`). The
+        meeting dialog itself is read with `get_meeting_dialog` and driven with
+        `open_meeting_dialog` and `step_meeting_dialog`.
         """
         if limit < 1:
             raise ValueError("limit must be at least 1")
@@ -60,3 +64,69 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         if civ_id is not None:
             args["civ_id"] = civ_id
         return call(bridge, "trade.set_requests", args)
+
+    @mcp.tool(name="get_meeting_dialog", annotations=READ_ONLY)
+    def get_meeting_dialog(limit: int = 25) -> dict[str, Any]:
+        """The liaison's meeting dialog: `available` (its left-side alert is up; `alerts`
+        lists every current alert with its report texts), `open`, `step` (`text`,
+        `requests`, `land_holder`, or `closed`), the dialog `text` as lines, the dipscript
+        position (`script`), what can be seen of the reply `choices`, the `requests` tabs,
+        the `land_holder` positions and candidates (`hist_figure_id`, name), and `paused`.
+        The open dialog pauses the game. Flow: a `meeting_ready` event, then
+        `open_meeting_dialog`, read this, set next year's requests with
+        `set_trade_requests` on the requests step, finish that step with
+        `step_meeting_dialog(action="done")`, choose a land holder when asked, and
+        `close` at the end.
+        """
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
+        return call(bridge, "trade.dialog", {"limit": limit})
+
+    @mcp.tool(name="open_meeting_dialog", annotations=WRITE_SAFE)
+    def open_meeting_dialog() -> dict[str, Any]:
+        """Open the liaison's meeting dialog the way a click on its left-side alert does
+        (needs `screens_write`). Answers `already_open` when it is open, NOT_FOUND when no
+        meeting alert is up or the game has not prepared the meeting yet, and SCREEN_BUSY
+        when the player has another screen open (the player's menu is never closed; try
+        later or tell the player). Returns the dialog as `get_meeting_dialog` reads it. The
+        opener is not yet verified in-game: if the dialog does not show, ask the player to
+        click the meeting alert.
+        """
+        return call(bridge, "trade.open_dialog", {})
+
+    @mcp.tool(name="step_meeting_dialog", annotations=WRITE_SAFE)
+    def step_meeting_dialog(
+        action: str,
+        choice: int | None = None,
+        hf_id: int | None = None,
+        position_index: int | None = None,
+        unpause: bool = False,
+    ) -> dict[str, Any]:
+        """Step the open meeting dialog (needs `screens_write`). `action`: `continue`
+        (advance the text), `choose` (a reply, with `choice` as its index), `done` (finish
+        the requests step after `set_trade_requests`), `land_holder` (appoint `hf_id`, one
+        of `land_holder.candidates`, to the position at `position_index`, default 0), or
+        `close` (close the dialog; with `unpause=True` the game resumes when `pause_write`
+        is on, otherwise it stays paused and `pause_note` says so). `continue` and
+        `choose` may answer that they are not yet replayable: then tell the player to
+        click through that part with `send_message`. Returns `replayed` (the fields
+        written) and the dialog read afterwards; SCREEN_BUSY when another screen is open.
+        """
+        if action not in MEETING_ACTIONS:
+            raise ValueError("action must be one of " + ", ".join(MEETING_ACTIONS))
+        args: dict[str, Any] = {"action": action}
+        if action == "choose":
+            if choice is None or choice < 0:
+                raise ValueError("choose needs choice, a non-negative index")
+            args["choice"] = choice
+        if action == "land_holder":
+            if hf_id is None:
+                raise ValueError("land_holder needs hf_id")
+            args["hf_id"] = hf_id
+            if position_index is not None:
+                if position_index < 0:
+                    raise ValueError("position_index must be non-negative")
+                args["position_index"] = position_index
+        if unpause:
+            args["unpause"] = True
+        return call(bridge, "trade.dialog_step", args)
