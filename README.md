@@ -1,18 +1,193 @@
 # DFHack Claude Integration Mod
 
-This is a mod for DFHack, The Dwarf Fortress Modding Engine.
+A mod for DFHack, the Dwarf Fortress modding engine, plus an MCP server for Claude Code.
 
-It acts as a bride for Claude to interface with the game and play. Answering petitions, anaylizing units, responding to events and striking the
-earth.
+It acts as a bridge for Claude to interface with the game and play: analysing units, responding to events, striking the
+earth, building, farming, trading, and running the militia, with the player able to limit what Claude may touch.
 
-Claude will basically be given all of the power the player has. The player can also chat with claude directly in game to have it act on their promts.
+Claude is given the powers the player allows it in the mod's settings window. The player can also talk to Claude directly
+in Claude Code, send it goals from a window inside the game, and read Claude's replies as in-game announcements.
 
-Whenever an important event happens in-game (Petition, Siege, Death, ETC) Claude will automatically be promted to respond.
+Whenever an important event happens in-game (a siege, a death, a caravan, a strange mood, a petition) Claude is prompted
+to respond, as long as the player enabled that kind of event.
 
-There is also a setting toggle for claude to be promted after a certain amount of time so it can play autonomously. This can be configured after
-a certain amount of ingame days, monthes, seasons or reallife seconds. This timer is to be paused when the game is paused.
+A prompt timer can also prompt Claude after a number of in-game days, each month, or a number of real minutes, so it can
+play on its own. The timer pauses when the game is paused.
 
-## Resources:
+## Requirements
+
+- Dwarf Fortress 53.16 (Steam) with DFHack 53.16-r2 installed and working. Newer stable DFHack builds should work; older
+  ones are untested.
+- Python 3.11 or newer and [uv](https://docs.astral.sh/uv/). uv installs the server's dependencies from the lock file.
+- [Claude Code](https://code.claude.com/) signed in with a claude.ai account. The mod's event push uses Claude Code
+  channels, which are in research preview: a Team or Enterprise organization needs an Owner to turn on Channels under
+  Organization settings > Claude Code; Pro and Max accounts without an organization skip that step. Bedrock, Vertex, and
+  Foundry logins cannot receive pushed events (everything else works, and events can be polled instead).
+- A terminal with bash for the one-time link script (Linux, macOS, Git Bash or WSL on Windows).
+
+## Installation
+
+The game is assumed to be installed already. Everything below happens in the folder you extract the release into; keep
+that folder where it is afterwards, because step 3 writes its path into DFHack's configuration.
+
+1. **Download the latest release.** Get `claude-bridge-<version>.zip` from the
+   [Releases page](https://github.com/TheGraysonHarbison/DF-MCP-Mod/releases), extract it, and open a terminal in the
+   extracted folder.
+
+2. **Install the Python dependencies.**
+
+   ```
+   uv sync --project server
+   ```
+
+   This creates `server/.venv` with the pinned MCP library. Nothing is installed outside the folder.
+
+3. **Install the Lua mod into DFHack.**
+
+   ```
+   tools/link-mod.sh <path to your Dwarf Fortress folder>
+   ```
+
+   The script adds the mod's scripts folder to `dfhack-config/script-paths.txt` inside your Dwarf Fortress install, so
+   DFHack finds `claude-bridge` in every world without adding a mod at world generation. Run it once; running it again
+   is harmless.
+
+4. **Open a fortress and enable the mod.** Start Dwarf Fortress, load or create a fort, open the DFHack console, and run:
+
+   ```
+   enable claude-bridge
+   claude-bridge status
+   ```
+
+   The status line shows the enabled state, the permissions, and the console allowlist. The mod re-enables itself when
+   you load a save it was enabled in. It also appears in `gui/control-panel`.
+
+5. **Open the settings and configure.** In the DFHack console:
+
+   ```
+   claude-bridge settings
+   claude-bridge goals
+   ```
+
+   The settings window has four tabs: Permissions (what Claude may read and change; reads are on, writes are off until
+   you turn them on), Console (the allowlist of DFHack commands Claude may run; empty means none), Events (which event
+   kinds are pushed to Claude), and Timer (the prompt timer). The goals window holds your goals for the fort and the
+   prompt they are sent with; Ctrl+S sends them to Claude. See [Settings](#settings).
+
+6. **Start Claude Code and enable the MCP server, the skills, and the channel.** In the extracted folder:
+
+   ```
+   claude mcp add --transport stdio --scope project dfhack -- uv run --project server df-mcp
+   claude plugin marketplace add ./df-skills
+   claude plugin install claude-df@claude-df --scope project
+   claude --dangerously-load-development-channels server:dfhack
+   ```
+
+   - The first command registers the `dfhack` MCP server for this folder (it writes a `.mcp.json` here). The server
+     uses experimental Claude Code features, which is why it is added by hand rather than shipped pre-configured. Claude
+     Code asks you to approve the project server when it starts; say yes.
+   - The second and third commands install the `claude-df` plugin, the skills that teach Claude how to run a fort
+     (see [Skills](#skills)). They write `.claude/settings.json` in this folder.
+   - The last command starts Claude Code with the server loaded as a channel, so events, goals, and timer prompts reach
+     Claude on their own. Channels are in research preview, so the flag is needed on every launch and shows a
+     confirmation screen; confirm it with "I am using this for local development". Without the flag everything still
+     works, but Claude has to poll for events (see [Playing](#playing)).
+
+7. **Enjoy.** Ask Claude to `ping`. It confirms the bridge is up and a map is loaded, reads your goals and its plan, and
+   starts playing within the permissions you gave it.
+
+## Playing
+
+Each session:
+
+1. Load the fort. `claude-bridge status` in the DFHack console shows whether the mod is enabled.
+2. In the extracted folder, start `claude --dangerously-load-development-channels server:dfhack` and confirm the dialog.
+3. Ask Claude to `ping`. From then on, every batch of enabled events reaches Claude as a channel message, two quiet
+   seconds or 50 events at a time; Claude handles them when it is idle and queues them while it is busy.
+
+Claude reads your goals from `claude-bridge goals` (Ctrl+S sends them), keeps its own plan in the save, and answers in
+the game with short light-red announcements on the left side, which you can click to zoom to the spot. Write to it in
+Claude Code at any time.
+
+The prompt timer (Timer tab, or `claude-bridge timer on|off|days N|month|minutes N`) prompts Claude on its own: every N
+in-game days, at each change of month, or every N real minutes of unpaused play, with the prompt written on that tab. Any
+event batch sent to Claude re-arms it, so a busy fort is driven by its events and a quiet one by the timer. Off by default.
+
+Two things stay with you: pressing Trade on the depot's trade screen once Claude has selected the goods, and clicking
+through the outpost liaison's meeting once Claude has set the import requests. Claude tells you when either is ready.
+
+Without the channel (no flag, or a login that cannot use channels) everything still works by hand: Claude can read
+batches with `poll_events`, and `/loop` can drive a polling loop.
+
+If events never arrive, Claude Code's log for the server is in `~/.cache/claude-cli-nodejs/<project>/mcp-logs-dfhack/`.
+"channels not enabled by org policy" means the organization's Channels switch is off; "server did not declare
+claude/channel capability" means the session was started without the flag.
+
+## Settings
+
+`claude-bridge settings` opens the settings window; the same toggles exist as console commands
+(`claude-bridge perm <namespace> on|off`, `claude-bridge allow|deny <command>`, `claude-bridge event <kind> on|off`,
+`claude-bridge timer ...`). Settings are stored in DFHack's mod state folder and apply to every world; the enabled flag
+is per fort.
+
+**Permissions** (reads on by default, writes off):
+
+| Group | Read (on) | Write (off) |
+|---|---|---|
+| General | date, time, weather; these settings; send in-game events; read and write the plan file and read goals | pause and unpause the game |
+| Units | units and their sheets; noble positions; squads | rename units; assign noble positions; create, edit, disband squads and give orders |
+| Items | stocks and artifacts; true stock counts (turn off for the bookkeeper's view) | change kitchen cook and brew settings |
+| Logistics | work orders; workshops, buildings, farms; caravans, depot, broker, diplomats; stockpiles | create, edit, delete work orders; place and remove buildings, constructions, furniture, farm crops; trade; paint and configure stockpiles |
+| World | map, tiles, designations, plants; zones | dig, channel, smooth, engrave, chop, gather; paint and edit zones |
+| Commands | | run allowlisted DFHack console commands; `lua` additionally needs its own toggle |
+
+Sending messages to you needs no permission. **Console**: Claude may run only the commands you add to the allowlist, and
+can never change the mod's own settings through it. **Events**: each kind has a toggle; mineral discovered, units
+fighting, and petitions are on by default; the "Send in-game events" permission on the first tab must stay on for any to
+be sent. **Timer**: enabled, mode, interval, and the prompt text.
+
+## Skills
+
+The `claude-df` plugin in `df-skills/` teaches Claude how to run a fort. The skills trigger on their own when the
+situation matches, and each can be invoked by hand as `/claude-df:<name>`.
+
+- **fortress-planner**: what Claude does at the start of every session (ping, permissions, time, goals, plan, fort
+  status), how it takes stock of the whole fort, its planning rules (plan seasons ahead in phases and tasks, pause while
+  planning, act within your permissions and tell you in-game after each batch of changes), the fixed template for the
+  plan it keeps in the save, and what it does when your goals, the timer, or events arrive.
+- **work-subdivision**: how Claude splits work for speed and token economy. The session model (Opus or better) manages,
+  plans, and talks to you; a Sonnet agent (`df-steward`) handles judgment calls such as a trade or crop choice; a Haiku
+  agent (`df-scout`) sorts lists, surveys the map, and places orders in bulk from exact instructions.
+- **fortress-quirks**: what the game and the bridge have taught us: dwarves move diagonally so rooms need solid corners,
+  crops are set after a plot is built, work orders need a manager, every bridge call pauses the game briefly, lists are
+  capped unless asked otherwise, what each error code means and what Claude should do about it.
+
+`df-skills/README.md` has the details and the commands to reinstall the plugin after editing a skill.
+
+## Known bugs and open issues
+
+No bugs open.
+
+Open issues (features without a DFHack API, or where the game offers only mouse-driven UI):
+
+- Petitions: reading and answering petitions through the bridge is not built. Petition events still arrive, and the
+  player answers them in the game. The design is in the plan (13.1).
+- Headless trade and meetings: the Trade button and the liaison meeting's dialog are mouse-driven UI with no DFHack
+  code behind them, so the player opens the depot screen, presses Trade, and clicks through the meeting; the mod selects
+  the goods and sets the requests on the open screens.
+- Lever linking and pulling: the link job has no DFHack reference outside adventure-mode code.
+- Multi-weapon weapon traps: DFHack's input table models one weapon per trap.
+- Siege engine aiming: DFHack's siege-engine plugin is unavailable on 53.16-r2.
+- Unit spawning for dev tests: `spawnunit` and `modtools/create-unit` are experimental on DFHack 53.16-r2 and stop with
+  "Cannot read field world.arena_spawn". Revisit when DFHack validates the script for this build.
+
+Fixed 2026-10-13: a work order created without a material showed in the game as "unknown material"; `create_work_order`
+now takes plain words and refuses orders the game would label that way.
+
+Fixed: allowlisting `claude-bridge` used to let the console tool run `claude-bridge perm`, `allow`, and `deny`; the
+console op now refuses those subcommands regardless of the allowlist (only `status`, `help`, `reload`, and `test` pass).
+
+## Resources
 
 Dwarf Fortress Wiki: https://dwarffortresswiki.org/index.php/Main_Page
 
@@ -24,7 +199,7 @@ DFHack Modding Guide: https://docs.dfhack.org/en/stable/docs/guides/modding-guid
 
 Quickfort Command For DFHack: https://docs.dfhack.org/en/stable/docs/tools/quickfort.html
 
-## Feature List:
+## Feature list
 
 **First Pass:**
 
@@ -156,7 +331,7 @@ model manages, a Sonnet steward judges, a Haiku scout surveys and places in bulk
 bridge have taught us, with a troubleshooting table). Installed with `claude plugin marketplace add ./df-skills` and
 `claude plugin install claude-df@claude-df --scope project`; see `df-skills/README.md`.
 
-**Phase 20: Final touches.** MIT license, a player-first README, and (20.1) a release workflow that zips the player files.
+**Phase 20: Final touches.** MIT license and a player-first README (Requirements, Installation, Playing, Settings, Skills), and (20.1) a release workflow that zips the player files.
 
 **Phase 21: Release.** Alpha 1.0.0.
 
@@ -209,7 +384,6 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 7.3 | List every building, cancel or dismantle any, remove constructions, suspend and resume (`list_buildings`, `remove_building`, `remove_constructions`, `suspend_building`) | verified in-game 2026-10-14: the list showed the wagon, workshops, door, and chair with build stages and filtered by kind, subtype, planned state, and box; three floor blueprints were suspended, listed as suspended, resumed, one cancelled by id and two by box; a built ramp was designated for removal and a miner took it apart, returning the log |
 | 8.0 | Zones: list and inspect (`list_zones`, `get_zone`, `zones` permission) | verified in-game 2026-10-14 against the player's gather zone and pasture: tiles, settings (gather toggles, pen occupants flag), filters by type alias, name, and active state; owner, animal, and squad fields are exercised by 8.1 |
 | 8.1 | Zones: paint, edit, assign, delete (`create_zone`, `edit_zone`, `assign_zone`, `unassign_zone`, `delete_zone`, `zones_write` permission) | verified in-game 2026-10-14: the roofed room became an office zone with the chair listed inside it, the expedition leader and manager was assigned as owner and the office appeared on his rooms tab, a dog was refused as owner, and rename, grow by a tile, shrink, deactivate, reactivate, and a wrong-type setting all behaved; delete and animal assignment are covered by unit tests and the same code paths, not yet exercised live |
-
 | 10.0 | Kitchen preferences: list and set (`list_kitchen`, `set_kitchen`, `kitchen_write` permission) | verified in-game 2026-10-15: 11 ingredients in stock listed across the four tabs with the game's default seed bans read back; cooking of the plump helmet plant was banned by key, read back as banned, and restored by plant name; a brew request on a seed changed nothing and warned |
 | 10.1 | Farm plots: soil report, crops per season, place, remove, set crops (`list_farms`, `get_farm`, `set_farm_crops`, `place_furniture(type=farm_plot)`) | verified in-game 2026-10-15 on a new embark (surface z 122): dry runs cut walls, stone floors, and a workshop out of a plot and named the loam under surface grass; a 49-tile plot was placed in a dug loam room at z 121 and built by the planter; the soil report read underground loam outside a cavern with the yield note; the plantable list gave the six underground crops in their seasons with seed counts; crops and fertilize were set and read back, a wrong-season crop and an unknown id were refused. The game clears crops when construction finishes, so crop writes now wait for a built plot |
 | 10.2 | Chop and gather designations, tree and shrub list (`list_plants`, `designate_dig` kinds `chop` and `gather`) | verified in-game 2026-10-15: 148 plants listed by kind and species over the map and in a circle; a pecan tree near the wagon was marked for felling and seven shrubs for gathering, `list_designations` showed them as chop and gather, a repeat refused them as already marked, and erase cleared the gather orders alone |
@@ -218,7 +392,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 11.2 | Squad equipment (`get_squad_equipment`, `set_squad_uniform`, `set_squad_ammo`) | verified in-game 2026-10-15 on a crossbow test squad: the read showed the leather crossbow preset, 100 bolts, and the leader's carried clothes and axe; a metal breastplate and a metal crossbow replaced their slots, a buckler was added beside the shield, unknown items and material classes were refused with the known names, and metal combat-only bolts replaced the ammunition |
 | 12 | Dev tools (`dev_create_item`, `dev_exterminate`, via the console allowlist) | verified in-game 2026-10-15: five granite boulders created at a tile and read back; `exterminate list` reported the map's wildlife; a race the fort owns was refused without `include_friendly`. Unit spawning dropped: `modtools/create-unit` fails on 53.16-r2 (open issue) |
 | 13 | Events batched and pushed through a Claude Code channel, per-kind toggles (`list_event_kinds`, `poll_events`, `events` permission, settings tabs, `claude-bridge send`) | verified in-game 2026-10-15 up to the org gate: hooks and pollers run, every mapped announcement type exists on 53.16-r2, synthetic events batched after the two-second quiet window and disabled kinds were refused, the server declared the channel capability and emitted the notification, and Claude Code accepted the capability once the server forced the classic handshake (the 2026-07-28 revision never registers a channel). Delivery into the session waits on the organization's Channels switch |
-| 13.1 | Petitions: list and answer (`list_petitions`, `answer_petition`, `petitions_write` permission) | planned 2026-10-15 |
+| 13.1 | Petitions: list and answer | not built; open issue (decided 2026-10-15), design kept in plan section 13 |
 | 14.0 | Plan and goals files in the save, goals window with Send (`get_plan_info`, `read_plan`, `write_plan`, `append_plan`, `read_goals`, `plan` permission, `claude-bridge goals`) | verified in-game 2026-10-15: `claude-df/plan.md` and `goals.md` created inside the save on enable, plan written, appended (accents intact), read back, and a 70 KB write refused; goals window and Ctrl+S delivery checked by the player |
 | 14.1 | No server buffer; the channel queue holds batches until Claude is idle | planned 2026-10-15, delivered with 13 |
 | 14.2 | In-game messages from Claude (`send_message`, `list_message_badges`, no permission needed) | verified in-game 2026-10-15: four messages posted under the rumor, research, deity, and general badges showed in light red in the announcement log and the left-side alerts, the plan message carrying a zoom position; the player approved the look and the rumor default. The owner's icon lives in `mod/assets/` for a later overlay |
@@ -228,41 +402,4 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 17.1 | Diplomats: list, request options, set requests (`list_diplomats`, `get_trade_request_options`, `set_trade_requests`) | verified in-game 2026-10-15 on a liaison meeting between the outpost liaison and the expedition leader: the waiting diplomat, site leader, and open meeting read back; all 61 request categories listed with item names; steel bars and an iron anvil at priority 4 and all drinks at 2 were set on the open Requests step and showed selected in the game; after the player pressed Done the agreement read back with the game's prices (steel 205%, iron anvil 208%, drinks 142 to 150%, and sheets bought at 207%). Holding the meeting stays with the player |
 | 18 | Active mods and plugins (`list_mods`) | verified in-game 2026-10-15: 26 mods in load order (25 vanilla plus the installed no_aquifers mod) with versions and sources; 78 loaded DFHack plugins with their commands, 35 of them switchable and 8 on (buildingplan, burrow, logistics, overlay, preserve-rooms, preserve-tombs, stonesense, RemoteFortressReader), matching DFHack's own `enable` listing |
 | 19 | Skills plugin `claude-df` (`df-skills/`: `fortress-planner`, `work-subdivision`, `fortress-quirks`; agents `df-scout` on Haiku, `df-steward` on Sonnet) | built 2026-10-15: single-folder marketplace and project-scope install checked on the dev machine with DF off (`claude plugin details` lists three skills and two agents); play-through with the skills alone is the owner's Phase 21 check |
-
-## Known bugs and open issues
-
-No bugs open.
-
-Open issues (features skipped on 2026-10-15 because DFHack has no API and the game offers only mouse-driven UI; see
-plan section 13):
-
-- Unit spawning for dev tests (Phase 12): `spawnunit` and `modtools/create-unit` are experimental (tagged
-  "unavailable") on DFHack 53.16-r2 and stop with "Cannot read field world.arena_spawn". `gui/sandbox` spawns through
-  the mouse-driven arena UI only. Revisit when DFHack validates the script for this build.
-- Lever linking and pulling (Phase 16): the link job has no DFHack reference outside adventure-mode code.
-- Multi-weapon weapon traps (Phase 16): DFHack's input table models one weapon per trap.
-- Siege engine aiming: DFHack's siege-engine plugin is unavailable on 53.16-r2.
-- Headless trade and meetings (17.0, 17.1): the Trade button and the liaison meeting's dialog are mouse-driven UI with
-  no DFHack code behind them, so the player opens the depot screen, presses Trade, and clicks through the meeting;
-  the mod selects the goods and sets the requests on the open screens. A `hold_meeting` tool and storing requests
-  before the meeting opens are not built. Deferred by the owner on 2026-10-15, not blocked.
-- Answering petitions (13.1) is built as a mod-side API; if the game refuses it headlessly it moves to this list
-  with its reads kept.
-
-Fixed 2026-10-13: a work order created without a material showed in the game as "unknown material" (for example
-"make unknown material rock blocks") because "any stone" was not expressible; `create_work_order` now takes plain
-words and refuses orders the game would label that way.
-
-Fixed: allowlisting `claude-bridge` used to let the console tool run `claude-bridge perm`, `allow`, and `deny`; the
-console op now refuses those subcommands regardless of the allowlist (only `status`, `help`, `reload`, and `test`
-pass).
-
-## Running it
-
-1. `tools/link-mod.sh <Dwarf Fortress folder>` once, then `enable claude-bridge` in the DFHack console.
-2. Open Claude Code in this repository. The `.mcp.json` here starts the server with `uv run --project server df-mcp`.
-3. Ask Claude to `ping`.
-4. For events, goals, and the prompt timer (Phases 13 to 15) the server must be loaded as a channel: an org Owner
-   enables Channels under Organization settings > Claude Code, and the session is started with
-   `claude --dangerously-load-development-channels server:dfhack` while custom channels are in research preview.
-   `docs/playing.md` walks through a play session and the log lines to check when nothing arrives.
+| 20 | MIT license, README reordered for players (Requirements, Installation, Playing, Settings, Skills, open issues, then the feature list and progress) | built 2026-10-15 |
