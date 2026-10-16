@@ -38,8 +38,8 @@ function PermissionsPage:init()
             frame = {t = 2, l = 1, r = 0, b = 1},
             choices = self:choices(),
             on_submit = function(_, choice)
-                if choice and choice.key then
-                    state.set_permission(choice.key, not state.is_allowed(choice.key))
+                if choice and choice.setting then
+                    state.set_permission(choice.setting, not state.is_allowed(choice.setting))
                     self:refresh()
                 end
             end,
@@ -56,8 +56,9 @@ function PermissionsPage:choices()
     for _, group in ipairs(state.GROUPS) do
         table.insert(choices, {text = {{text = group, pen = COLOR_LIGHTCYAN}}})
         for _, ns in ipairs(state.namespaces_in(group)) do
+            -- `key` on a List choice means a hotkey to draw; the setting name goes elsewhere.
             table.insert(choices, {
-                key = ns.key,
+                setting = ns.key,
                 text = {{text = '  '}, checkbox(state.is_allowed(ns.key)), {text = ns.label}},
             })
         end
@@ -147,8 +148,8 @@ function EventsPage:init()
             frame = {t = 2, l = 1, r = 0, b = 3},
             choices = self:kind_choices(),
             on_submit = function(_, choice)
-                if choice and choice.key then
-                    state.set_event_enabled(choice.key, not state.is_event_enabled(choice.key))
+                if choice and choice.setting then
+                    state.set_event_enabled(choice.setting, not state.is_event_enabled(choice.setting))
                     self:refresh()
                 end
             end,
@@ -169,7 +170,7 @@ end
 function EventsPage:kind_choices()
     local choices = {}
     for _, k in ipairs(events.KINDS) do
-        table.insert(choices, {key = k.key, text = {checkbox(state.is_event_enabled(k.key)), {text = k.label}}})
+        table.insert(choices, {setting = k.key, text = {checkbox(state.is_event_enabled(k.key)), {text = k.label}}})
     end
     return choices
 end
