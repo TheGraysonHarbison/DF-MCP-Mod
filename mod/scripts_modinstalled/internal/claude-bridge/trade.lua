@@ -1,13 +1,20 @@
--- Trade (plan section 13, Phase 17.0): caravans, the depot, the broker, hauling goods to
--- the depot, and a trade proposal. Reads follow DFHack's caravan script (hack/scripts/
--- internal/caravan, checked 2026-10-15); hauling uses dfhack.items.markForTrade, which
--- creates the BringItemToDepot job the vanilla "move goods" screen creates. The trade
--- itself is a vanilla mouse button with no DFHack path; trade.offer evaluates a proposal
--- and will drive the game's trade screen once that is verified against a real caravan.
+-- Trade (plan section 13, Phase 17.0; plan section 15, P2.0): caravans, the depot, the
+-- broker, hauling goods to the depot, a trade proposal, and the game's own trade screen.
+-- Reads follow DFHack's caravan script (hack/scripts/internal/caravan, checked 2026-10-15);
+-- hauling uses dfhack.items.markForTrade, which creates the BringItemToDepot job the vanilla
+-- "move goods" screen creates. P2.0 (plan 15.2 "Trade open", "Trade press", "Menu clash",
+-- "Unpause"): trade.open_screen replays the state the depot sheet's Trade button writes into
+-- game.main_interface.trade (trade_interfacest, df-structures master df.d_interface.xml,
+-- checked 2026-10-16); trade.press clicks the Trade, Offer, and Seize buttons through
+-- gui.simulateInput at the frames DFHack's confirm plugin intercepts (hack/scripts/internal/
+-- confirm/specs.lua and hack/scripts/confirm.lua as shipped with DFHack 53.16-r2; Lua API
+-- simulateInput, https://docs.dfhack.org/en/stable/docs/dev/Lua%20API.html, checked
+-- 2026-10-16), so the game's own handlers make the exchange. The mod never trades itself.
 --@ module = true
 
 local rpc = reqscript('internal/claude-bridge/rpc')
 local nobles = reqscript('internal/claude-bridge/nobles')
+local screens = reqscript('internal/claude-bridge/screens')
 
 DEFAULT_LIMIT = 25
 LIST_LIMIT = 25
@@ -315,6 +322,46 @@ local function broker(args)
     return out
 end
 
+-- The merchant's words on the trade screen: main_interface.trade.big_announce, a
+-- curses_text_boxst. VERIFY LIVE: its layout is not in the df-structures files checked
+-- 2026-10-16; DFHack's devel/dump-tooltip-ids iterates another curses_text_boxst with ipairs
+-- and reads `line.value`, so this tries a `text` string vector first and then the box itself
+-- as that vector. Check with `claude-bridge trade-snapshot` (big_announce_text) after a reply.
+local function box_lines(box)
+    local lines = {}
+    local function add(line)
+        local text = type(line) == 'string' and line or safe(function() return line.value end)
+        if type(text) == 'string' and text:find('%S') then table.insert(lines, text) end
+    end
+    pcall(function() for _, line in ipairs(box.text) do add(line) end end)
+    if #lines == 0 then pcall(function() for _, line in ipairs(box) do add(line) end end) end
+    return lines
+end
+
+local function merchant_message(tr)
+    local lines = {}
+    pcall(function() lines = box_lines(tr.big_announce) end)
+    if #lines == 0 then return nil end
+    return (table.concat(lines, ' '):gsub('%s+', ' '):gsub('^ ', ''):gsub(' $', ''))
+end
+
+-- The goods the merchant asks for in a counter-offer (trade_interfacest.counter_offer_item).
+local function counter_offer_items(tr, limit)
+    limit = math.floor(tonumber(limit) or DEFAULT_LIMIT)
+    local out = {items = {}, count = 0, truncated = false}
+    pcall(function()
+        out.count = #tr.counter_offer_item
+        for i = 0, out.count - 1 do
+            if #out.items >= limit then break end
+            local item = tr.counter_offer_item[i]
+            table.insert(out.items, {id = item.id, description = safe(dfhack.items.getReadableDescription, item),
+                                     value = safe(dfhack.items.getValue, item, tr.mer)})
+        end
+    end)
+    out.truncated = out.count > #out.items
+    return out
+end
+
 -- The game's own trade screen state (df.global.game.main_interface.trade), the view the
 -- Trade button operates on; only meaningful while the screen is open.
 local function screen(args)
@@ -329,6 +376,12 @@ local function screen(args)
         out.merchant_trader = tr.merchant_trader and unit_ref(tr.merchant_trader) or nil
         out.depot_id = tr.bld and tr.bld.id or nil
         out.counter_offer = tr.counter_offer
+        out.mood = safe(function() return tr.mer.mood end)
+        out.merchant_message = merchant_message(tr)
+        local offered = counter_offer_items(tr, args.limit)
+        out.counter_offer_items = offered.items
+        out.counter_offer_count = offered.count
+        out.counter_offer_truncated = offered.truncated
         out.reply = enum_name(df.talk_line_type, tr.talkline)
         out.reply_meaning = REPLY_MEANING[out.reply or '']
         out.capacity_kg = caravan_capacity(tr.mer)
@@ -586,19 +639,20 @@ local function offer(args)
         take = {count = #take, value = take_value, items = take},
         profit = profit, margin = margin, weight = weight, verdict = verdict, problems = problems,
         executed = false,
-        note = 'this evaluates the deal with the caravan\'s own prices; the trade itself is still the game\'s '
-            .. 'Trade button (driving it headlessly is unverified until a caravan is at the depot)',
+        note = 'this evaluates the deal with the caravan\'s own prices and trades nothing; select the goods on the '
+            .. 'open trade screen with select_trade_goods and press Trade with press_trade (or the player does)',
     }
 end
 
 -- Select goods on the open trade screen (what DFHack's trade overlay does: it flips
 -- main_interface.trade.goodflag[side][i].selected; side 0 is the merchants' list, 1 the
--- fort's). The Trade button itself stays the player's until the headless press is verified.
+-- fort's). trade.press presses the buttons afterwards.
 local function select_goods(args)
     local tr = safe(function() return df.global.game.main_interface.trade end)
     if not tr or not tr.open then
         return rpc.error_result(rpc.ERR_BAD_REQUEST,
-            'the trade screen is not open; open the depot and press Trade (the broker must be at the depot), then call again')
+            'the trade screen is not open; open it with open_trade_screen (needs screens_write) or ask the player to '
+                .. 'press Trade on the depot (the broker must be at the depot), then call again')
     end
     local want_give, want_take = {}, {}
     for _, id in ipairs(args.give or {}) do want_give[math.floor(tonumber(id) or -1)] = true end
@@ -629,8 +683,309 @@ local function select_goods(args)
     pcall(apply, 1, want_give, result.give)
     pcall(apply, 0, want_take, result.take)
     result.profit = result.give.value - result.take.value
-    result.note = 'goods are selected on the trade screen; the player presses Trade, Offer, or closes it'
+    result.note = 'goods are selected on the trade screen; press_trade presses Trade or Offer (screens_write), '
+        .. 'or the player does it by hand'
     return result
+end
+
+----------------------------------------------------------------------------------------------
+-- the trade screen (P2.0, plan section 15.2)
+
+local function trade_interface()
+    return safe(function() return df.global.game.main_interface.trade end)
+end
+
+local function unit_at_depot(unit, depot)
+    return safe(function()
+        return unit.pos.z == depot.z and unit.pos.x >= depot.x1 and unit.pos.x <= depot.x2
+            and unit.pos.y >= depot.y1 and unit.pos.y <= depot.y2
+    end) == true
+end
+
+-- Caravans standing at the depot, as {index, car} with the list_caravans index.
+local function caravans_at_depot()
+    local out = {}
+    pcall(function()
+        for i, car in ipairs(df.global.plotinfo.caravans) do
+            local row = caravan_row(i, car)
+            if row.active and row.state == 'at_depot' then table.insert(out, {index = i, car = car}) end
+        end
+    end)
+    return out
+end
+
+local function index_list(waiting)
+    local have = {}
+    for _, w in ipairs(waiting) do table.insert(have, tostring(w.index)) end
+    return table.concat(have, ', ')
+end
+
+-- The fields the depot sheet's Trade button writes, as far as the plan's research shows.
+-- VERIFY LIVE: the owner presses Trade once on the caravan save with `claude-bridge
+-- trade-snapshot` run before and after; correct this list (and the values written in
+-- open_screen) from that diff. The strings title, talker, fortname, place and the
+-- stillunloading and havetalker flags are left to the game unless the diff says otherwise.
+local REPLAY_FIELDS = {'bld', 'mer', 'civ', 'st', 'choosing_merchant', 'buildlists', 'handle_appraisal', 'open'}
+
+local function open_screen(args)
+    local tr = trade_interface()
+    if not tr then return rpc.error_result(rpc.ERR_INTERNAL, 'no trade interface struct on this build') end
+    if safe(function() return tr.open end) == true then
+        return {opened = true, already_open = true, replayed = {}, screen = screen({}), warnings = {},
+                note = 'the trade screen was already open; nothing was written'}
+    end
+    local busy = screens.require_focus({screens.MAIN_FOCUS}, 'open_trade_screen')
+    if busy then return busy end
+    local depot, err = find_depot(args)
+    if not depot then return err end
+    if not is_built(depot) then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, 'the trade depot is not built yet; wait for it to be finished')
+    end
+    local waiting = caravans_at_depot()
+    if #waiting == 0 then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            'no caravan is at the depot yet; check list_caravans and call again once one is at_depot')
+    end
+    local warnings = {}
+    local chosen = waiting[1]
+    if args.caravan_index ~= nil then
+        local want = math.floor(tonumber(args.caravan_index) or -1)
+        chosen = nil
+        for _, w in ipairs(waiting) do if w.index == want then chosen = w end end
+        if not chosen then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST, ('caravan %s is not at the depot; caravans at the depot: %s')
+                :format(tostring(args.caravan_index), index_list(waiting)))
+        end
+    elseif #waiting > 1 then
+        table.insert(warnings, ('%d caravans are at the depot (indexes %s); opened caravan %d, pass caravan_index '
+            .. 'for another'):format(#waiting, index_list(waiting), chosen.index))
+    end
+    local caravan = chosen.car
+    local anyone = safe(function() return depot.trade_flags.anyone_can_trade end) == true
+    local broker = broker_unit()
+    if not anyone and (not broker or not unit_at_depot(broker, depot)) then
+        table.insert(warnings, 'the broker is not standing at the depot; the screen may open without a trader '
+            .. '(has_talker false) and the merchants will not deal until the broker arrives; see get_broker')
+    end
+    -- VERIFY LIVE: the replayed field set and values (see REPLAY_FIELDS).
+    local saved = {}
+    for _, name in ipairs(REPLAY_FIELDS) do saved[name] = safe(function() return tr[name] end) end
+    local ok, werr = pcall(function()
+        tr.bld = depot
+        tr.mer = caravan
+        tr.civ = df.historical_entity.find(caravan.entity)
+        tr.st = df.world_site.find(df.global.plotinfo.site_id)
+        tr.choosing_merchant = false
+        tr.buildlists = 1
+        tr.handle_appraisal = 1
+        tr.open = true
+    end)
+    if not ok then
+        for _, name in ipairs(REPLAY_FIELDS) do pcall(function() tr[name] = saved[name] end) end
+        return rpc.error_result(rpc.ERR_INTERNAL, 'opening the trade screen failed and was undone: ' .. tostring(werr))
+    end
+    local view = screen({})
+    if view.still_unloading then
+        table.insert(warnings, 'the merchants are still unloading; wait until still_unloading is false before trading')
+    end
+    return {
+        opened = view.open == true, replayed = REPLAY_FIELDS, caravan_index = chosen.index,
+        screen = view, warnings = warnings,
+        note = 'the game fills the goods lists on its next frame; read get_trade_screen, select goods with '
+            .. 'select_trade_goods, and press with press_trade',
+    }
+end
+
+-- Button frames as DFHack's confirm plugin measures them against gui.get_interface_rect()
+-- (specs.lua: trade-confirm-trade, trade-offer, trade-seize; context dwarfmode/Trade/Default).
+FRAMES = {
+    trade = {l = 0, r = 23, b = 4, w = 11, h = 3},
+    offer = {l = 40, r = 5, b = 4, w = 19, h = 3},
+    seize = {l = 0, r = 73, b = 4, w = 11, h = 3},
+}
+-- VERIFY LIVE: the counter-offer Accept and Decline buttons are not measured. On the caravan
+-- save, run `claude-bridge trade-snapshot` while hovering each (its mouse and interface_rect)
+-- and fill in frames in the same {l, r, t, b, w, h} form:
+--   accept_counter = {l = ?, b = ?, w = ?, h = ?},
+--   decline_counter = {l = ?, b = ?, w = ?, h = ?},
+COUNTER_FRAMES = {}
+
+local ACTIONS = {trade = true, offer = true, seize = true, accept_counter = true, decline_counter = true, close = true}
+
+local function selected_count(tr, side)
+    local n = 0
+    pcall(function()
+        for i = 0, #tr.goodflag[side] - 1 do
+            if tr.goodflag[side][i].selected then n = n + 1 end
+        end
+    end)
+    return n
+end
+
+local function press_state(tr)
+    return {
+        open = safe(function() return tr.open end) == true,
+        mood = safe(function() return tr.mer.mood end),
+        talkline = safe(function() return tr.talkline end),
+        counter_offer = safe(function() return tr.counter_offer end) == true,
+        merchant_selected = selected_count(tr, 0),
+        fort_selected = selected_count(tr, 1),
+        merchant_goods = safe(function() return #tr.good[0] end),
+        fort_goods = safe(function() return #tr.good[1] end),
+    }
+end
+
+local function press_note(action, before, after)
+    for k, v in pairs(after) do
+        if before[k] ~= v then
+            if after.counter_offer then
+                return 'the merchant made a counter-offer (counter_offer_items); answer with accept_counter or decline_counter'
+            elseif action == 'trade' then
+                return 'the deal is done when reply is Trade; otherwise read reply_meaning, change the selection, try again'
+            elseif action == 'seize' then
+                return 'goods seized; the civilization is angered and this caravan will not trade again'
+            end
+            return 'read reply_meaning and mood_after; close the screen with press_trade("close") when done'
+        end
+    end
+    return 'nothing on the trade screen changed after the click; the game may not have taken it. Tell the player '
+        .. 'and let them press the button by hand'
+end
+
+local function press(args)
+    local action = args.action
+    if type(action) ~= 'string' or not ACTIONS[action] then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            '"action" must be one of trade, offer, seize, accept_counter, decline_counter, close')
+    end
+    local tr = trade_interface()
+    if not tr then return rpc.error_result(rpc.ERR_INTERNAL, 'no trade interface struct on this build') end
+    if safe(function() return tr.open end) ~= true then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, 'the trade screen is not open; open it with open_trade_screen first')
+    end
+    local busy = screens.require_focus({'dwarfmode/Trade'}, 'press_trade')
+    if busy then return busy end
+    local before = press_state(tr)
+
+    if action == 'close' then
+        -- VERIFY LIVE: open = false does what the screen's own close does (focus back to
+        -- dwarfmode/Default, selections dropped, no texture field touched).
+        local ok, werr = pcall(function() tr.open = false end)
+        if not ok then return rpc.error_result(rpc.ERR_INTERNAL, 'closing the trade screen failed: ' .. tostring(werr)) end
+        local out = {action = action, confirm_answered = false, mood_before = before.mood, mood_after = before.mood,
+                     counter_offer = before.counter_offer, screen_open = safe(function() return tr.open end) == true,
+                     note = 'the trade screen is closed; the merchants pack up when their time is up'}
+        for k, v in pairs(screens.maybe_unpause(args)) do out[k] = v end
+        return out
+    end
+
+    if (action == 'trade' or action == 'offer') and before.fort_selected == 0 then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('%s needs at least one fort good selected; select them with select_trade_goods (give)'):format(action))
+    end
+    if action == 'seize' and before.merchant_selected == 0 then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            'seize needs at least one merchant good selected; select them with select_trade_goods (take)')
+    end
+    if (action == 'accept_counter' or action == 'decline_counter') and not before.counter_offer then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            'the merchant has made no counter-offer; read get_trade_screen (counter_offer) first')
+    end
+    local frame = FRAMES[action] or COUNTER_FRAMES[action]
+    if not frame then
+        return rpc.error_result(rpc.ERR_NOT_FOUND,
+            'the counter-offer buttons are not measured yet; run `claude-bridge trade-snapshot` while hovering them')
+    end
+
+    -- VERIFY LIVE: screens.CLICK_KEYS is {_MOUSE_L = true}; if the first live click does
+    -- nothing, _MOUSE_L_DOWN may be needed too (an owner change in screens.lua).
+    local ok, clicked = pcall(screens.click_frame, frame)
+    if not ok then
+        return rpc.error_result(rpc.ERR_INTERNAL, 'the click could not be sent: ' .. tostring(clicked))
+    end
+    local confirmed = screens.answer_confirm()
+
+    local after = press_state(tr)
+    local reply = enum_name(df.talk_line_type, after.talkline)
+    local offered = counter_offer_items(tr, args.limit)
+    local out = {
+        action = action, clicked = clicked, confirm_answered = confirmed,
+        reply = reply, reply_meaning = REPLY_MEANING[reply or ''],
+        merchant_message = merchant_message(tr),
+        mood_before = before.mood, mood_after = after.mood,
+        counter_offer = after.counter_offer,
+        counter_offer_items = offered.items, counter_offer_truncated = offered.truncated,
+        screen_open = after.open,
+        goods_after = {merchant = after.merchant_goods, fort = after.fort_goods},
+        note = press_note(action, before, after),
+    }
+    for k, v in pairs(screens.maybe_unpause(args)) do out[k] = v end
+    return out
+end
+
+----------------------------------------------------------------------------------------------
+-- dev aid: `claude-bridge trade-snapshot` (the P2.0 live diff). Read-only.
+
+local function snapshot_value(v)
+    local t = type(v)
+    if t == 'nil' then return 'nil' end
+    if t == 'boolean' or t == 'number' then return v end
+    if t == 'string' then return (v:gsub('[^%c]+', dfhack.df2utf)) end
+    if t ~= 'userdata' then return tostring(v) end
+    if safe(function() return v._kind end) == 'container' then
+        local n = safe(function() return #v end) or 0
+        local first = n > 0 and safe(function() return v[0] end) or nil
+        local ft = type(first)
+        if ft == 'userdata' and safe(function() return first._kind end) == 'container' then
+            local lengths = {}
+            for i = 0, n - 1 do table.insert(lengths, safe(function() return #v[i] end) or -1) end
+            return {lengths = lengths}
+        end
+        if n <= 4 and (ft == 'number' or ft == 'boolean' or ft == 'string') then
+            local values = {}
+            for i = 0, n - 1 do table.insert(values, snapshot_value(safe(function() return v[i] end))) end
+            return {values = values}
+        end
+        return {length = n}
+    end
+    local type_name = tostring(safe(function() return v._type end))
+    local id = safe(function() return v.id end)
+    if id ~= nil then return {id = id, type = type_name} end
+    return {type = type_name}
+end
+
+-- Every field of main_interface.trade (scalars as values, vectors as lengths, pointers as
+-- ids), plus focus, interface rect, mouse, and pause state.
+function snapshot()
+    local gui = require('gui')
+    local out = {}
+    local tr = trade_interface()
+    if tr then
+        for name, value in pairs(tr) do
+            local ok, row = pcall(snapshot_value, value)
+            out[name] = ok and row or ('unreadable: ' .. tostring(row))
+        end
+        out.talkline_name = enum_name(df.talk_line_type, safe(function() return tr.talkline end))
+        out.mer_entity = safe(function() return tr.mer.entity end)
+        out.mer_mood = safe(function() return tr.mer.mood end)
+        pcall(function()
+            for i, car in ipairs(df.global.plotinfo.caravans) do
+                if car == tr.mer then out.mer_index = i end
+            end
+        end)
+        local text = merchant_message(tr)
+        out.big_announce_text = text and (text:gsub('[^%c]+', dfhack.df2utf)) or 'nil'
+    else
+        out.error = 'no trade interface struct on this build'
+    end
+    out.focus = screens.focus()
+    out.interface_rect = safe(function()
+        local r = gui.get_interface_rect()
+        return {x1 = r.x1, y1 = r.y1, x2 = r.x2, y2 = r.y2, width = r.width, height = r.height}
+    end)
+    out.mouse = {dfhack.screen.getMousePos()}
+    out.paused = safe(dfhack.world.ReadPauseState)
+    return out
 end
 
 function ops()
@@ -644,5 +999,7 @@ function ops()
         ['trade.unbring'] = {namespace = 'trade_write', handler = unbring, needs_map = true},
         ['trade.offer'] = {namespace = 'trade_write', handler = offer, needs_map = true},
         ['trade.select'] = {namespace = 'trade_write', handler = select_goods, needs_map = true},
+        ['trade.open_screen'] = {namespace = 'screens_write', handler = open_screen, needs_map = true},
+        ['trade.press'] = {namespace = 'screens_write', handler = press, needs_map = true},
     }
 end
