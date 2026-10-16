@@ -27,6 +27,7 @@ from df_mcp.tools import (
     map,
     messages,
     military,
+    mods,
     nobles,
     orders,
     plan,
@@ -76,6 +77,8 @@ presses Trade.
 Diplomats: `list_diplomats`, `get_trade_request_options`, and with `trade_write`
 `set_trade_requests`; the liaison meeting itself is held by the site leader and finished by the
 player.
+`list_mods` shows the active Dwarf Fortress mods and loaded DFHack plugins, so check it before
+assuming vanilla raws or tools.
 `send_message` tells the player something inside the game (short, light red, on the left-side
 alerts, with an optional position to zoom to); use it when a plan is made or a decision is
 needed.
@@ -98,6 +101,7 @@ TOOL_MODULES = (
     units,
     nobles,
     military,
+    mods,
     stocks,
     orders,
     workshops,
@@ -117,6 +121,7 @@ TOOL_MODULES = (
     timer,
     trade,
     diplomats,
+    mods,
     console,
     dev,
 )

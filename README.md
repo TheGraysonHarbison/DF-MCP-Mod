@@ -147,7 +147,8 @@ open issue.
 trade through a mod-side API (17.0). See diplomats, the pending meeting, and the trade agreement; set next year's import requests while
 the player holds the meeting (17.1).
 
-**Phase 18: Mods.** The active Dwarf Fortress mods and loaded DFHack plugins.
+**Phase 18: Mods.** The active Dwarf Fortress mods in load order with their source, and the loaded DFHack plugins
+with their commands and on/off state, through `list_mods`.
 
 **Future plans** (after 18, not scheduled):
 
@@ -215,7 +216,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 16 | Traps, siege engines, trade depot (`place_furniture` types lever, pressure_plate, cage_trap, stone_fall_trap, weapon_trap, upright_spike, catapult, ballista, trade_depot; pressure plate trigger settings) | verified in-game 2026-10-15: dry runs named the missing mechanisms, spikes, and siege parts with the work orders that make them; two granite mechanisms were created with the dev tool and a lever and a units-only pressure plate were placed in the east loam room; the trade depot and siege engines dry-ran with their 5 by 5 and 3 by 3 footprints |
 | 17.0 | Trade: caravans, depot, broker, bring goods, evaluate and select a deal (`list_caravans`, `get_trade_depot`, `get_broker`, `get_trade_screen`, `request_broker`, `bring_to_depot`, `cancel_bring`, `offer_trade`, `select_trade_goods`, `trade` and `trade_write` permissions) | verified in-game 2026-10-15 against two forced dwarven caravans: caravan, depot, and broker states read back; the broker request and the game's TradeAtDepot job; five boulders and ten figurines hauled to the depot; the weight model matched the game's "too heavy" refusal to the kilogram (1,095 over a 2,100 kg capacity); then ten figurines were selected for a black bronze flask on the player's open trade screen, the player pressed Trade, and the merchant accepted (mood 50 to 53, depot used once). Opening the screen and pressing Trade stay with the player for now |
 | 17.1 | Diplomats: list, request options, set requests (`list_diplomats`, `get_trade_request_options`, `set_trade_requests`) | verified in-game 2026-10-15 on a liaison meeting between the outpost liaison and the expedition leader: the waiting diplomat, site leader, and open meeting read back; all 61 request categories listed with item names; steel bars and an iron anvil at priority 4 and all drinks at 2 were set on the open Requests step and showed selected in the game; after the player pressed Done the agreement read back with the game's prices (steel 205%, iron anvil 208%, drinks 142 to 150%, and sheets bought at 207%). Holding the meeting stays with the player |
-| 18 | Active mods and plugins (`list_mods`) | planned 2026-10-15 |
+| 18 | Active mods and plugins (`list_mods`) | verified in-game 2026-10-15: 26 mods in load order (25 vanilla plus the installed no_aquifers mod) with versions and sources; 78 loaded DFHack plugins with their commands, 35 of them switchable and 8 on (buildingplan, burrow, logistics, overlay, preserve-rooms, preserve-tombs, stonesense, RemoteFortressReader), matching DFHack's own `enable` listing |
 
 ## Known bugs and open issues
 

@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **23**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **24**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -48,7 +48,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 |---|---|---|
 | `core` | always allowed | `core.ping` |
 | `messages` | always allowed | `messages.say`, `messages.badges` |
-| `settings` | on | `settings.get` |
+| `settings` | on | `settings.get`, `settings.mods` |
 | `time` | on | `time.now` |
 | `pause_write` | off | `time.set_pause` |
 | `events` | on | `events.kinds`, `events.poll`, `events.emit`, `timer.status` |
@@ -154,6 +154,14 @@ Also returns `events`: every event kind with its enabled state.
 Args: none.
 
 Result: `groups` (display order: General, Units, Items, Commands), `permissions` (object of `{allowed, label, group, toggle}` keyed by namespace; `toggle` marks plain settings such as `stocks_true` that gate behaviour inside a handler rather than an op namespace), `console_allow` (array of command names), `ops` (array of `{op, namespace}`).
+
+### `settings.mods`
+
+The active Dwarf Fortress mods and the loaded DFHack plugins (Phase 18). Mods come from `script-manager.get_active_mods()`, the world's object load order, so they need a loaded world; source is read from the path prefix (`data/vanilla/` vanilla, `data/installed_mods/` installed, `mods/` Steam Workshop). Plugins come from `dfhack.internal.listPlugins()`; a plugin that supports enable/disable exposes `isEnabled()` on its `plugins.<name>` Lua module, which sets `enabled`; others have no switch and carry no `enabled` field.
+
+Args: `limit` (default 25, applied to mods and plugins separately), `only_enabled` (plugins with `enabled` true only).
+
+Result: `world_loaded`, `dfhack_version`, `df_version`, `mods` `[{load_order, id, name, version, numeric_version, source, vanilla}]`, `mod_count`, `mods_truncated`, `plugins` `[{name, commands, enabled?, description?}]`, `plugin_count`, `plugins_truncated`, `note`.
 
 ### `time.now`
 

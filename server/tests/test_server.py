@@ -116,6 +116,7 @@ def test_server_registers_expected_tools():
         "list_diplomats",
         "get_trade_request_options",
         "set_trade_requests",
+        "list_mods",
         "dev_create_item",
         "dev_exterminate",
     }
