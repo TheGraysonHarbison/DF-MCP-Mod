@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **18**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **19**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -47,6 +47,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | Namespace | Default | Ops |
 |---|---|---|
 | `core` | always allowed | `core.ping` |
+| `messages` | always allowed | `messages.say`, `messages.badges` |
 | `settings` | on | `settings.get` |
 | `time` | on | `time.now` |
 | `pause_write` | off | `time.set_pause` |
@@ -117,6 +118,18 @@ Args: `text` (at most 65536 bytes). Needs a world. Replaces the plan. Result: `f
 ### `plan.append`
 
 Args: `text`. Needs a world. Appends with a newline before and after as needed; refused with `BAD_REQUEST` when the file would pass the cap. Result: `file`, `bytes`, `appended`. All verified in-game 2026-10-15.
+
+### `messages.say`
+
+Args: `text` (non-empty, at most 200 characters after whitespace is collapsed), `x`, `y`, `z` (optional, together), `badge` (`rumor` default, `general`, `research`, `guest`, `masterpiece`, `noble`, `era`, `holdings`, `deity`, `agreement`). Needs a map. Namespace `messages`, always allowed.
+
+Calls `dfhack.gui.makeAnnouncement(type, {D_DISPLAY, A_DISPLAY}, pos, text, COLOR_RED, bright)` with an announcement type of the badge's alert category (`RUMOR_SPREAD` for `rumor`, `REACHED_PEAK` for `general`, and so on), which writes the report into the announcement log and the left-side alert stack with that category's icon. With a position the report's `zoom_type` is set to `Generic` so the alert's click zooms there. No pause, no immediate recenter, and the texture cache is never touched (rule 13). Light red (red, bright) is the Steam palette's closest colour to orange. Identical repeated text within the same alert category is counted by the game as a repeat rather than a new line.
+
+Result: `text`, `badge`, `announcement_type`, `pos`, `report_id`, `index`, `note`.
+
+### `messages.badges`
+
+Args: none. Result: `badges` `[{badge, announcement_type}]`, `default`, `max_chars`.
 
 ### `core.ping`
 
