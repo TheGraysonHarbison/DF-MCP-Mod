@@ -150,7 +150,17 @@ the player holds the meeting (17.1).
 **Phase 18: Mods.** The active Dwarf Fortress mods in load order with their source, and the loaded DFHack plugins
 with their commands and on/off state, through `list_mods`.
 
-**Future plans** (after 18, not scheduled):
+**Phase 19: Skills.** A Claude Code plugin in `df-skills/` for release sessions, which have no `CLAUDE.md`: `fortress-planner`
+(session start, taking stock, phased long-term plans in `plan.md` with a fixed template), `work-subdivision` (the session
+model manages, a Sonnet steward judges, a Haiku scout surveys and places in bulk), and `fortress-quirks` (what the game and the
+bridge have taught us, with a troubleshooting table). Installed with `claude plugin marketplace add ./df-skills` and
+`claude plugin install claude-df@claude-df --scope project`; see `df-skills/README.md`.
+
+**Phase 20: Final touches.** MIT license, a player-first README, and (20.1) a release workflow that zips the player files.
+
+**Phase 21: Release.** Alpha 1.0.0.
+
+**Future plans** (after 21, not scheduled):
 
 - Burrows and defend-burrow orders, per-month squad schedules, lever linking and pulling, multi-weapon traps, siege
   engine aiming.
@@ -217,6 +227,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 17.0 | Trade: caravans, depot, broker, bring goods, evaluate and select a deal (`list_caravans`, `get_trade_depot`, `get_broker`, `get_trade_screen`, `request_broker`, `bring_to_depot`, `cancel_bring`, `offer_trade`, `select_trade_goods`, `trade` and `trade_write` permissions) | verified in-game 2026-10-15 against two forced dwarven caravans: caravan, depot, and broker states read back; the broker request and the game's TradeAtDepot job; five boulders and ten figurines hauled to the depot; the weight model matched the game's "too heavy" refusal to the kilogram (1,095 over a 2,100 kg capacity); then ten figurines were selected for a black bronze flask on the player's open trade screen, the player pressed Trade, and the merchant accepted (mood 50 to 53, depot used once). Opening the screen and pressing Trade stay with the player for now |
 | 17.1 | Diplomats: list, request options, set requests (`list_diplomats`, `get_trade_request_options`, `set_trade_requests`) | verified in-game 2026-10-15 on a liaison meeting between the outpost liaison and the expedition leader: the waiting diplomat, site leader, and open meeting read back; all 61 request categories listed with item names; steel bars and an iron anvil at priority 4 and all drinks at 2 were set on the open Requests step and showed selected in the game; after the player pressed Done the agreement read back with the game's prices (steel 205%, iron anvil 208%, drinks 142 to 150%, and sheets bought at 207%). Holding the meeting stays with the player |
 | 18 | Active mods and plugins (`list_mods`) | verified in-game 2026-10-15: 26 mods in load order (25 vanilla plus the installed no_aquifers mod) with versions and sources; 78 loaded DFHack plugins with their commands, 35 of them switchable and 8 on (buildingplan, burrow, logistics, overlay, preserve-rooms, preserve-tombs, stonesense, RemoteFortressReader), matching DFHack's own `enable` listing |
+| 19 | Skills plugin `claude-df` (`df-skills/`: `fortress-planner`, `work-subdivision`, `fortress-quirks`; agents `df-scout` on Haiku, `df-steward` on Sonnet) | built 2026-10-15: single-folder marketplace and project-scope install checked on the dev machine with DF off (`claude plugin details` lists three skills and two agents); play-through with the skills alone is the owner's Phase 21 check |
 
 ## Known bugs and open issues
 
