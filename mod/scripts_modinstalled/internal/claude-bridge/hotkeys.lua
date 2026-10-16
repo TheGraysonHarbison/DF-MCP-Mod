@@ -139,7 +139,7 @@ local function list(args)
     for n = 1, SLOT_COUNT do
         local hk = slot_struct(n)
         table.insert(rows, describe(hk, n))
-        if cmd_of(hk) == df.hotkey_type.None then table.insert(free, n) end
+        if is_empty(hk) then table.insert(free, n) end
     end
     return {
         count = SLOT_COUNT,
@@ -174,7 +174,7 @@ local function set(args)
 
     if slot == nil then
         for n = 1, SLOT_COUNT do
-            if cmd_of(slot_struct(n)) == df.hotkey_type.None then
+            if is_empty(slot_struct(n)) then
                 slot = n
                 break
             end

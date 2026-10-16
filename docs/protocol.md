@@ -606,13 +606,13 @@ The 16 slots of the game's Hotkeys window (`plotinfo.main.hotkeys`, `ui_hotkey`:
 
 Args: none. Needs a map; namespace `map`.
 
-Result: `count` (16), `hotkeys` `[{slot, key, kind (none, zoom, follow_unit, follow_item), name ('' when none), empty, pos {x, y, z} (zoom), unit_id (follow_unit), item_id (follow_item)}]`, `free_slots` (slots whose kind is `none`), `note` (slot 1 is the game's "Wagon arrival location" default; the slots are the player's F-keys). A slot is `empty` when its kind is `none` and its name is ''.
+Result: `count` (16), `hotkeys` `[{slot, key, kind (none, zoom, follow_unit, follow_item), name ('' when none), empty, pos {x, y, z} (zoom), unit_id (follow_unit), item_id (follow_item)}]`, `free_slots` (empty slots), `note` (slot 1 is the game's "Wagon arrival location" default; the slots are the player's F-keys). A slot is `empty` when its kind is `none` and its name is ''.
 
 ### `hotkeys.set`
 
 Args: `name` (required, non-empty after trimming), `x`, `y`, `z` (required integers, a valid tile position by `dfhack.maps.isValidTilePos`, else `BAD_REQUEST`), `slot` (optional, 1 to 16), `overwrite` (default false). Needs a map and `hotkeys_write`.
 
-Without `slot` the first slot of kind `none` is used; when there is none, `NOT_FOUND`. A given slot that is not empty is `BAD_REQUEST` naming its current name and kind unless `overwrite` is true. The name is converted to CP437, stripped of control characters, trimmed, and clipped to 40 characters. Writes `cmd = Zoom`, the name and position, and sets the union to -1.
+Without `slot` the first empty slot is used; when there is none, `NOT_FOUND`. A given slot that is not empty is `BAD_REQUEST` naming its current name and kind unless `overwrite` is true. The name is converted to CP437, stripped of control characters, trimmed, and clipped to 40 characters. Writes `cmd = Zoom`, the name and position, and sets the union to -1.
 
 Result: `slot`, `key`, `name` (as stored), `pos`, `overwrote` `{name, kind, pos}` when a slot was replaced, `note`.
 
