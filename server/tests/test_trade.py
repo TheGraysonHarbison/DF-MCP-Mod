@@ -36,3 +36,44 @@ def test_trade_writes():
     run(mcp, "offer_trade", give=[1, 2], take=[9])
     assert last_request(holder)["op"] == "trade.offer"
     assert last_request(holder)["args"] == {"give": [1, 2], "take": [9]}
+
+
+def test_trade_screen_counter_offer_limit():
+    mcp, holder = make()
+    run(mcp, "get_trade_screen")
+    assert last_request(holder)["args"] == {"limit": 25}
+    run(mcp, "get_trade_screen", limit=5)
+    assert last_request(holder)["args"] == {"limit": 5}
+    with pytest.raises(Exception):  # noqa: B017
+        run(mcp, "get_trade_screen", limit=0)
+
+
+def test_open_trade_screen():
+    mcp, holder = make()
+    run(mcp, "open_trade_screen")
+    assert last_request(holder)["op"] == "trade.open_screen"
+    assert last_request(holder)["args"] == {}
+    run(mcp, "open_trade_screen", depot_id=4, caravan_index=1)
+    assert last_request(holder)["args"] == {"depot_id": 4, "caravan_index": 1}
+
+
+@pytest.mark.parametrize(
+    "action", ["trade", "offer", "seize", "accept_counter", "decline_counter", "close"]
+)
+def test_press_trade_actions(action):
+    mcp, holder = make()
+    run(mcp, "press_trade", action=action)
+    assert last_request(holder)["op"] == "trade.press"
+    assert last_request(holder)["args"] == {"action": action, "unpause": False, "limit": 25}
+
+
+def test_press_trade_unpause_and_refusals():
+    mcp, holder = make()
+    run(mcp, "press_trade", action="close", unpause=True)
+    assert last_request(holder)["args"] == {"action": "close", "unpause": True, "limit": 25}
+    sent = len(holder["client"].requests)
+    with pytest.raises(Exception):  # noqa: B017
+        run(mcp, "press_trade", action="buy")
+    with pytest.raises(Exception):  # noqa: B017
+        run(mcp, "press_trade", action="trade", limit=0)
+    assert len(holder["client"].requests) == sent
