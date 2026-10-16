@@ -48,8 +48,9 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
 
         `detail` is a name or 1-based index from `list_work_details`. `add` and `remove` are
         unit ids (from `list_citizens` or `find_unit`); give at least one. Only living adult
-        citizens can be on a detail: children, babies, visitors, and the dead are skipped with
-        a reason, as are units already on it (add) or not on it (remove). Membership only
+        citizens can be added: children, babies, visitors, the dead, and units already on the
+        detail are skipped with a reason. Any member can be removed, including dead, departed,
+        or child units left on a detail; only ids not on it are skipped. Membership only
         matters when the detail's mode is `only_selected`; on an `everybody` or `nobody`
         detail the result's note says so. Members of Miners, Woodcutters, and Hunters need a
         pick, axe, or crossbow, and a dwarf in both Miners and Woodcutters keeps swapping tools

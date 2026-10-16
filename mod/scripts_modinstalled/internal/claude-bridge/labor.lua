@@ -251,16 +251,17 @@ local function assign(args)
             touch(unit)
         end
     end
+    -- Removal checks membership only: dead, departed, missing, and child units must be
+    -- removable, since that is when a stale entry needs cleaning. A unit that no longer
+    -- exists is just erased; one that exists is recomputed below.
     for _, id in ipairs(remove) do
-        local unit = df.unit.find(id)
-        local reason = refusal(unit)
-        if not reason and not is_member(wd, id) then reason = 'not a member' end
-        if reason then
-            table.insert(skipped, {id = id, reason = reason})
+        if not is_member(wd, id) then
+            table.insert(skipped, {id = id, reason = 'not a member'})
         else
+            local unit = df.unit.find(id)
             utils.erase_sorted(wd.assigned_units, id)
-            table.insert(removed, {id = id, name = unit_name(unit)})
-            touch(unit)
+            table.insert(removed, {id = id, name = unit and unit_name(unit) or nil})
+            if unit then touch(unit) end
         end
     end
 

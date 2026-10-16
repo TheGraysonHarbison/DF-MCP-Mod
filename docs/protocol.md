@@ -303,7 +303,7 @@ Result: `count`, `details` (array of `{index, name, mode, locked, cannot_be_ever
 
 Args: `detail`, `add` (list of unit ids), `remove` (list of unit ids); at least one of `add`/`remove` is non-empty. Needs a map and the `labor_write` permission.
 
-Each id is checked on its own and a failure goes to `skipped` with a reason instead of failing the call: unknown id, dead, not a citizen, baby or child, already a member (add), not a member (remove). Every touched unit then gets `setAutomaticProfessions`.
+Each id is checked on its own and a failure goes to `skipped` with a reason instead of failing the call. An `add` id is refused when it is unknown, dead, not a citizen, a baby or child, or already a member. A `remove` id is refused only when it is not a member, so dead, departed, missing, and child units left on a detail can be cleaned off; an id whose unit no longer exists is just erased. Every touched unit that still exists then gets `setAutomaticProfessions`.
 
 Result: `detail` `{index, name, mode}`, `added` `[{id, name}]`, `removed` `[{id, name}]`, `skipped` `[{id, reason}]`, `recomputed` (false when `setAutomaticProfessions` is missing or failed), `labors_after` (object keyed by unit id string, each the enabled `unit_labor` names after the recompute, at most 25 units), `note` (warns when the detail's mode is `everybody` or `nobody`, so membership has no effect).
 
