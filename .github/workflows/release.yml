@@ -1,0 +1,87 @@
+# Builds the player-facing release zip and attaches it to a draft GitHub release.
+# Runs on a pushed tag such as v1.0.0-alpha; also as a dry run that only uploads the zip as a
+# workflow artifact, by hand (workflow_dispatch) or on a pull request that edits this file.
+#
+# The zip holds exactly: LICENSE, README.md, .gitignore, server/ (with tests and uv.lock,
+# without virtualenvs or caches), mod/, tools/, df-skills/. It never holds CLAUDE.md,
+# docs/, .mcp.json, .claude/, or .github/.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install the server
+        run: uv sync --project server
+
+      - name: Lint
+        run: uv run --project server ruff check server
+
+      - name: Test
+        run: uv run --project server pytest
+
+      - name: Name the release
+        id: name
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="dev-$(git rev-parse --short HEAD)"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "name=claude-bridge-${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Assemble the zip
+        env:
+          NAME: ${{ steps.name.outputs.name }}
+        run: |
+          set -euo pipefail
+          stage="$(mktemp -d)/${NAME}"
+          mkdir -p "${stage}/server"
+          cp LICENSE README.md .gitignore "${stage}/"
+          cp -r mod tools df-skills "${stage}/"
+          cp -r server/src server/tests server/pyproject.toml server/uv.lock server/README.md "${stage}/server/"
+          find "${stage}" \( -name __pycache__ -o -name .pytest_cache -o -name .ruff_cache -o -name '*.egg-info' \) -prune -exec rm -rf {} +
+          for forbidden in CLAUDE.md docs .mcp.json .claude .github; do
+            if [ -e "${stage}/${forbidden}" ]; then echo "refusing: ${forbidden} is in the zip" >&2; exit 1; fi
+          done
+          (cd "$(dirname "${stage}")" && zip -qr "${GITHUB_WORKSPACE}/${NAME}.zip" "${NAME}")
+          unzip -l "${NAME}.zip"
+
+      - name: Upload the zip as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.name.outputs.name }}
+          path: ${{ steps.name.outputs.name }}.zip
+
+      - name: Draft the GitHub release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.name.outputs.tag }}
+          NAME: ${{ steps.name.outputs.name }}
+        run: |
+          set -euo pipefail
+          prerelease=""
+          case "${TAG}" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "${TAG}" "${NAME}.zip" --draft ${prerelease} \
+            --title "${TAG}" --generate-notes
