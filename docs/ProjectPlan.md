@@ -1,6 +1,6 @@
 # Project Plan: DFHack Claude Integration Mod
 
-Status: Phases 0 through 9 merged and verified in-game against DFHack 53.16-r2 (Phases 7 to 9 on 2026-10-14, PRs #28 to #35, design in section 12). Phases 10 to 18 (farming, military, dev tools, events, plans and goals, prompt timer, traps, trade, mods) were planned on 2026-10-15, design in section 13; none is built yet. Last updated 2026-10-15.
+Status: Phases 0 through 18 merged and verified in-game against DFHack 53.16-r2 (Phases 10 to 18 on 2026-10-15, PRs #38 to #54, design in section 13), except 13.1 petitions, which is deferred to a README open issue. Phases 19 to 21 (skills, final touches, release) were planned on 2026-10-15, design in section 14; none is built yet. Last updated 2026-10-15.
 
 This document is the agreed plan for the project. The README describes the idea and current progress for readers; this file describes how we build it. When the two disagree, fix this file first, then the README.
 
@@ -243,7 +243,25 @@ Namespaces `trade` (read, on) and `trade_write` (off).
 
 List the active Dwarf Fortress mods (id, name, version, source) and loaded DFHack plugins with their enabled state, under `settings`.
 
-### Future (after 18, not scheduled)
+### Phase 19: Skills
+
+A Claude Code plugin in `df-skills/` that teaches a release session, which has no `CLAUDE.md`, how to run a fort. Design in section 14.
+
+- Fortress-Planner: read the goals and the plan from the save, take stock of the whole fort, plan seasons ahead in phases and tasks, keep `plan.md` in a fixed template, pause while planning, report to the player in-game.
+- Work-Subdivision: the manager on the session model (Opus or better) plans, reads events and messages, and keeps the plan; a Sonnet steward does medium judgment; a Haiku scout sorts lists, surveys the map, and places orders in bulk from exact specs.
+- Fortress-Quirks: what the game and the bridge have taught us, from diagonal movement and room borders to caps, pauses, encodings, the texture rule, and troubleshooting.
+
+### Phase 20: Final touches
+
+MIT license. README reordered for players: description, requirements, a seven-step installation, playing, settings, skills, open issues, then the feature list and progress table.
+
+- 20.1 Release config: a GitHub Actions workflow that tests, zips the player-facing files (license, README, `server/`, `mod/`, `tools/`, `df-skills/`) without `CLAUDE.md`, `docs/`, or `.mcp.json`, and attaches the zip to a draft release on a `v*` tag.
+
+### Phase 21: Release
+
+Owner's phase: version bumps to Alpha 1.0.0, the tag, extra tests, a clean-folder walk through the install steps, and publishing.
+
+### Future (after 21, not scheduled)
 
 - Burrows and defend-burrow orders, per-month squad schedule editing, lever linking and pulling, multi-weapon traps, siege engine aiming.
 - Quickfort blueprints, labor assignment, locations (8.2), tracks and minecarts, door and hatch toggles.
@@ -257,13 +275,19 @@ List the active Dwarf Fortress mods (id, name, version, source) and loaded DFHac
 DF-MCP-Mod/
   README.md                 idea and progress, for readers
   CLAUDE.md                 rules for Claude Code in this repo
-  LICENSE                   to be chosen before first public push
+  LICENSE                   MIT, TheGraysonHarbison (Phase 20)
   .gitignore
   .mcp.json                 stdio entry: uv run --project server df-mcp
+  .github/workflows/release.yml   tests, zips the player files, drafts a release on a v* tag (20.1)
+  df-skills/                Claude Code plugin "claude-df" for release sessions (Phase 19)
+    .claude-plugin/         plugin.json and marketplace.json
+    skills/                 fortress-planner, work-subdivision, fortress-quirks, each a folder with SKILL.md
+    agents/                 df-scout.md (haiku), df-steward.md (sonnet)
+    README.md               what each skill and agent does
   docs/
     ProjectPlan.md          this file
     protocol.md             every RPC op, request and response shapes, error codes
-    playing.md              how to run a play session with channels (Phase 13)
+    playing.md              development notes on channel sessions; the player-facing parts move to the README in Phase 20
     decisions/              short ADRs, numbered, one decision each
   mod/                      the DFHack mod, installable as-is
     info.txt                ID claude-bridge, versions, author, description
@@ -331,6 +355,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 - The commit that completes a phase item also updates the README progress section.
 - No commits of DF saves, `dfhack-config` contents, logs, or anything under `data/`.
 - Versions: `mod/info.txt` `NUMERIC_VERSION` bumps on every protocol version bump; `server/pyproject.toml` follows semver and must declare which protocol version it speaks.
+- Releases: tag `v<version>` (prerelease tags carry a hyphen, `v1.0.0-alpha`), `pyproject.toml` in PEP 440 form (`1.0.0a1`), `info.txt` `DISPLAYED_VERSION` matching the tag without the `v`. The tag push runs the release workflow (section 14).
 
 PR description ends with the generated-with line required by the workspace.
 
@@ -353,16 +378,18 @@ These are the rules the repo's `CLAUDE.md` carries. Kept here so the rationale s
 11. Confirm before anything that affects a running game beyond reads: pausing, running console commands, or changing settings during a test session.
 12. Any list that can grow large is capped at 25 entries by default, with a per-call `limit` to raise it and a `truncated` marker in the response. Reason: one call pauses the game and lands in Claude's context; an uncapped inventory or memory list can be thousands of rows.
 13. Never write to texture or render cache fields on game structs (`*_texpos`, `texture_*`, anything df-structures marks transient or cached). Reason: resetting `squad.solid_texpos` and `blended_texpos` to make a new badge redraw crashed the game on 2026-10-15 (owner's rule). Change the data fields and let the game redraw.
+14. `plan.md` in the save follows the template the Fortress-Planner skill defines (Status, Goals, Phases with numbered tasks and a state word, Standing rules, Log; rewrite near 48 KB). Development sessions that write the plan use the same template, and a change to the template edits the skill and this rule together. Reason: the release session has no CLAUDE.md and learns the shape from the skill alone; two shapes would make plans unreadable across sessions (owner's request, 2026-10-15).
 
 ---
 
 ## 7. Open items
 
-- License choice before the first public push.
+- License chosen 2026-10-15: MIT, TheGraysonHarbison; written in Phase 20.
 - The `package.loaded` route for `RunLua` is confirmed working in-game (2026-10-12).
 - `gh` installed and authenticated on the dev machine on 2026-10-13; PRs and approved merges go through it.
-- Decide whether `.mcp.json` is committed or templated as `.mcp.json.example` once the uv entry point exists.
+- `.mcp.json` stays committed for development and is left out of the release zip; the player recreates it with `claude mcp add` (decided 2026-10-15, section 14).
 - Channels (section 13) need the org Owner to enable Channels under Organization settings > Claude Code, and each session started with the development-channels flag until custom channels leave research preview.
+- 13.1 petitions is not built; it ships as a README open issue (decided 2026-10-15).
 - `icon.png` sits untracked at the repo root; the 14.2 branch moves it to `mod/assets/`.
 - The section 8.6 struct check was done by iteration against the live game on 2026-10-12 instead of `:lua`; findings are in `docs/protocol.md` under `units.sheet`. Still unverified because the test fort had none: squad uniforms and orders, kills, wounds and treatment, memories, occupations, workshop assignments, work animals.
 
@@ -862,6 +889,65 @@ One branch per item from `main`, in phase order, each verified live and updating
 
 ---
 
+## 14. Phases 19 to 21 addendum: skills, final touches, release (planned 2026-10-15)
+
+Decisions agreed on 2026-10-15 after a retrospective of Phases 0 to 18 (124 commits, 54 PRs, protocol 24 with 106 ops, 105 server tests, every phase verified live except 13.1 petitions) and a read of the Claude Code docs on skills, plugins, sub-agents, MCP configuration, memory files, and channels. No game session is needed for these phases. The release is a zip the player extracts; the player installs the Python dependencies, links the mod, adds the MCP server and the skills by hand with the commands the README gives, and starts Claude Code with the channel flag. `CLAUDE.md` does not ship, so the skills carry everything Claude must know to run a fort.
+
+### 14.1 What Claude Code gives us
+
+| Need | Source (checked 2026-10-15) |
+|---|---|
+| Skill discovery | Skills load only from `<project>/.claude/skills/<name>/SKILL.md`, `~/.claude/skills/<name>/SKILL.md`, a directory added with `--add-dir` that holds the same `.claude/skills` layout, or a plugin's skills folders. A flat `<name>.md` is never a skill. Each skill is a folder with a `SKILL.md`; sibling files are referenced by relative links and `${CLAUDE_SKILL_DIR}`. Keep `SKILL.md` under 500 lines. The description (plus `when_to_use`) is always in context and drives auto-triggering, cut at 1,536 characters; the body loads on invocation. Frontmatter fields all optional: `name`, `description`, `when_to_use`, `allowed-tools`, `disallowed-tools`, `model`, `effort`, `context` (`fork`), `agent`, `disable-model-invocation`, `user-invocable`, `paths`, `metadata`. https://code.claude.com/docs/en/skills |
+| Plugins | A plugin root holds `.claude-plugin/plugin.json`; `"skills": ["./<folder>/"]` adds a skills folder, `agents/` ships sub-agent files, and a plugin may carry its own `.mcp.json`. Load per session with `claude --plugin-dir <folder>`; install persistently with `claude plugin marketplace add <folder>` (the folder holds `.claude-plugin/marketplace.json`) then `claude plugin install <plugin>@<marketplace> --scope project`. Plugin skills appear as `/<plugin>:<skill>`. A `CLAUDE.md` at a plugin root is not loaded. https://code.claude.com/docs/en/plugins/create , https://code.claude.com/docs/en/plugins/manifest-reference , https://code.claude.com/docs/en/plugins/install |
+| Model routing | Sub-agent files (`.claude/agents/*.md` or a plugin's `agents/`) take `name`, `description`, and optional `model` (`haiku`, `sonnet`, `opus`, `fable`, `inherit`), `tools`, `disallowedTools`, `mcpServers`, `skills`, `maxTurns`, `effort`. Sub-agents inherit the parent's MCP tools, so the dfhack tools are available to them. The Agent tool's per-call `model` beats the file's `model`, which beats `CLAUDE_CODE_SUBAGENT_MODEL`, which beats the session model. No documented "orchestrator plus cheap workers" pattern; it is built from these pieces. https://code.claude.com/docs/en/sub-agents |
+| MCP enablement | `claude mcp add --transport stdio --scope project dfhack -- uv run --project server df-mcp` writes `.mcp.json` in the current folder; the next interactive session shows the approval prompt. `enabledMcpjsonServers` in `.claude/settings.local.json` records the approval. `claude mcp reset-project-choices` clears it. https://code.claude.com/docs/en/mcp |
+| Channels | Still research preview. `claude --dangerously-load-development-channels server:dfhack` on every launch, with a confirmation screen each time; no settings key replaces it; ignored under `-p`. Team and Enterprise Owners turn on Channels under Organization settings > Claude Code (`channelsEnabled` managed setting); Pro and Max accounts without an organization skip that check; Bedrock, Vertex, and Foundry cannot use channels. https://code.claude.com/docs/en/channels , https://code.claude.com/docs/en/channels-reference |
+| Memory files | `CLAUDE.md`, `.claude/CLAUDE.md`, `CLAUDE.local.md`, `.claude/rules/*.md` are read at launch; skills load on demand. The docs recommend skills for multi-step procedures and area-specific knowledge and `CLAUDE.md` for always-true rules. https://code.claude.com/docs/en/memory |
+| Release packaging | A GitHub Actions workflow on a `v*` tag push can run the tests, zip an explicit list of paths, and attach the zip to a draft release with `gh release create --draft`; a tag with a hyphen (`v1.0.0-alpha`) is marked prerelease. GitHub's own "Source code" archives are not used, so nothing depends on `.gitattributes`. |
+
+### 14.2 Decisions
+
+| Question | Decision |
+|---|---|
+| Where the skills live | `df-skills/` at the repository root is a Claude Code plugin named `claude-df`: `df-skills/.claude-plugin/plugin.json` and `marketplace.json`, `df-skills/skills/<name>/SKILL.md` for each skill, `df-skills/agents/<name>.md` for the worker sub-agents. The player adds it with the commands in the README (`claude plugin marketplace add ./df-skills`, then `claude plugin install claude-df@claude-df --scope project`); `claude --plugin-dir df-skills` is the documented fallback if the marketplace route misbehaves on the player's Claude Code. The exact layout and commands are confirmed on the dev machine with DF off before the README is written. Nothing is copied into `.claude/skills/`, so the repo's own `.claude/` stays development-only. |
+| Triggering | The three skills auto-trigger from their descriptions, which name the situations (a fort session starts, a goals or timer batch arrives, work can be split, a game rule is in question). Each is also user-invocable. The README describes every skill so the player knows what each does. |
+| Autonomy | Claude acts freely within the permissions the player enabled and reports with `send_message` after each batch of changes and whenever a decision is the player's. No chat confirmation before writes. The skills say so; CLAUDE.md rule 11 stays a development-session rule and does not ship. |
+| Worker models and tools | Three roles. Manager: the session model, Opus or better; if Claude finds itself on Sonnet or Haiku it recommends `/model opus` once and carries on. Steward (`df-skills/agents/df-steward.md`, `model: sonnet`): medium judgment such as weighing a trade, choosing crops and kitchen bans, reading unit sheets and summarising mood or health, composing a squad and its uniform. Scout (`df-skills/agents/df-scout.md`, `model: haiku`): sorting and filtering lists, map and wall surveys, tile walks, counting stock, and bulk placement of orders, designations, stockpiles, and constructions from exact specs the manager wrote. Both workers get every tool (owner's choice, 2026-10-15). The manager alone writes `plan.md`, reads channel batches, talks to the player in chat, and sends in-game messages, so the fort speaks with one voice. |
+| Briefing workers | The Work-Subdivision skill fixes the brief shape: goal in one sentence, the ids and coordinates and permissions already known, the exact tool calls or shapes expected, the `limit` to use, the output format (a short table or list, never raw dumps), and the stop rule. Independent surveys run as parallel scouts. The manager never re-runs a delegated survey itself. |
+| Plan file template | `plan.md` has a fixed shape the Fortress-Planner skill defines: a `Status` line (fort name, date, population, last updated); `Goals` (the player's goals restated, from `read_goals`); `Phases`, each with a one-line aim and numbered tasks carrying a state word (`todo`, `active`, `done`, `blocked`) and, where it matters, the coordinates and ids; `Standing rules` (what this fort has taught Claude, and player instructions that persist); `Log`, dated entries added with `append_plan`. Rewrite with `write_plan` when the file passes about 48 KB of the 64 KB cap, folding the log into the rules. The same template becomes CLAUDE.md rule 14 for development sessions (owner's request). |
+| Planning cadence | At session start: `ping`, `get_permissions`, `get_time`, `read_goals`, `read_plan`, `get_fort_status`, `list_citizens`, `get_stock_bar`, then plan or re-plan. Re-plan on a goals batch, at a season change, and whenever the timer fires with no active task left. Pause the game with `set_paused` while planning when `pause_write` is on, and unpause when the plan is written. Long-term first: the plan runs seasons ahead and is divided into phases and tasks; the current phase is the only one with fine detail. |
+| Fortress-Quirks content | One skill, sections kept short, with sibling files when a section outgrows it: every call pauses the game briefly, so batch reads and use `limit` rather than paging; the 25-row default cap and the `truncated` marker; dwarves move diagonally, so rooms need fully solid borders including corners and one wall between rooms and corridors; stairs and ramps as the only z-links, roof floors need a ramp or stair, tree canopies block them; soil versus stone layers, what counts as mud, underground farms outside caverns yield less, crops are set only after the plot is built; a designation job without a worker is normal and the tile flag clears when the job is created; constructed walls versus natural; furniture needs the item first and the refusal names the work order; work orders need a manager, trade needs a broker and a depot, the Trade button and the liaison meeting stay with the player; squads start with symbol 0, badges may lag, routines and ammo semantics; never touch texture or render cache fields, which crashed the game (owner: "just in case"); names in CP437 with the English surname in quotes; events and timer semantics, the two-second batches, the fallback `poll_events` loop; early-fort priorities (shelter, food and drink, stockpiles, a manager, a bookkeeper, a broker); the known open issues (petitions, headless trade, meetings, lever linking, unit spawning). Plus a troubleshooting section built from `docs/playing.md`: `MOD_NOT_ENABLED` means `enable claude-bridge`; `NOT_ALLOWED` names the toggle to ask for; events that never arrive mean the session lacks the channel flag or the organization switch, with the log path to check, and `poll_events` with `/loop` until it is fixed. |
+| License | MIT, `Copyright (c) 2026 TheGraysonHarbison`, in `LICENSE` at the root; `pyproject.toml` already says MIT. |
+| README shape | In order: title and description (copy-edited), Requirements (Dwarf Fortress 53.16 Steam, DFHack 53.16-r2, Python 3.11 or newer with uv, Claude Code with a claude.ai login; channels need a Team or Enterprise organization with Channels on, Pro and Max accounts without an organization skip that; Bedrock, Vertex, and Foundry cannot push events), Installation (the seven steps below), Playing (the per-session parts of `docs/playing.md`: load the fort, start the session with the flag, ping, the prompt timer, playing without the channel), Settings (the settings and goals windows, permissions, console allowlist, events, timer), Skills (what each of the three does and the two worker agents), Known bugs and open issues, then Resources, the Feature list, and the Progress table as the record for readers who want it. No tool script for the launch; the commands and what they do are written out. No Windows variant of `link-mod.sh`. `server/README.md` and `mod/README.md` are left alone. |
+| Installation steps | 1. Download `claude-bridge-<version>.zip` from the Releases page, extract it, open a terminal in the folder, and keep the folder where it is afterwards (the link step writes its path). 2. `uv sync --project server` to install the Python dependencies. 3. `tools/link-mod.sh <Dwarf Fortress folder>`, which adds the mod's scripts folder to DFHack's `script-paths.txt`; the game is assumed installed. 4. Start Dwarf Fortress, load or create a fort, and in the DFHack console run `enable claude-bridge`, then `claude-bridge status`. 5. `claude-bridge settings` to turn on what Claude may do, the console allowlist, event kinds, and the timer; `claude-bridge goals` to write goals. 6. In the extracted folder: add the server with `claude mcp add --transport stdio --scope project dfhack -- uv run --project server df-mcp` (the server carries experimental Claude Code features and is added by hand); add the skills with the two plugin commands; start `claude --dangerously-load-development-channels server:dfhack`, approve the project server when asked, and confirm the channel warning; an Owner enables Channels in the organization settings first. 7. Ask Claude to `ping`, then play. |
+| Release config | `.github/workflows/release.yml`, triggered by a pushed tag matching `v*` (and by hand through `workflow_dispatch` for a dry run). Steps: check out, install uv, `uv sync --project server`, `uv run --project server ruff check server`, `uv run --project server pytest`, then build `claude-bridge-<tag>.zip` from an explicit include list: `LICENSE`, `README.md`, `server/` (with `tests/` and `uv.lock`, without `.venv`, `__pycache__`, `.pytest_cache`, `.ruff_cache`), `mod/`, `tools/` (with `smoke-test.py`), `df-skills/`, and `.gitignore`. Never included: `CLAUDE.md`, `docs/`, `.mcp.json`, `.claude/`, `.github/`, caches. The workflow creates a draft release for the tag with the zip attached, prerelease when the tag has a hyphen; the owner edits and publishes it. The zip's top-level folder is `claude-bridge-<tag>/`. |
+| Version and tag | First release is "Alpha 1.0.0": tag `v1.0.0-alpha`, release title `Alpha 1.0.0`, `server/pyproject.toml` version `1.0.0a1` (PEP 440), `mod/info.txt` `DISPLAYED_VERSION` `1.0.0-alpha`; `NUMERIC_VERSION` stays 3 because the protocol stays 24. The bumps and the tag are Phase 21, done by the owner. |
+| 13.1 petitions | Not built for the release. Its README row moves to the open issues list (the reads and the mod-side answer remain future work) and the plan keeps section 13's design. |
+| `.mcp.json` | Stays committed for development (section 7's open question closes) and is excluded from the zip; the player recreates it with `claude mcp add`. |
+| Phase 21 | Owner's phase: version bumps, the tag push that runs the workflow, the extra tests, extraction of the zip into an empty folder and a walk through the seven install steps, and publishing the draft release. Claude's part is limited to answering questions and fixing what the walk-through finds, each fix on its own branch. |
+
+### 14.3 Deliverables by item
+
+| Item | Files | Notes |
+|---|---|---|
+| 19 | `df-skills/.claude-plugin/plugin.json`, `df-skills/.claude-plugin/marketplace.json`, `df-skills/skills/fortress-planner/SKILL.md`, `df-skills/skills/work-subdivision/SKILL.md`, `df-skills/skills/fortress-quirks/SKILL.md` (plus sibling reference files if a section outgrows 500 lines), `df-skills/agents/df-scout.md`, `df-skills/agents/df-steward.md`, `df-skills/README.md` (one paragraph per skill and agent, reused by the root README), `CLAUDE.md` rule 14, README progress row | Frontmatter: `name`, `description` with the trigger first, `when_to_use`; no `model` on the skills (the manager is the session model); the agents carry `model`, `description`, and a body that restates the brief shape and the one-voice rule. Skill text uses the MCP tool names as the server registers them. |
+| 20 | `LICENSE`, `README.md` reordered and extended (Requirements, Installation, Playing, Settings, Skills), `docs/playing.md` trimmed to development notes or deleted once its content lives in the README and the quirks skill, README progress rows | Copy-edit the description paragraph (bridge, analysing, prompts, months) while there. Petitions row becomes an open issue. |
+| 20.1 | `.github/workflows/release.yml`, README progress row | Include list as decided; tests and lint gate the zip; draft release. A `workflow_dispatch` run on the branch proves the zip contents before merge (the artifact is downloaded and listed in the PR). |
+| 21 | version bumps, tag, published release | Owner. |
+
+### 14.4 Checks before or during implementation
+
+1. On the dev machine with DF off: `claude plugin marketplace add ./df-skills` and `claude plugin install claude-df@claude-df --scope project` succeed, the three skills show in the skills listing with their descriptions, `/claude-df:fortress-planner` invokes, and the two agents are offered to the Agent tool with their models. If the single-folder marketplace is refused, the plugin moves to `df-skills/claude-df/` under a marketplace at `df-skills/`, and the README commands follow.
+2. A fresh folder with only the release contents: `uv sync --project server` works offline from `uv.lock` after the first run, `claude mcp add ...` writes a `.mcp.json` whose command is `uv run --project server df-mcp` with no absolute path, and the session's approval prompt names `dfhack`.
+3. A `workflow_dispatch` run of the release workflow on the branch: the zip holds exactly the include list, no `CLAUDE.md`, `docs/`, `.mcp.json`, or caches, and the top-level folder is named after the tag.
+4. The skills, read cold by a fresh session with no CLAUDE.md, lead Claude to ping, read goals and plan, and write a plan in the template; checked by the owner in Phase 21 with the game running.
+
+### 14.5 Delivery
+
+Three branches from `main`, in order, one PR each, merged after the owner's yes: `skills/release-skills` (19, scope `skills` is new and accepted), `docs/release-prep` (20: `LICENSE` as a `repo` commit and the README as a `docs` commit on the same branch), `repo/release-workflow` (20.1). Each PR updates the README progress section. Phase 21 is the owner's and ends the first release.
+
+---
+
 ## References (checked 2026-10-12)
 
 - DFHack releases: https://github.com/DFHack/dfhack/releases (latest 53.16-r2)
@@ -894,3 +980,4 @@ One branch per item from `main`, in phase order, each verified live and updating
 - df-structures master as of 2026-10-10 (checked 2026-10-15): `df.plotinfo.xml`, `df.squad.xml`, `df.agreement.xml`, `df.announcement.xml`, `df.d_init.xml`, `df.d_interface.xml`, `df.building.xml`, `df.veg.xml`, `df.world.xml`, `df.g_src.basics.xml` (announcement types): https://github.com/DFHack/df-structures
 - DF wiki Farming, Kitchen, Tree, Squad, Ammunition, Trap, Trade depot, Trading, Caravan, Broker, Outpost liaison, Baron, Petition, Resident, Guildhall, Announcement, Strange mood, Ghost pages (checked 2026-10-15): https://dwarffortresswiki.org/
 - Dwarf Fortress wiki: https://dwarffortresswiki.org/
+- Claude Code skills, plugins, sub-agents, MCP, memory (checked 2026-10-15): https://code.claude.com/docs/en/skills , https://code.claude.com/docs/en/plugins/create , https://code.claude.com/docs/en/plugins/manifest-reference , https://code.claude.com/docs/en/plugins/install , https://code.claude.com/docs/en/sub-agents , https://code.claude.com/docs/en/mcp , https://code.claude.com/docs/en/memory
