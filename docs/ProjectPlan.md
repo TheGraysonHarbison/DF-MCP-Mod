@@ -1,6 +1,6 @@
 # Project Plan: DFHack Claude Integration Mod
 
-Status: Phases 0 through 21 are built and released as Alpha 1.0.0 (tag `v1.0.0-alpha`, PRs #38 to #58, 13.1 petitions deferred to a README open issue). Patch 1 (Alpha 1.0.1: labor, seeds, migrant events, trade screen, diplomacy dialog, popups, hotkeys) was planned on 2026-10-16, design in section 15; none of it is built yet. Last updated 2026-10-16.
+Status: Phases 0 through 21 are built and released as Alpha 1.0.0 (tag `v1.0.0-alpha`, PRs #38 to #58, 13.1 petitions deferred to a README open issue). Patch 1 items P1.0 to P5.0 (labor, seeds, migrant events, trade screen, diplomacy dialog, popups, hotkeys) were planned, built by seven agents, verified in-game, and merged on 2026-10-16 (PRs #59 to #66, protocol 30, design and live findings in section 15); P6.0, the owner's Alpha 1.0.1 release, is next. Last updated 2026-10-16.
 
 This document is the agreed plan for the project. The README describes the idea and current progress for readers; this file describes how we build it. When the two disagree, fix this file first, then the README.
 
@@ -1029,7 +1029,18 @@ Each branch also updates the server's tool descriptions, the MCP instructions te
 6. P3.0 (liaison save): find the meeting alert in `world.status.announcement_alert` and `alert_button_announcement_id`; record the diff of `main_interface.diplomacy` when the owner clicks the alert, Continue, a choice, the Requests Done, and the land-holder choice if offered; replay each; confirm the agreement lands in `dip_meeting_info[i].events` as in 17.1.
 7. Every screen op: a `SCREEN_BUSY` refusal while the owner has the stocks or a unit sheet open, and the unpause flag with `pause_write` on and off.
 
-### 15.5 Delivery
+### 15.5 Live findings (2026-10-16)
+
+Built by seven Opus agents in parallel worktrees from one brief each, reviewed, then verified item by item on the owner's saves and merged (PRs #60 to #66). What the live sessions changed in the design:
+
+- `continue` on the liaison dialog presses a button labelled `Okay`, not `Continue`; every dialog button runs the game's script engine, so the bridge presses the real buttons, found by their labels on the interface text grid (`dfhack.screen.readTile`), which also serves reply choices (`choose` takes the button's `label`). The opener replays the recorded alert click (`mm` with `new_screen`, actor and target, `dipev` and `environment.dipev`, `environment.mm` for the speaker's name, `in_the_middle_of_stuff`, `open`). Only `plotinfo.dipscript_popups` means a meeting is waiting; the liaison-arrival alert outlives the meeting. Escape leaves the meeting resumable; the farewell press closes it.
+- The depot sheet's Trade press writes `open`, `bld`, `mer`, `civ`, `st`, `merlist`, `havetalker`, `fortress_trader`, `merchant_trader` (the Merchant-profession unit), the four title strings, builds the lists, and pauses; Escape only clears `open`. The Trade click is caught by DFHack's confirm plugin (`dfhack/lua/MessageBox`), which the op answers with SELECT. Offer sits at column 59 on a 199-wide interface, not where the confirm plugin's frame says, and the game greys it out for a small gift. Counter-offer frames remain unmeasured (open issue).
+- Box popups: the focus stays `dwarfmode/Default` under a box, Close only erases the front entry, `dfhack.gui.showPopupAnnouncement` raises one for tests, and the real first-caravan box arrived as a `popup` event.
+- Hotkeys: slots are F1 to F8 and Shift+F1 to Shift+F8; names clip at 16 characters.
+- Labor: `setAutomaticProfessions` applies at once; removing works for dead and departed units.
+- The DFHack `lua` console command takes its code as one token (`lua "..."` with single quotes inside), which the owner enabled for the session.
+
+### 15.6 Delivery
 
 Eight branches from `main`, in this order, one PR each, merged after the owner's yes: `mod/labor` (P1.0, with the `MOD_VERSION` fix), `skills/seeds` (P1.1), `mod/migrant-events` (P1.2), `mod/hotkeys` (P5.0), `mod/popups` (P4.0), `mod/trade-screen` (P2.0), `mod/diplomacy-dialog` (P3.0), `repo/alpha-1.0.1` (P6.0, the owner's). Each PR updates the README progress section; an item the game refuses headlessly moves to the README open issues with its design kept here.
 
