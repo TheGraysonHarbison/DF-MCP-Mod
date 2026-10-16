@@ -98,8 +98,7 @@ local function close(args)
     if args.unpause ~= nil and type(args.unpause) ~= 'boolean' then
         return rpc.error_result(rpc.ERR_BAD_REQUEST, '"unpause" must be true or false')
     end
-    -- VERIFY LIVE: the focus string while a box is up. If it is not dwarfmode/Default (for
-    -- example a dwarfmode/Announcement... string), add it to this list.
+    -- The focus stays dwarfmode/Default while a box is up (verified live 2026-10-16).
     local busy = screens.require_focus({screens.MAIN_FOCUS}, 'close_popup')
     if busy then return busy end
     local st = df.global.world.status
@@ -114,11 +113,10 @@ local function close(args)
         color = safe(function() return front.color end),
         portrait = portrait_of(front),
     }
-    -- The Close button's effect, as far as the structures show: the front entry leaves the
-    -- vector and is freed. VERIFY LIVE: on the first live box record what the button changes
-    -- besides this: whether mega_text is cleared or rebuilt for the next box, whether
-    -- mega_portrait_hfid resets to -1, and whether the pause state changes (the design says
-    -- the player or Claude unpauses, so this op does not).
+    -- The Close button's effect: the front entry leaves the vector and is freed. Verified
+    -- live 2026-10-16 against the player's own Close: mega_text keeps its stale words either
+    -- way, mega_portrait_hfid stays -1, and the pause state does not change (the player or
+    -- Claude unpauses, so this op does so only on request).
     local ok, err = pcall(function()
         local p = st.popups[0]
         st.popups:erase(0)
