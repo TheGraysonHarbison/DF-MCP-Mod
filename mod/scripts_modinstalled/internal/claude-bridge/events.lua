@@ -1,7 +1,8 @@
 -- Event capture and batching (plan section 13, Phase 13). Announcements arrive through
 -- eventful.onReport and are mapped to kinds by announcement type; deaths, invasions, and
 -- fights through the other eventful hooks; what the game never announces (petitions,
--- ghosts, moody dwarves missing an item, artifacts dug up, season changes) is polled every
+-- ghosts, moody dwarves missing an item, artifacts dug up, season changes, the liaison
+-- meeting's alert button) is polled every
 -- 100 ticks. Migrant announcements (plan section 15.2, P1.2) also carry the citizens who
 -- were absent at the last poll. Box popups (plan section 15.2, P4.0) are polled every 30
 -- frames instead, since the game pauses while a box is up and a ticks timer would not run
@@ -61,6 +62,7 @@ KINDS = {
      types = {'MERCHANTS_LEAVING_SOON', 'MERCHANTS_EMBARKED'}},
     {key = 'diplomat_arrived', label = 'Diplomat arrived', default = false,
      types = {'DIPLOMAT_ARRIVAL', 'LIAISON_ARRIVAL', 'TRADE_DIPLOMAT_ARRIVAL', 'DIPLOMAT_LEFT_UNHAPPY'}},
+    {key = 'meeting_ready', label = 'Diplomat meeting dialog available', default = true, poll = true},
     {key = 'monster_arrived', label = 'Hostile monster arrived', default = false,
      types = {'MEGABEAST_ARRIVAL', 'WEREBEAST_ARRIVAL', 'BEAST_AMBUSH', 'AMBUSH_DEFENDER',
               'AMBUSH_RESIDENT', 'UNDEAD_ATTACK', 'NAMED_RESIDENT_CREATURE'}},
@@ -376,6 +378,18 @@ local function revealed_artifact_set()
     return set
 end
 
+-- Report ids behind the left-side alerts, {[id] = alert type name or false}, and the
+-- meeting rule, both from diplomats.lua (P3.0). Required lazily: diplomats.lua never
+-- requires this module, so there is no cycle.
+local function diplomats_module()
+    return safe(reqscript, 'internal/claude-bridge/diplomats')
+end
+
+local function alert_set()
+    local dip = diplomats_module()
+    return dip and safe(dip.alert_report_ids) or {}
+end
+
 local function describe_petition(id)
     local text = 'A petition awaits an answer'
     pcall(function()
@@ -394,6 +408,7 @@ local function poll()
         artifacts = revealed_artifact_set(),
         season = safe(function() return df.global.cur_season end),
         citizens = citizen_set(),
+        alerts = alert_set(),
     }
     if not baseline then
         baseline = current
@@ -436,6 +451,21 @@ local function poll()
             push('artifact_found', {text = 'An artifact has been uncovered: ' .. (name or ('artifact ' .. id)),
                                     pos = {x = where.x, y = where.y, z = where.z}, item_id = where.item,
                                     extra = {artifact_id = id}})
+        end
+    end
+    -- A baseline from before this kind existed has no alerts; take this poll as the baseline.
+    -- One meeting_ready per poll: one meeting can put several reports under its alert.
+    if baseline.alerts then
+        local dip = diplomats_module()
+        for id, alert_type in pairs(current.alerts) do
+            if baseline.alerts[id] == nil then
+                local report = safe(df.report.find, id)
+                if report and dip and safe(dip.is_meeting_report, report, alert_type or nil) then
+                    push('meeting_ready', {text = report.text, extra = {
+                        report_id = id, announcement = enum_name(df.announcement_type, report.type)}})
+                    break
+                end
+            end
         end
     end
     if current.season ~= nil and baseline.season ~= nil and current.season ~= baseline.season then
