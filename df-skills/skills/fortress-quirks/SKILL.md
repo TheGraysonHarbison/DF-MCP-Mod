@@ -103,9 +103,11 @@ What the game and the bridge have taught us. Each line was learned by doing it w
 - **Check seed counts with `get_farm`** (its plantable list carries seeds in stock) at
   every season change and before every `set_farm_crops`. `season_changed` is off by
   default; without it, check when `get_time` shows a new season.
-- **Below the reserve:** ban cooking and brewing of that plant with `set_kitchen`
-  (`item_type="PLANT"`, `material="<plant>"`) and leave its last plants alone until the
-  seeds recover.
+- **Below the reserve:** ban cooking that plant with `set_kitchen` (`item_type="PLANT"`,
+  `material="<plant>"`, `cook=false`). Brewing stays allowed: it gives the seeds back. Do
+  not sell or offer its plants or its seeds. If its plants go into meals faster than they
+  are eaten or brewed, add a brew order with `create_work_order` (`find_job_types` names
+  the job).
 - **Never set a crop whose seed count is below the tiles it needs.** Plant a crop you have
   seeds for instead, or leave the season fallow.
 - **Buy seeds.** Caravans sell seed bags: `bring_to_depot` goods to pay, then pick the seeds
