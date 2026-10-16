@@ -26,6 +26,7 @@ claude-bridge allow <command> add a console command Claude may run
 claude-bridge deny <command>  remove it again
 claude-bridge test <json>     run a request through the dispatcher locally and print the reply
 claude-bridge send <text>     queue a test event with the text for Claude (checks the channel)
+claude-bridge timer [on|off|days N|month|minutes N|reset]  the prompt timer (also on the settings Timer tab)
 claude-bridge event <kind> on|off  enable or disable one event kind (see the settings window)
 claude-bridge reload          re-read the Lua modules from disk without disabling (development)
 ```

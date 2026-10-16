@@ -137,6 +137,15 @@ function push(kind, fields)
     return entry
 end
 
+-- Whether an event of this kind is still waiting (queued after the last batch handed out).
+last_handed_seq = last_handed_seq or 0
+function has_pending(kind)
+    for _, e in ipairs(queue) do
+        if e.seq > last_handed_seq and e.kind == kind then return true end
+    end
+    return false
+end
+
 -- Special kinds (goals, timer, test) bypass the per-kind toggles.
 function push_special(kind, text, extra)
     local entry = {
@@ -390,6 +399,7 @@ function reset()
     dropped = 0
     baseline = nil
     fight_seen = {}
+    last_handed_seq = 0
 end
 
 ----------------------------------------------------------------------------------------------
@@ -456,6 +466,9 @@ local function poll_op(args)
     base.events = out
     base.last_seq = out[#out].seq
     base.remaining = #pending - #out
+    if base.last_seq > last_handed_seq then last_handed_seq = base.last_seq end
+    -- Anything handed to Claude re-arms the prompt timer (Phase 15), timer prompts included.
+    pcall(function() reqscript('internal/claude-bridge/timer').reset('events sent') end)
     return base
 end
 

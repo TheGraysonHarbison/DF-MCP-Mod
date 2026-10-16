@@ -6,7 +6,7 @@ local scriptmanager = require('script-manager')
 
 MOD_ID = 'claude-bridge'
 MOD_VERSION = '0.3.0'
-PROTOCOL_VERSION = 19
+PROTOCOL_VERSION = 20
 
 -- Settings groups, in display order.
 GROUPS = {'General', 'Units', 'Items', 'Logistics', 'World', 'Commands'}
@@ -112,7 +112,7 @@ local function defaults()
     for _, ns in ipairs(NAMESPACES) do
         permissions[ns.key] = ns.default
     end
-    return {permissions = permissions, console_allow = {}, events = {}, goal_prompt = nil}
+    return {permissions = permissions, console_allow = {}, events = {}, goal_prompt = nil, timer = nil}
 end
 
 local function read_file(path)
@@ -156,6 +156,14 @@ function load_settings()
             end
             if type(data.goal_prompt) == 'string' and data.goal_prompt ~= '' then
                 loaded.goal_prompt = data.goal_prompt
+            end
+            if type(data.timer) == 'table' then
+                loaded.timer = {
+                    enabled = data.timer.enabled == true,
+                    mode = type(data.timer.mode) == 'string' and data.timer.mode or nil,
+                    interval = tonumber(data.timer.interval),
+                    prompt = type(data.timer.prompt) == 'string' and data.timer.prompt or nil,
+                }
             end
             if type(data.events) == 'table' then
                 for key, value in pairs(data.events) do
@@ -208,6 +216,26 @@ end
 function set_goal_prompt(text)
     local s = get_settings()
     s.goal_prompt = text
+    save_settings()
+end
+
+-- The prompt timer's settings, filled from the timer module's defaults.
+function get_timer()
+    local s = get_settings()
+    local defaults = reqscript('internal/claude-bridge/timer').DEFAULT_SETTINGS
+    local t = s.timer or {}
+    return {
+        enabled = t.enabled == true,
+        mode = t.mode or defaults.mode,
+        interval = t.interval or defaults.interval,
+        prompt = t.prompt or defaults.prompt,
+    }
+end
+
+function set_timer(values)
+    local s = get_settings()
+    s.timer = {enabled = values.enabled == true, mode = values.mode, interval = values.interval,
+               prompt = values.prompt}
     save_settings()
 end
 

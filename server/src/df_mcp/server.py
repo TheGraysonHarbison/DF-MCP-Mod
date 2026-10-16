@@ -33,6 +33,7 @@ from df_mcp.tools import (
     stockpiles,
     stocks,
     time,
+    timer,
     units,
     workshops,
     zones,
@@ -69,6 +70,8 @@ it with `write_plan` and `append_plan`; `read_goals` holds the player's goals, w
 `send_message` tells the player something inside the game (short, light red, on the left-side
 alerts, with an optional position to zoom to); use it when a plan is made or a decision is
 needed.
+A `timer` channel message is the player's prompt timer asking for a status check: review the
+fort and your plan, act, and report with `send_message`. `get_timer_status` shows its settings.
 Events: when the session was started with the channel flag, batches of in-game events the
 player enabled (see `list_event_kinds`) arrive on their own as channel messages; read the
 units, tiles, or petitions they name with the tools and act. `poll_events` is the fallback.
@@ -102,6 +105,7 @@ TOOL_MODULES = (
     events,
     plan,
     messages,
+    timer,
     console,
     dev,
 )

@@ -17,6 +17,7 @@ Usage::
     claude-bridge perm <namespace> on|off
     claude-bridge event <kind> on|off
     claude-bridge send <text>
+    claude-bridge timer [on|off|days N|month|minutes N|reset]
     claude-bridge allow <command>
     claude-bridge deny <command>
     claude-bridge reload
@@ -88,16 +89,22 @@ local function events_module()
     return reqscript('internal/claude-bridge/events')
 end
 
+local function timer_module()
+    return reqscript('internal/claude-bridge/timer')
+end
+
 local function do_enable()
     state.load_settings()
     register_ops()
     publish_rpc()
     pcall(function() events_module().start() end)
+    pcall(function() timer_module().start() end)
     pcall(function() reqscript('internal/claude-bridge/plan').ensure_files() end)
     enabled = true
 end
 
 local function do_disable()
+    pcall(function() timer_module().stop() end)
     pcall(function() events_module().stop() end)
     unpublish_rpc()
     enabled = false
@@ -180,6 +187,26 @@ elseif command == 'event' then
     if not events_module().kind_spec(kind) then qerror('unknown event kind: ' .. kind) end
     state.set_event_enabled(kind, value == 'on')
     print(('event %s is %s'):format(kind, value))
+elseif command == 'timer' then
+    local timer = timer_module()
+    local what, n = args[2], tonumber(args[3])
+    if what == 'on' or what == 'off' then
+        assert(timer.configure({enabled = what == 'on'}))
+    elseif what == 'days' or what == 'minutes' then
+        local ok, err = timer.configure({mode = what, interval = n or timer.settings().interval})
+        if not ok then qerror(err) end
+    elseif what == 'month' then
+        assert(timer.configure({mode = 'month'}))
+    elseif what == 'reset' then
+        assert(timer.configure({prompt = timer.DEFAULT_PROMPT}))
+        print('timer prompt reset to the default')
+    elseif what ~= nil then
+        qerror('usage: claude-bridge timer [on|off|days N|month|minutes N|reset]')
+    end
+    local s = timer.settings()
+    print(('timer %s: every %s%s'):format(s.enabled and 'on' or 'off',
+        s.mode == 'month' and 'month change' or (s.interval .. ' ' .. s.mode), ''))
+    print(json.encode(timer.progress()))
 elseif command == 'send' then
     if not enabled then qerror('claude-bridge is not enabled') end
     local text = table.concat(args, ' ', 2)
@@ -196,10 +223,12 @@ elseif command == 'deny' then
     print_status()
 elseif command == 'reload' then
     if not enabled then qerror('claude-bridge is not enabled') end
+    pcall(function() timer_module().stop() end)
     pcall(function() events_module().stop() end)
     register_ops()
     publish_rpc()
     pcall(function() events_module().start() end)
+    pcall(function() timer_module().start() end)
     print(('claude-bridge reloaded, %d ops'):format(#rpc.list_ops()))
 elseif command == 'test' then
     if not enabled then qerror('claude-bridge is not enabled') end

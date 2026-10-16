@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **19**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **20**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -51,7 +51,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `settings` | on | `settings.get` |
 | `time` | on | `time.now` |
 | `pause_write` | off | `time.set_pause` |
-| `events` | on | `events.kinds`, `events.poll`, `events.emit` |
+| `events` | on | `events.kinds`, `events.poll`, `events.emit`, `timer.status` |
 | `plan` | on | `plan.info`, `plan.read`, `plan.write`, `plan.append`, `goals.read` |
 | `units` | on | `units.list`, `units.find`, `units.get`, `units.sheet`, `units.full_sheet` |
 | `units_write` | off | `units.set_nickname` |
@@ -130,6 +130,14 @@ Result: `text`, `badge`, `announcement_type`, `pos`, `report_id`, `index`, `note
 ### `messages.badges`
 
 Args: none. Result: `badges` `[{badge, announcement_type}]`, `default`, `max_chars`.
+
+### `timer.status`
+
+Args: none. Namespace `events`.
+
+The prompt timer (Phase 15) runs a `frames` repeat every 30 frames. Settings (`timer` in the mod's settings file, edited on the settings Timer tab or with `claude-bridge timer`): `enabled` (default off), `mode` (`days`: N in-game days as 1200 ticks each on `world.frame_counter`; `month`: a change of `cur_year_tick // 33600`; `minutes`: N real minutes accumulated from `dfhack.getTickCount()` only while unpaused), `interval` (default 7), `prompt` (default "# Update ..."). When due it queues a `timer` event (a special kind, prompt text as content, delivered whole) unless one is still waiting, and re-arms. Every batch `events.poll` hands out re-arms it; a map unload stops it.
+
+Result: `enabled`, `mode`, `interval`, `prompt`, `running`, `fired`, `last_fired_tick`, `progress` (`armed`, `mode`, `interval`, `since`, and `elapsed_days`/`remaining_days`, `months_passed`, or `elapsed_minutes`/`remaining_minutes`), `paused`, `modes`, `note`.
 
 ### `core.ping`
 
