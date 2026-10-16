@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **28**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **29**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -52,7 +52,7 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `settings` | on | `settings.get`, `settings.mods` |
 | `time` | on | `time.now` |
 | `pause_write` | off | `time.set_pause` |
-| `screens_write` | off | `popups.close` |
+| `screens_write` | off | `popups.close`, `trade.open_screen`, `trade.press` |
 | `events` | on | `events.kinds`, `events.poll`, `events.emit`, `timer.status`, `popups.list` |
 | `plan` | on | `plan.info`, `plan.read`, `plan.write`, `plan.append`, `goals.read` |
 | `units` | on | `units.list`, `units.find`, `units.get`, `units.sheet`, `units.full_sheet`, `labor.details` |
@@ -811,15 +811,31 @@ Args: `item_ids`, `depot_id`. Needs a map and `trade_write`. Removes the item's 
 
 ### `trade.offer`
 
-Args: `give` (fort item ids at the depot), `take` (merchant item ids at the depot), `depot_id`. Needs a map and `trade_write`. Evaluates the deal at the caravan's prices and weights: `give {count, value, items [{id, description, value, kg}]}`, `take {...}`, `profit`, `margin`, `weight {give_kg, take_kg, merchant_load_kg (the merchants' goods at the depot), capacity_kg (caravan_state.total_capacity), load_after_kg, fits, unknown_weights}` (item masses are `item.weight` in kilograms plus milligrams when `flags.weight_computed`), `verdict` (no caravan; invalid; refused, too heavy for the animals; refused, merchants never accept a loss; accepted at 50% profit; likely at 10%; marginal below), `problems`, `executed` (always false: the Trade button is the player's), `note`. Verified in-game 2026-10-15 against a forced dwarven caravan: five granite boulders were refused by the game with the weight reply, and the evaluation gave the same answer (1,095 kg over a 2,100 kg capacity).
+Args: `give` (fort item ids at the depot), `take` (merchant item ids at the depot), `depot_id`. Needs a map and `trade_write`. Evaluates the deal at the caravan's prices and weights: `give {count, value, items [{id, description, value, kg}]}`, `take {...}`, `profit`, `margin`, `weight {give_kg, take_kg, merchant_load_kg (the merchants' goods at the depot), capacity_kg (caravan_state.total_capacity), load_after_kg, fits, unknown_weights}` (item masses are `item.weight` in kilograms plus milligrams when `flags.weight_computed`), `verdict` (no caravan; invalid; refused, too heavy for the animals; refused, merchants never accept a loss; accepted at 50% profit; likely at 10%; marginal below), `problems`, `executed` (always false: the exchange is `trade.press` on the open trade screen), `note`. Verified in-game 2026-10-15 against a forced dwarven caravan: five granite boulders were refused by the game with the weight reply, and the evaluation gave the same answer (1,095 kg over a 2,100 kg capacity).
 
 ### `trade.screen`
 
-Args: none. Needs a map. Namespace `trade`. Reads `df.global.game.main_interface.trade`: `open`, `choosing_merchant`, `still_unloading`, `has_talker`, `fortress_trader`, `merchant_trader`, `depot_id`, `counter_offer`, `reply` (the `talk_line_type` the merchant last said) with `reply_meaning` in plain words (Weight: too heavy for the animals; Money: not enough value; Trade: deal accepted; ...), `capacity_kg`, `merchant_goods` and `fort_goods` `{count, selected, selected_value, selected_kg, total_kg}`, `load_after_kg`, `fits`. Meaningful while the player has the trade screen open.
+Args: `limit` (default 25, caps `counter_offer_items`). Needs a map. Namespace `trade`. Reads `df.global.game.main_interface.trade`: `open`, `choosing_merchant`, `still_unloading`, `has_talker`, `fortress_trader`, `merchant_trader`, `depot_id`, `counter_offer`, `counter_offer_items` `[{id, description, value}]` (from `counter_offer_item`, values at the caravan's prices) with `counter_offer_count` and `counter_offer_truncated`, `mood` (`mer.mood`), `merchant_message` (the lines of `big_announce`, a `curses_text_boxst`, joined with spaces; its layout is verified on the first live trade), `reply` (the `talk_line_type` the merchant last said) with `reply_meaning` in plain words (Weight: too heavy for the animals; Money: not enough value; Trade: deal accepted; ...), `capacity_kg`, `merchant_goods` and `fort_goods` `{count, selected, selected_value, selected_kg, total_kg}`, `load_after_kg`, `fits`. Meaningful while the trade screen is open (by the player or `trade.open_screen`).
 
 ### `trade.select`
 
 Args: `give` (fort item ids), `take` (merchant item ids), `clear` (default true: unselect everything else), `depot_id`. Needs a map and `trade_write`, and the trade screen open (`BAD_REQUEST` otherwise). Sets `goodflag[1][i].selected` for the fort's list and `goodflag[0][i].selected` for the merchants', as DFHack's trade overlay does; the player then presses Trade or Offer. Result: `give {selected, value, missing}`, `take {...}`, `profit`, `note`. Verified in-game 2026-10-15: the selection showed on the player's screen and the Trade press got the game's weight refusal, which `trade.screen` then reported.
+
+### Trade screen (P2.0)
+
+Plan section 15.2. The two ops below drive the game's own trade screen and sit under `screens_write` (off by default). Both check the screen focus first (`dfhack.gui.getCurFocus(true)`) and return `SCREEN_BUSY` naming the open screen when it is not the one they expect; the player's menu is never closed. Built 2026-10-16; live verification on the owner's caravan save is pending. The control script's read-only `claude-bridge trade-snapshot` prints every scalar field of `main_interface.trade` (vectors as lengths, pointers as ids), the focus, the interface rect, the mouse position, and the pause state for that diff.
+
+### `trade.open_screen`
+
+Args: `depot_id` (optional; the first depot otherwise), `caravan_index` (optional, the `trade.caravans` index, for when several caravans are at the depot; the first at the depot is used otherwise, with a warning). Needs a map and `screens_write`, and the main map on screen (`dwarfmode/Default`). If the trade screen is already open, returns the `trade.screen` view with `already_open = true` and writes nothing. Refuses with `BAD_REQUEST` when the depot is not built, when no caravan is in state `at_depot`, or when `caravan_index` is not at the depot; warns (does not refuse) when the broker is not standing at the depot (unless anyone may trade) and when the screen reports the merchants still unloading. Replays the state the depot sheet's Trade button writes, inside one `pcall` with the previous values restored on any error (`INTERNAL`): `bld` (the depot), `mer` (the caravan), `civ` (`historical_entity.find(caravan.entity)`), `st` (`world_site.find(plotinfo.site_id)`), `choosing_merchant = false`, `buildlists = 1`, `handle_appraisal = 1`, `open = true`. The strings `title`, `talker`, `fortname`, `place` and the `stillunloading` and `havetalker` flags are left to the game. The field set is corrected from the owner's before-and-after snapshot of a real Trade press. Result: `opened`, `replayed` (field names), `caravan_index`, `screen` (the `trade.screen` result), `warnings`, `note`.
+
+### `trade.press`
+
+Args: `action` (`trade`, `offer`, `seize`, `accept_counter`, `decline_counter`, `close`), `unpause` (default false), `limit` (default 25, caps `counter_offer_items`). Needs a map and `screens_write`, the trade screen open (`BAD_REQUEST` otherwise), and the focus `dwarfmode/Trade` (DFHack's confirm plugin uses `dwarfmode/Trade/Default`). Preconditions (`BAD_REQUEST`): `trade` and `offer` need at least one fort good selected (`goodflag[1][i].selected`), `seize` at least one merchant good selected, `accept_counter` and `decline_counter` a pending `counter_offer`.
+
+The Trade, Offer, and Seize buttons have no key binding; the op clicks them through the game's own handler: it resolves the button's frame the way DFHack's confirm plugin does (`gui.compute_frame_rect` over `gui.get_interface_rect()`, offset by the rect's corner; frames `trade {l=0, r=23, b=4, w=11, h=3}`, `offer {l=40, r=5, b=4, w=19, h=3}`, `seize {l=0, r=73, b=4, w=11, h=3}` from `hack/scripts/internal/confirm/specs.lua`, DFHack 53.16-r2), sets `gps.mouse_x`/`mouse_y` to the frame's centre, calls `gui.simulateInput(dfhack.gui.getDFViewscreen(true), {_MOUSE_L=true})`, and restores the mouse position. If DFHack's confirm dialog then sits on top (`dfhack/lua/confirm`), it is answered with `SELECT` (`confirm.json` is never edited). The counter-offer buttons are not measured yet: `accept_counter` and `decline_counter` return `NOT_FOUND` until their frames are filled in from a live snapshot. `close` clicks nothing and writes `open = false`. The exchange, reply, mood change, counter-offer, and ethics are the game's own. `unpause` is honoured only when `pause_write` is on; otherwise `pause_note` says the game stays paused.
+
+Result: `action`, `clicked` `{x, y}` (the interface tile), `confirm_answered`, `reply` (`talk_line_type` name) and `reply_meaning`, `merchant_message`, `mood_before`, `mood_after`, `counter_offer`, `counter_offer_items` `[{id, description, value}]` with `counter_offer_truncated`, `screen_open`, `goods_after {merchant, fort}` (list lengths), `unpaused`, `paused`, `pause_note`, `note` (says when nothing on the screen changed after the click, so the player can press by hand). `close` returns `action`, `confirm_answered`, `mood_before`, `mood_after`, `counter_offer`, `screen_open`, the pause fields, and `note`.
 
 ### Diplomats (Phase 17.1)
 
