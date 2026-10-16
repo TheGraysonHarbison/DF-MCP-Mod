@@ -5,7 +5,7 @@ local json = require('json')
 local scriptmanager = require('script-manager')
 
 MOD_ID = 'claude-bridge'
-MOD_VERSION = '1.0.0-alpha'
+MOD_VERSION = '1.0.1-alpha'
 PROTOCOL_VERSION = 30
 
 -- Settings groups, in display order.
