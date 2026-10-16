@@ -103,7 +103,8 @@ What the game and the bridge have taught us. Each line was learned by doing it w
   takes a material in plain words and refuses orders the game would label "unknown
   material".
 - `get_workshop` shows the shop's jobs and contents; a shop with a stuck job is usually
-  missing a material or a dwarf with the labor.
+  missing a material or a dwarf with the labor: check the work details (`list_work_details`)
+  for a detail that grants it and has someone doing it.
 
 ## Stockpiles
 
@@ -147,6 +148,24 @@ What the game and the bridge have taught us. Each line was learned by doing it w
 - A dwarf's mood in the list row is the game's overall mood word; the thoughts tab explains
   it.
 - Nicknames (`set_unit_nickname`) are the only unit write and need `units_write`.
+
+## Labor
+
+- Work details are the game's Labor screen and decide who does what: a dwarf's labors follow
+  the details, so change the details, never individual labors. `list_work_details` reads
+  them; `assign_work_detail` and `set_work_detail_mode` change them and need `labor_write`.
+- A detail's mode is `everybody`, `nobody`, or `only_selected`. Membership only matters on
+  `only_selected`; adding dwarves to an `everybody` detail does nothing.
+- Miners, Woodcutters, Hunters, and Fisherdwarves are `only_selected` and cannot be
+  everybody. Their members need a pick, axe, or crossbow; with no members nobody mines or
+  cuts wood, whatever you designate.
+- Planters, Plant gatherers, Stonecutters, Engravers, Haulers, Orderlies, and Siege
+  operators default to `everybody` and need no members.
+- A dwarf in both Miners and Woodcutters keeps swapping pick and axe and wastes the day.
+  Keep the two groups apart.
+- Children and babies cannot be put on a detail; they are skipped with a reason, as are
+  visitors and the dead. When migrants arrive, put the newcomers on details.
+- Details cannot be created, renamed, or given other labors through the bridge.
 
 ## Events, timer, and channel
 
