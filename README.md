@@ -166,15 +166,19 @@ situation matches, and each can be invoked by hand as `/claude-df:<name>`.
 
 ## Known bugs and open issues
 
-No bugs open.
+Open bugs:
+
+- `ping` reports mod version 0.3.0: `MOD_VERSION` in `state.lua` was not bumped with Alpha 1.0.0. Fixed in the first
+  Patch 1 branch.
 
 Open issues (features without a DFHack API, or where the game offers only mouse-driven UI):
 
 - Petitions: reading and answering petitions through the bridge is not built. Petition events still arrive, and the
   player answers them in the game. The design is in the plan (13.1).
 - Headless trade and meetings: the Trade button and the liaison meeting's dialog are mouse-driven UI with no DFHack
-  code behind them, so the player opens the depot screen, presses Trade, and clicks through the meeting; the mod selects
-  the goods and sets the requests on the open screens.
+  code behind them, so for now the player opens the depot screen, presses Trade, and clicks through the meeting; the mod
+  selects the goods and sets the requests on the open screens. Patch 1 items P2.0 and P3.0 are planned to close this
+  (plan section 15).
 - Lever linking and pulling: the link job has no DFHack reference outside adventure-mode code.
 - Multi-weapon weapon traps: DFHack's input table models one weapon per trap.
 - Siege engine aiming: DFHack's siege-engine plugin is unavailable on 53.16-r2.
@@ -335,12 +339,33 @@ bridge have taught us, with a troubleshooting table). Installed with `claude plu
 
 **Phase 21: Release.** Alpha 1.0.0.
 
-**Future plans** (after 21, not scheduled):
+**Patch 1: Alpha 1.0.1.** Planned 2026-10-16, design in
+[plan section 15](docs/ProjectPlan.md#15-patch-1-addendum-labor-migrants-screens-popups-hotkeys-planned-2026-10-16).
+Three new permission toggles, all off by default: `labor_write`, `hotkeys_write`, and `screens_write` (anything that
+drives a game screen).
+
+- P1.0 Labor: see the work details (Miners, Woodcutters, Haulers and the rest) and put citizens on or off them, and set a
+  detail's mode (everybody, nobody, only selected). Claude cannot create details or change which labors a detail holds.
+- P1.1 Seeds: the fortress-quirks skill teaches sustainable farming: a seed reserve per crop, what returns seeds, the
+  200-seed cap, buying seeds, a seed check at every season change.
+- P1.2 Migrants: a `migrants_arrived` event for every migrant wave (and the no-migrants messages) that names the
+  newcomers.
+- P2.0 Trade screen: open the depot's trade screen, press Trade, Offer, or Seize and answer counter-offers through the
+  game's own button handlers (a synthesized click through DFHack's input API, not the mouse), read the merchant's reply
+  and mood, close the screen.
+- P3.0 Diplomacy dialog: see when the liaison's dialog is available, open it, read its text and choices, step through it
+  and finish it, with the requests step still set by `set_trade_requests`.
+- P4.0 Popups: the pausing box popups (embark message, first caravan, megabeasts, sieges) arrive as events with their
+  text and Claude closes them, unpausing if allowed.
+- P5.0 Hotkeys: list the game's 16 zoom hotkeys and name, place, and clear them as points of interest.
+- P6.0 Release: Alpha 1.0.1.
+
+**Future plans** (after Patch 1, not scheduled):
 
 - Burrows and defend-burrow orders, per-month squad schedules, lever linking and pulling, multi-weapon traps, siege
   engine aiming.
-- Quickfort blueprints, labor assignment, locations (taverns, temples, libraries), tracks and minecarts, door and hatch
-  toggles.
+- Quickfort blueprints, custom work details and workshop worker lists, locations (taverns, temples, libraries), tracks
+  and minecarts, door and hatch toggles, the left-side alert buttons.
 - Push transport, a headless Python conductor, Steam Workshop packaging, legends and adventure mode.
 
 ## Progress
@@ -404,3 +429,12 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 19 | Skills plugin `claude-df` (`df-skills/`: `fortress-planner`, `work-subdivision`, `fortress-quirks`; agents `df-scout` on Haiku, `df-steward` on Sonnet) | built 2026-10-15: single-folder marketplace and project-scope install checked on the dev machine with DF off (`claude plugin details` lists three skills and two agents); play-through with the skills alone is the owner's Phase 21 check |
 | 20 | MIT license, README reordered for players (Requirements, Installation, Playing, Settings, Skills, open issues, then the feature list and progress) | built 2026-10-15 |
 | 20.1 | Release workflow (`.github/workflows/release.yml`): lint, test, zip `LICENSE`, `README.md`, `.gitignore`, `server/`, `mod/`, `tools/`, `df-skills/` without `CLAUDE.md`, `docs/`, `.mcp.json`, `.claude/`, or caches; artifact on every run, draft prerelease on a `v*` tag | built 2026-10-16 |
+| 21 | Alpha 1.0.0 release (version bumps, tag `v1.0.0-alpha`, draft prerelease) | tagged 2026-10-16 (PR #58) |
+| P1.0 | Work details: list, assign and remove citizens, set mode (`list_work_details`, `assign_work_detail`, `set_work_detail_mode`, `labor_write` permission) | planned 2026-10-16; design in [plan section 15](docs/ProjectPlan.md#15-patch-1-addendum-labor-migrants-screens-popups-hotkeys-planned-2026-10-16) |
+| P1.1 | Sustainable farming section in the fortress-quirks skill | planned 2026-10-16 |
+| P1.2 | `migrants_arrived` event kind with the newcomers | planned 2026-10-16 |
+| P2.0 | Trade screen: open, press Trade, Offer, Seize, answer counter-offers, read the reply, close (`open_trade_screen`, `press_trade`, `screens_write` permission) | planned 2026-10-16; live test on the owner's caravan save |
+| P3.0 | Diplomacy dialog: availability event, open, read text and choices, step, finish (`get_meeting_dialog`, `open_meeting_dialog`, `step_meeting_dialog`) | planned 2026-10-16; live test on the owner's liaison save |
+| P4.0 | Popups: `popup` event with the text, `list_popups`, `close_popup` with optional unpause | planned 2026-10-16 |
+| P5.0 | Hotkeys: list the 16 slots, set and clear zoom hotkeys (`list_hotkeys`, `set_hotkey`, `clear_hotkey`, `hotkeys_write` permission) | planned 2026-10-16 |
+| P6.0 | Alpha 1.0.1 release | owner's |
