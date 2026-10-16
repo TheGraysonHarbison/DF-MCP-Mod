@@ -67,8 +67,9 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
 
     @mcp.tool(name="get_meeting_dialog", annotations=READ_ONLY)
     def get_meeting_dialog(limit: int = 25) -> dict[str, Any]:
-        """The liaison's meeting dialog: `available` (its left-side alert is up; `alerts`
-        lists every current alert with its report texts), `open`, `step` (`text`,
+        """The liaison's meeting dialog: `available` (a meeting is waiting: a `pending`
+        meeting with its actor and noble, or its left-side alert; `available_from` says
+        which; `alerts` lists every current alert with its report texts), `open`, `step` (`text`,
         `requests`, `land_holder`, or `closed`), the dialog `text` as lines, the dipscript
         position (`script`), what can be seen of the reply `choices`, the `requests` tabs,
         the `land_holder` positions and candidates (`hist_figure_id`, name), and `paused`.

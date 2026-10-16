@@ -698,9 +698,7 @@ local function script_info(dipev)
     return info, step
 end
 
-local function popup_info(d)
-    local mm = safe(function() return d.mm end)
-    if not mm then return nil end
+local function moment_row(mm)
     local out = {}
     pcall(function()
         out.actor_unit_id = mm.meeting_holder_actor
@@ -709,6 +707,39 @@ local function popup_info(d)
         out.moment_time_left = mm.moment_time_left
     end)
     return out
+end
+
+local function popup_info(d)
+    local mm = safe(function() return d.mm end)
+    if not mm then return nil end
+    return moment_row(mm)
+end
+
+-- plotinfo.dipscript_popups (df.plotinfo.xml, original name meetingmoment, "cause
+-- viewscreen_meetingst to pop up"): the meetings waiting for the player, the same struct
+-- diplomacy.mm points at. Likely the state behind the meeting's alert button.
+-- VERIFY LIVE: that an entry appears when the meeting alert does and leaves when it opens.
+local function popups_vector()
+    return safe(function() return df.global.plotinfo.dipscript_popups end)
+end
+
+-- Rows {index, actor_unit_id, noble_unit_id, actor, noble, flags, moment_time_left}, capped
+-- at `limit`; also the full count.
+function pending_popups(limit)
+    local rows, count = {}, 0
+    pcall(function()
+        local vec = df.global.plotinfo.dipscript_popups
+        count = #vec
+        for i = 0, count - 1 do
+            if #rows >= limit then break end
+            local row = moment_row(vec[i])
+            row.index = i
+            row.actor = row.actor_unit_id and unit_ref(safe(df.unit.find, row.actor_unit_id)) or nil
+            row.noble = row.noble_unit_id and unit_ref(safe(df.unit.find, row.noble_unit_id)) or nil
+            table.insert(rows, row)
+        end
+    end)
+    return rows, count
 end
 
 local function hf_name(hf_id)
@@ -737,8 +768,13 @@ local function dialog_state(args)
     if limit < 1 then limit = DEFAULT_LIMIT end
     local d = diplomacy()
     local alerts, meeting_ids, alerts_truncated = alert_rows(limit)
+    local pending, pending_count = pending_popups(limit)
+    local available_from = {}
+    if #meeting_ids > 0 then table.insert(available_from, 'alerts') end
+    if pending_count > 0 then table.insert(available_from, 'dipscript_popups') end
     local out = {
-        available = #meeting_ids > 0, meeting_report_ids = meeting_ids,
+        available = #available_from > 0, available_from = available_from, meeting_report_ids = meeting_ids,
+        pending = pending, pending_truncated = pending_count > #pending or nil,
         alerts = alerts, alerts_truncated = alerts_truncated or nil,
         open = safe(function() return d.open end) == true,
         in_progress = safe(function() return d.flag.in_the_middle_of_stuff end) == true,
@@ -836,9 +872,13 @@ local function replay(writes)
         end
         return nil, tostring(err)
     end
+    local function shown(v)
+        if type(v) ~= 'userdata' then return v end
+        return safe(function() return v.id end) or tostring(v)
+    end
     local out = {}
     for i, s in ipairs(saved) do
-        table.insert(out, {field = writes[i][4], before = s[3], after = writes[i][3]})
+        table.insert(out, {field = writes[i][4], before = shown(s[3]), after = shown(writes[i][3])})
     end
     return out
 end
@@ -853,20 +893,44 @@ local function open_dialog(args)
     local busy = screens.require_focus({screens.MAIN_FOCUS}, 'open_meeting_dialog')
     if busy then return busy end
     local _, meeting_ids = alert_rows(DEFAULT_LIMIT)
-    if #meeting_ids == 0 then
+    local popups = popups_vector()
+    local popup = popups and #popups > 0 and popups[0] or nil
+    if #meeting_ids == 0 and not popup then
         return rpc.error_result(rpc.ERR_NOT_FOUND,
-            'no meeting alert is up; wait for a meeting_ready event (get_meeting_dialog lists the current alerts)')
+            'no meeting is waiting (no meeting alert, no pending meeting popup); wait for a meeting_ready event')
     end
     -- VERIFY LIVE: the opener. The field diff of the player's click on the alert is not
-    -- recorded yet; the guess is that the game keeps the meeting (mm, dipev) on the
-    -- interface and the click only sets `open`. Nothing else is written.
-    local has_state = safe(function() return d.mm ~= nil end) or safe(function() return d.dipev ~= nil end)
-    if not has_state then
+    -- recorded yet. With diplomacy.mm already set the guess is that the click only sets
+    -- `open`. With mm unset and a pending plotinfo.dipscript_popups entry, the guess points
+    -- mm at that entry, sets actor and target from its two unit ids (actor =
+    -- meeting_holder_actor, target = meeting_holder_noble), then sets `open`.
+    local writes
+    if safe(function() return d.mm ~= nil end) then
+        writes = {{d, 'open', true, 'diplomacy.open'}}
+    elseif popup then
+        local actor_id = safe(function() return popup.meeting_holder_actor end) or -1
+        local noble_id = safe(function() return popup.meeting_holder_noble end) or -1
+        local actor, noble = safe(df.unit.find, actor_id), safe(df.unit.find, noble_id)
+        if not actor or not noble then
+            return rpc.error_result(rpc.ERR_NOT_FOUND, ('the pending meeting names units %d and %d, which are not '
+                .. 'both on the map; ask the player to click the meeting alert'):format(actor_id, noble_id))
+        end
+        writes = {
+            {d, 'mm', popup, 'diplomacy.mm'},
+            {d, 'actor_unid', actor_id, 'diplomacy.actor_unid'},
+            {d, 'actor', actor, 'diplomacy.actor'},
+            {d, 'target_unid', noble_id, 'diplomacy.target_unid'},
+            {d, 'target', noble, 'diplomacy.target'},
+            {d, 'open', true, 'diplomacy.open'},
+        }
+    elseif safe(function() return d.dipev ~= nil end) then
+        writes = {{d, 'open', true, 'diplomacy.open'}}
+    else
         return rpc.error_result(rpc.ERR_NOT_FOUND,
             'the game\'s meeting state is not populated; the live diff of a player click on the alert decides how to '
             .. 'open it; run `claude-bridge dialog-snapshot` before and after')
     end
-    local replayed, err = replay({{d, 'open', true, 'diplomacy.open'}})
+    local replayed, err = replay(writes)
     if not replayed then
         return rpc.error_result(rpc.ERR_INTERNAL, 'opening the dialog failed and was undone: ' .. err)
     end
@@ -1047,6 +1111,8 @@ function dialog_snapshot()
         end
     end)
     snap.announcement_alert = alerts
+    local pending, pending_count = pending_popups(1000)
+    snap.dipscript_popups = {count = pending_count, entries = pending}
     snap.alert_button_announcement_id = int_list(safe(function()
         return df.global.world.status.alert_button_announcement_id
     end) or {}, 1000)

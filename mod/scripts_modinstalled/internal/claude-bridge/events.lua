@@ -390,6 +390,18 @@ local function alert_set()
     return dip and safe(dip.alert_report_ids) or {}
 end
 
+-- Pending meeting popups as {["actor:noble"] = {actor, noble}} (plotinfo.dipscript_popups).
+local function popup_pairs()
+    local set = {}
+    pcall(function()
+        for _, mm in ipairs(df.global.plotinfo.dipscript_popups) do
+            set[mm.meeting_holder_actor .. ':' .. mm.meeting_holder_noble] =
+                {mm.meeting_holder_actor, mm.meeting_holder_noble}
+        end
+    end)
+    return set
+end
+
 local function describe_petition(id)
     local text = 'A petition awaits an answer'
     pcall(function()
@@ -409,6 +421,7 @@ local function poll()
         season = safe(function() return df.global.cur_season end),
         citizens = citizen_set(),
         alerts = alert_set(),
+        popups = popup_pairs(),
     }
     if not baseline then
         baseline = current
@@ -453,16 +466,33 @@ local function poll()
                                     extra = {artifact_id = id}})
         end
     end
-    -- A baseline from before this kind existed has no alerts; take this poll as the baseline.
-    -- One meeting_ready per poll: one meeting can put several reports under its alert.
-    if baseline.alerts then
+    -- A baseline from before this kind existed has no alerts or popups; take this poll as
+    -- the baseline. One meeting_ready per poll: one meeting can raise both signals and put
+    -- several reports under its alert. A new pending meeting popup wins.
+    local meeting_pushed = false
+    if baseline.popups then
+        for key, pair in pairs(current.popups) do
+            if not baseline.popups[key] then
+                local actor, noble = unit_ref(pair[1]), unit_ref(pair[2])
+                push('meeting_ready', {
+                    text = ('%s is waiting to meet %s'):format((actor and actor.name) or ('unit ' .. pair[1]),
+                                                               (noble and noble.name) or ('unit ' .. pair[2])),
+                    unit_ids = {pair[1], pair[2]},
+                    extra = {source = 'dipscript_popups', actor_unit_id = pair[1], noble_unit_id = pair[2]}})
+                meeting_pushed = true
+                break
+            end
+        end
+    end
+    if baseline.alerts and not meeting_pushed then
         local dip = diplomats_module()
         for id, alert_type in pairs(current.alerts) do
             if baseline.alerts[id] == nil then
                 local report = safe(df.report.find, id)
                 if report and dip and safe(dip.is_meeting_report, report, alert_type or nil) then
                     push('meeting_ready', {text = report.text, extra = {
-                        report_id = id, announcement = enum_name(df.announcement_type, report.type)}})
+                        source = 'alerts', report_id = id,
+                        announcement = enum_name(df.announcement_type, report.type)}})
                     break
                 end
             end
