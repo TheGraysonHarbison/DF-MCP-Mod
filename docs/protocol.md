@@ -52,8 +52,8 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `settings` | on | `settings.get`, `settings.mods` |
 | `time` | on | `time.now` |
 | `pause_write` | off | `time.set_pause` |
-| `screens_write` | off | `trade.open_dialog`, `trade.dialog_step` |
-| `events` | on | `events.kinds`, `events.poll`, `events.emit`, `timer.status` |
+| `screens_write` | off | `popups.close`, `trade.open_screen`, `trade.press`, `trade.open_dialog`, `trade.dialog_step` |
+| `events` | on | `events.kinds`, `events.poll`, `events.emit`, `timer.status`, `popups.list` |
 | `plan` | on | `plan.info`, `plan.read`, `plan.write`, `plan.append`, `goals.read` |
 | `units` | on | `units.list`, `units.find`, `units.get`, `units.sheet`, `units.full_sheet`, `labor.details` |
 | `units_write` | off | `units.set_nickname` |
