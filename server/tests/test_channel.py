@@ -105,6 +105,24 @@ def test_format_batch_newcomers_truncated():
     content, _ = format_batch(result)
     assert content.splitlines()[1].endswith("Dwarf 24 and 5 more")
     assert "Dwarf 0, Dwarf 1," in content
+def test_format_batch_carries_popup_text_whole():
+    # A popup event as the mod queues it: text already cut to 400 characters by the mod.
+    text = ("A vile force of darkness has arrived! " * 11)[:400]
+    result = {
+        "tick": 5000,
+        "events": [
+            {"seq": 9, "kind": "popup", "text": text,
+             "extra": {"popup_index": 1, "popup_count": 1, "portrait": "Urist Bonecarved",
+                       "text_truncated": True}},
+            {"seq": 10, "kind": "mineral_discovered", "text": "x" * 400},
+        ],
+    }
+    content, meta = format_batch(result)
+    lines = content.splitlines()
+    assert lines[1] == (f"- [popup] {text.strip()} (portrait: Urist Bonecarved) "
+                        "(text cut; read it whole with list_popups)")
+    assert lines[2] == "- [mineral_discovered] " + "x" * 297 + "..."
+    assert meta["kinds"] == "mineral_discovered popup"
 
 
 def test_notification_shape():
