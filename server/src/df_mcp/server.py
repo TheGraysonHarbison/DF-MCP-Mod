@@ -32,6 +32,7 @@ from df_mcp.tools import (
     mods,
     nobles,
     orders,
+    petitions,
     plan,
     plants,
     popups,
@@ -101,6 +102,9 @@ units, tiles, or petitions they name with the tools and act. `poll_events` is th
 A `migrants_arrived` event names the newcomers and their professions; give them work, work
 details, and beds.
 A `popup` event means the game paused on a box: read it (`list_popups`), act, then `close_popup`.
+A `petition` event means a visitor or group asks to stay, become citizens, or have a temple or
+guildhall: read it with `list_petitions` and, with `units_write` and `screens_write`, answer it
+with `answer_petition` (accept or deny); check `verified` in the reply.
 `run_console_command` only runs commands the player has allowlisted in-game. For dev testing,
 `dev_create_item` and `dev_exterminate` build `modtools/create-item` and `exterminate` lines
 and run them the same way; they change the game outside its rules, so use them only when the
@@ -133,6 +137,7 @@ TOOL_MODULES = (
     kitchen,
     events,
     popups,
+    petitions,
     plan,
     messages,
     timer,

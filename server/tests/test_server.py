@@ -104,6 +104,8 @@ def test_server_registers_expected_tools():
         "poll_events",
         "list_popups",
         "close_popup",
+        "list_petitions",
+        "answer_petition",
         "get_plan_info",
         "read_plan",
         "write_plan",
