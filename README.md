@@ -178,6 +178,10 @@ situation matches, and each can be invoked by hand as `/claude-df:<name>`.
   crops are set after a plot is built, work orders need a manager, every bridge call pauses the game briefly, lists are
   capped unless asked otherwise, what each error code means and what Claude should do about it.
 
+- **fortress-basics**: strategy an experienced player would follow: yearly food and drink targets, spare barrels and
+  bins, cut gems as the trade good and never an artifact, wealth made rather than bought, engraved rooms, busy miners,
+  no tree quota for the elves, and how Claude answers petitions on its own.
+
 `df-skills/README.md` has the details and the commands to reinstall the plugin after editing a skill.
 
 ## Known bugs and open issues
@@ -462,6 +466,6 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | P2-2.0 | Workshop tasks without a manager: list what a shop can make, add, suspend, repeat, and cancel its jobs | planned 2026-10-17 |
 | P2-3.0 | Plan and goals survive autosaves and saves to a new folder (bug): stored in DFHack's per-fort site data, `claude-df/` files kept as a mirror, `get_plan_info` reports the storage (protocol 32) | verified in-game 2026-10-17: a plan and a goal written on the "Test" save carried over when the game moved the fort to "region2" mid-session (mirror files written into the new folder from site data), survived a quit and reload, and a 65,536-byte plan saved and reloaded intact with one more byte refused |
 | P2-4.0 | Map area: missing tool descriptions, box caps, wagon-centred defaults (bug) | planned 2026-10-17 |
-| P2-5.0 | `fortress-basics` skill from the owner's gameplay notes | planned 2026-10-17 |
+| P2-5.0 | `fortress-basics` skill from the owner's gameplay notes | built 2026-10-17; the stock categories it relies on (`barrel`, `bin`, `smallgem`, `rough`) checked against the game 2026-10-17 |
 | P2-6.0 | Petitions: list and answer (replaces 13.1) | planned 2026-10-17 |
 | P2-7.0 | Alpha 1.0.2 release | owner's, after P2-1.0 to P2-6.0 |

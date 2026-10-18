@@ -40,6 +40,13 @@ invoked by hand as `/claude-df:<name>`.
   Trade button and the liaison meeting stay with the player, never touch texture fields,
   and a table of error codes with what to do about each.
 
+- **fortress-basics** (`skills/fortress-basics/SKILL.md`): strategy from the owner's notes
+  checked against the DF wiki: yearly food and drink targets per dwarf, spare barrels and
+  bins, what to sell (cut gems, never artifacts) and buy (raw goods, instruments, animals),
+  wealth made in the fort, room value from engravings, offices, idle miners, cage traps,
+  refusing elven tree quotas, underground living and rain, and the policy for answering
+  petitions.
+
 ## Agents
 
 - **df-scout** (`agents/df-scout.md`, Haiku): lists, surveys, counts, and bulk placement from
