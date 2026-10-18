@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **33**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **34**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -66,8 +66,8 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `kitchen_write` | off | `kitchen.set` |
 | `stocks_true` | on | no ops; a toggle. Off puts the stocks ops in bookkeeper view. |
 | `orders` | on | `orders.list`, `orders.get`, `orders.jobs` |
-| `orders_write` | off | `orders.create`, `orders.edit`, `orders.delete` |
-| `workshops` | on | `workshops.list`, `workshops.get`, `build.plan_construction`, `build.plan_furniture`, `build.list`, `farms.list`, `farms.get` |
+| `orders_write` | off | `orders.create`, `orders.edit`, `orders.delete`, `workshops.add_job`, `workshops.set_job`, `workshops.cancel_job` |
+| `workshops` | on | `workshops.list`, `workshops.get`, `workshops.tasks`, `build.plan_construction`, `build.plan_furniture`, `build.list`, `farms.list`, `farms.get` |
 | `zones` | on | `zones.list`, `zones.get` |
 | `zones_write` | off | `zones.create`, `zones.edit`, `zones.assign`, `zones.unassign`, `zones.delete` |
 | `hotkeys_write` | off | `hotkeys.set`, `hotkeys.clear` |
@@ -538,11 +538,13 @@ Anything else is `BAD_REQUEST` with up to five close inorganic names in the mess
 
 The order is appended to `world.manager_orders.all` with the next id, the way DFHack's `workorder` script does it. `status` is left clear: the manager validates and activates it. Before insertion the handler asks `dfhack.job.getManagerOrderName` for the screen label; if it contains "unknown material" (an order that needs a material and got none), the order is discarded and the call is `BAD_REQUEST` quoting that label. Jobs that take no material, such as custom reactions and meals, pass.
 
+A `workshop_id` must name a workshop or furnace that offers the job (or reaction): the handler asks the same table as `workshops.tasks` and refuses with `BAD_REQUEST` listing what that building offers (since protocol 34), so a carpenter's workshop never gets a smelting order.
+
 Result: `created`, `order` (row).
 
 ### `orders.edit`
 
-Args: `id`, and at least one of `amount` (keeps completed progress: left = new total minus done), `frequency`, `max_workshops`, `workshop_id` (-1 clears). Needs a map and `orders_write`.
+Args: `id`, and at least one of `amount` (keeps completed progress: left = new total minus done), `frequency`, `max_workshops`, `workshop_id` (-1 clears; a new workshop must offer the order's job, as in `orders.create`). Needs a map and `orders_write`.
 
 Result: `changed` (field names), `order`.
 
@@ -567,6 +569,40 @@ Result: `total`, `count`, `offset`, `limit`, `truncated`, `workshops` (sorted by
 Args: `id` (building id), `limit` (default 25). Needs a map. A building that is not a workshop or furnace is `BAD_REQUEST`.
 
 Result: the row plus `jobs` `[{id, name, job, order_id, flags, worker {id, name}, strange_mood}]`, `inventory` `{entries, total, truncated}` of items in the workshop (`{id, description, quantity, flags}`), `materials` (the same shape, the items it was built from), `profile` `{permitted_workers, min_level, max_level, flags}`, `truncated` (section names that hit `limit`).
+
+### Workshop tasks
+
+Jobs added straight to a workshop, as its "Add new task" button does, need no manager. The bridge builds the job itself (`dfhack.job.createLinked`, item filters in `job_items`, `dfhack.job.assignToWorkshop`, `dfhack.job.checkBuildingsNow`) the way DFHack's `autocheese` and `idle-crafting` scripts do; it never presses the game's buttons. What a shop offers comes from `internal/claude-bridge/worktasks.lua`: built-in jobs per `workshop_type` and `furnace_type` (DFHack's `dfhack.workshops.getJobs` templates where they exist, the mod's own entries for the shops it misses), item subtypes from the raws filtered by the fort civ's permitted equipment, and raw reactions whose `building` entry names the shop, filtered by the civ's permitted reactions. Reaction jobs get their filters from the game's own `reaction_reagent:contribute_to_job_req`. A furnace or forge that is not a magma one gets a coal bar filter for fuel.
+
+Task row: `label`, `job` (token), `item` `{id, name}` (subtype rows), `reaction` `{code, name}`, `needs_material`, `materials` (plain words it takes), `direct` (false: offered for work orders only, because its item needs are not confirmed), `unverified` (filters derived without a DFHack template; watch that a dwarf starts it).
+
+Material words are those of `orders.create`. Wood shops default to any wood and stone shops to any stone (the game's own "wooden" and "rock" tasks). Metal, ore, gem, glass, cloth, bowyer, and craft tasks need one, and without it the call is `BAD_REQUEST` naming the game's "unknown material" label and the words that fit. Forge jobs take one bar (150 units, as in `[REAGENT:A:150:BAR:...]`) per three units of the item's `material_size`, at least one.
+
+### `workshops.tasks`
+
+Args: `id` (building id), `query` (optional substring over label, job, item, reaction), `limit` (default 25), `offset` (0). Needs a map. A building that is not a workshop or furnace is `BAD_REQUEST`.
+
+Result: `id`, `type`, `name`, `total`, `count`, `offset`, `limit`, `truncated`, `tasks`, `queued` (jobs now in the shop), `max_jobs` (10), and a `note` when the bridge knows no task for the building.
+
+### `workshops.add_job`
+
+Args: `id`; `job` (a task label, an item id or name, or a job token or caption when it names one task) or `reaction` (code or name); `item` (narrows a token with several rows, such as `MakeTool` with `minecart`); `material`; `repeat` (bool); `do_now` (bool). Needs a map and `orders_write`.
+
+Refused with `BAD_REQUEST`: an unbuilt building, one claimed by a strange mood, a full queue (10 jobs, `assignToWorkshop`'s limit), a task the shop does not offer (the message lists up to 25 labels it does offer), an ambiguous word (the message lists the matches), a task with `direct` false, a material that does not fit, and the "unknown material" case.
+
+Result: `added`, `workshop` `{id, type, name}`, `task` (row), `job` (as in `workshops.get`), `queued`, and `notes` (for example that the task is unverified).
+
+### `workshops.set_job`
+
+Args: `id`, `job_id` (from `workshops.get`), and at least one of `suspend`, `repeat`, `do_now` (bools). Needs a map and `orders_write`. Suspending also clears `working` and removes the worker, as DFHack's `suspend` script does. Strange mood jobs are `BAD_REQUEST`; a job not in that shop is `NOT_FOUND`.
+
+Result: `changed` (flag names), `job`.
+
+### `workshops.cancel_job`
+
+Args: `id`, `job_id`. Needs a map and `orders_write`. Removes the job with `dfhack.job.removeJob`, including one a dwarf has started. Strange mood jobs are `BAD_REQUEST`.
+
+Result: `cancelled`, `job` (as it was), `queued`, `note` when it was in progress, and `order` `{id, label}` plus `order_note` when it came from a work order (the order stays).
 
 ### Map
 

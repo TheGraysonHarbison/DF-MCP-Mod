@@ -6,7 +6,7 @@ local scriptmanager = require('script-manager')
 
 MOD_ID = 'claude-bridge'
 MOD_VERSION = '1.0.1-alpha'
-PROTOCOL_VERSION = 33
+PROTOCOL_VERSION = 34
 
 -- Settings groups, in display order.
 GROUPS = {'General', 'Units', 'Items', 'Logistics', 'World', 'Commands'}
@@ -50,7 +50,7 @@ NAMESPACES = {
     {key = 'orders',   group = 'Logistics', hotkey = 'CUSTOM_O', default = true,
      label = 'Read work orders'},
     {key = 'orders_write', group = 'Logistics', hotkey = 'CUSTOM_W', default = false,
-     label = 'Create, edit, delete work orders'},
+     label = 'Work orders and workshop jobs'},
     {key = 'workshops', group = 'Logistics', hotkey = 'CUSTOM_K', default = true,
      label = 'Read workshops'},
     {key = 'build_write', group = 'Logistics', hotkey = 'CUSTOM_D', default = false,
