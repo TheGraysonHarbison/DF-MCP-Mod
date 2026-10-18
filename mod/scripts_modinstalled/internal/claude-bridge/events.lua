@@ -404,6 +404,11 @@ end
 
 local function describe_petition(id)
     local text = 'A petition awaits an answer'
+    -- petitions.lua (P2-6.0) names the applicant and the request; required lazily, it never
+    -- requires this module.
+    local petitions = safe(reqscript, 'internal/claude-bridge/petitions')
+    local full = petitions and safe(petitions.event_text, id)
+    if full then return full end
     pcall(function()
         local agreement = df.agreement.find(id)
         local details = agreement.details[0]
