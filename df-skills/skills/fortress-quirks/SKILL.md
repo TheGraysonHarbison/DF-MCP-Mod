@@ -56,6 +56,11 @@ What the game and the bridge have taught us. Each line was learned by doing it w
   on top, up/down between, up stair at the bottom; a 1 by 1 box makes a stair column),
   `channel`, `ramp`, `remove_stairs`, `smooth`, `engrave`, `chop`, `gather`. Boxes span
   z-levels; circles take a centre and radius for every kind but stairs.
+- **The whole map is in reach.** Boxes and circles take any size up to the map bounds
+  (`get_map_bounds`) and are clipped at the edge (`box.clipped`). The wagon is only the
+  default start of `find_build_space`; pass a point or `whole_map=true` to look further.
+  Big boxes pause the game longer, so preview them with the plan tools first. One bridge,
+  road, or farm plot is at most 31 by 31 (the game's limit); place several for more.
 - **A designation job without a worker is normal.** The game queues the jobs long before a
   miner picks one. `list_designations` shows pending tiles and taken jobs; the tile's own
   flag clears when the job is created and comes back if the job is cancelled.
