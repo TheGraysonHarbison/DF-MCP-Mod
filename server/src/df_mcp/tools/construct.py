@@ -5,7 +5,7 @@ from typing import Any
 from mcp.server import MCPServer
 
 from df_mcp.bridge import Bridge
-from df_mcp.tools import call
+from df_mcp.tools import call, tool_doc
 from df_mcp.tools.core import READ_ONLY, WRITE_SAFE
 
 KINDS = (
@@ -25,16 +25,19 @@ DIRECTIONS = ("retracting", "raise_north", "raise_south", "raise_east", "raise_w
 
 SHAPE_DOC = """`kind`: "wall", "floor", "ramp", "stairs", "fortification" place one construction
         per tile; "bridge", "paved_road", "dirt_road", "support" place one building.
-        `shape` "box" (default) takes two corners (x1, y1, z1, x2, y2, z2) in any order, at
-        most 64 by 64 per level and 32 levels; a z range stacks the shape on every level.
-        "circle" takes center_x, center_y, center_z, radius (1 to 31). "line" takes the
+        `shape` "box" (default) takes two corners (x1, y1, z1, x2, y2, z2) in any order, any
+        size up to the whole map (clipped at its edge, `box.clipped`; big boxes pause the
+        game longer); a z range stacks the shape on every level. "circle" takes center_x,
+        center_y, center_z, radius (1 or more). "line" takes the
         corners as endpoints on one level and draws a straight wall or floor between them
         at any angle; `thick` (default true) fills the diagonal steps so dwarves cannot
         slip through. `hollow` keeps only the perimeter of a box or the ring of a circle.
         "stairs" needs a box of at least two levels: up stair at the bottom, down stair on
         top, up/down between (up/down on an existing stair). A bridge needs `direction`
         ("retracting" or "raise_north"/"raise_south"/"raise_east"/"raise_west", the side
-        that becomes a wall when raised), one level, at most 31 by 31; roads cut out bad
+        that becomes a wall when raised), one level, at most 31 by 31 (the game's own limit
+        for one bridge or road, which DFHack's buildingplan mirrors; place several side by
+        side for more); roads cut out bad
         tiles; a support is one tile. `material` is a plain word as `place_workshop` takes
         ("any stone", "logs", "plum wood", "sandstone blocks"); leave it out for the
         closest material. A construction goes on open air, floor, boulders, pebbles, a
@@ -101,8 +104,27 @@ def _args(
     return args
 
 
+
+PLAN_CONSTRUCTION_DOC = tool_doc(
+    """Preview a construction order without changing anything: what
+        `place_construction` would place, which tiles it would skip and why, how many
+        materials it needs and how many are in stock. Needs only `workshops`.""",
+    SHAPE_DOC,
+)
+
+
+PLACE_CONSTRUCTION_DOC = tool_doc(
+    """Place construction blueprints for the dwarves to build: walls, floors, ramps,
+        stairwells, fortifications, bridges, roads, supports. Needs `build_write`. Run
+        `plan_construction` with the same arguments first. Returns `status` (`placed`,
+        `no_materials`, `nothing_to_place`, `invalid_space`), `placed`, the skipped counts
+        with the first 25 reasons, `unsupported`, `materials {needed, available}`, and the
+        first 25 building ids. Only blueprints are placed; dwarves build them in time.""",
+    SHAPE_DOC,
+)
+
 def register(mcp: MCPServer, bridge: Bridge) -> None:
-    @mcp.tool(name="plan_construction", annotations=READ_ONLY)
+    @mcp.tool(name="plan_construction", annotations=READ_ONLY, description=PLAN_CONSTRUCTION_DOC)
     def plan_construction(
         kind: str,
         shape: str = "box",
@@ -121,14 +143,6 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         material: str | None = None,
         direction: str | None = None,
     ) -> dict[str, Any]:
-        (
-            """Preview a construction order without changing anything: what
-        `place_construction` would place, which tiles it would skip and why, how many
-        materials it needs and how many are in stock. Needs only `workshops`.
-
-        """
-            + SHAPE_DOC
-        )
         return call(
             bridge,
             "build.plan_construction",
@@ -152,7 +166,7 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
             ),
         )
 
-    @mcp.tool(name="place_construction", annotations=WRITE_SAFE)
+    @mcp.tool(name="place_construction", annotations=WRITE_SAFE, description=PLACE_CONSTRUCTION_DOC)
     def place_construction(
         kind: str,
         shape: str = "box",
@@ -171,17 +185,6 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         material: str | None = None,
         direction: str | None = None,
     ) -> dict[str, Any]:
-        (
-            """Place construction blueprints for the dwarves to build: walls, floors, ramps,
-        stairwells, fortifications, bridges, roads, supports. Needs `build_write`. Run
-        `plan_construction` with the same arguments first. Returns `status` (`placed`,
-        `no_materials`, `nothing_to_place`, `invalid_space`), `placed`, the skipped counts
-        with the first 25 reasons, `unsupported`, `materials {needed, available}`, and the
-        first 25 building ids. Only blueprints are placed; dwarves build them in time.
-
-        """
-            + SHAPE_DOC
-        )
         return call(
             bridge,
             "build.construct",

@@ -1,8 +1,10 @@
--- Built workshops and furnaces: list, filter by type, and inspect one. Read-only.
--- Plan section 10, item 4.1.
+-- Built workshops and furnaces: list, filter by type, and inspect one (plan section 10,
+-- item 4.1); list what a shop can make and add, change, or cancel its jobs without a
+-- manager (plan section 16, P2-2.0; the table lives in worktasks.lua).
 --@ module = true
 
 local rpc = reqscript('internal/claude-bridge/rpc')
+local worktasks = reqscript('internal/claude-bridge/worktasks')
 
 DEFAULT_LIMIT = 25
 
@@ -260,9 +262,197 @@ local function get(args)
     return row
 end
 
+----------------------------------------------------------------------------------------------
+-- tasks and jobs (P2-2.0). Reads under `workshops`, writes under `orders_write`.
+
+local function find_shop(args)
+    local id = tonumber(args.id)
+    if not id then return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, '"id" must be a building id') end
+    local b = df.building.find(id)
+    if not b then return nil, rpc.error_result(rpc.ERR_NOT_FOUND, 'no building with id ' .. id) end
+    if not kind_of(b) then
+        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('building %d is a %s, not a workshop or furnace'):format(id,
+                enum_name(df.building_type, b:getType()) or '?'))
+    end
+    return b
+end
+
+local function tasks_op(args)
+    local b, err = find_shop(args)
+    if not b then return err end
+    local limit, lerr = parse_limit(args)
+    if lerr then return lerr end
+    local offset = tonumber(args.offset) or 0
+    local query = type(args.query) == 'string' and args.query:lower() or nil
+    local list = worktasks.tasks(b) or {}
+    local rows, total = {}, 0
+    for _, task in ipairs(list) do
+        local r = worktasks.row(task)
+        local keep = true
+        if query then
+            local text = ((r.label or '') .. ' ' .. (r.job or '') .. ' '
+                .. (r.item and (r.item.id .. ' ' .. (r.item.name or '')) or '') .. ' '
+                .. (r.reaction and (r.reaction.code .. ' ' .. (r.reaction.name or '')) or ''))
+                :lower()
+            keep = text:find(query, 1, true) ~= nil
+        end
+        if keep then
+            total = total + 1
+            if total > offset and #rows < limit then table.insert(rows, r) end
+        end
+    end
+    local _, token, name = kind_of(b)
+    local out = {id = b.id, type = token, name = name, total = total, count = #rows,
+                 offset = offset, limit = limit, truncated = total > offset + #rows,
+                 tasks = rows, queued = #b.jobs, max_jobs = worktasks.MAX_JOBS}
+    if #list == 0 then
+        out.note = 'this building offers no tasks the bridge knows of'
+    end
+    return out
+end
+
+local function offered_text(list)
+    local names, more = worktasks.labels(list, 25)
+    local text = table.concat(names, ', ')
+    if more > 0 then text = text .. (', and %d more (see workshops.tasks)'):format(more) end
+    return text
+end
+
+local function add_job(args)
+    local b, err = find_shop(args)
+    if not b then return err end
+    if args.job == nil and args.reaction == nil then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, 'pass "job" (a task label) or "reaction"')
+    end
+    local shop = summary(b)
+    if not shop.built then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('%s %d is not built yet; jobs can be added once it is finished'):format(shop.name, b.id))
+    end
+    if shop.strange_mood then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('%s %d is claimed by a strange mood'):format(shop.name, b.id))
+    end
+    if #b.jobs >= worktasks.MAX_JOBS then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('%s %d already holds %d jobs, the game\'s limit; cancel one first'):format(
+                shop.name, b.id, worktasks.MAX_JOBS))
+    end
+    local list = worktasks.tasks(b) or {}
+    local task, candidates = worktasks.find(list, args.job, args.reaction, args.item)
+    if not task then
+        local asked = args.reaction ~= nil and ('reaction "%s"'):format(tostring(args.reaction))
+            or ('"%s"'):format(tostring(args.job))
+        if candidates then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST,
+                ('%s matches several tasks at %s %d: %s; pass the label, or "item"'):format(
+                    asked, shop.name, b.id, offered_text(candidates)))
+        end
+        if #list == 0 then
+            return rpc.error_result(rpc.ERR_BAD_REQUEST,
+                ('%s %d offers no tasks the bridge knows of'):format(shop.name, b.id))
+        end
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('%s %d does not offer %s; it offers: %s'):format(shop.name, b.id, asked,
+                offered_text(list)))
+    end
+    local job, notes = worktasks.create_job(b, task, {material = args.material,
+        ['repeat'] = args['repeat'] == true, do_now = args.do_now == true})
+    if not job then return rpc.error_result(rpc.ERR_BAD_REQUEST, notes) end
+    local out = {added = true, workshop = {id = b.id, type = shop.type, name = shop.name},
+                 task = worktasks.row(task), job = job_row(job), queued = #b.jobs}
+    if #notes > 0 then out.notes = notes end
+    return out
+end
+
+local function find_job(b, args)
+    local job_id = tonumber(args.job_id)
+    if not job_id then
+        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, '"job_id" must be a job id from get_workshop')
+    end
+    for _, job in ipairs(b.jobs) do
+        if job.id == job_id then
+            if is_mood_job(job) then
+                return nil, rpc.error_result(rpc.ERR_BAD_REQUEST,
+                    ('job %d is a strange mood; it cannot be changed or cancelled'):format(job_id))
+            end
+            return job
+        end
+    end
+    return nil, rpc.error_result(rpc.ERR_NOT_FOUND, ('workshop %d has no job %d'):format(b.id, job_id))
+end
+
+local function set_job(args)
+    local b, err = find_shop(args)
+    if not b then return err end
+    local job, jerr = find_job(b, args)
+    if not job then return jerr end
+    local changed = {}
+    if args.suspend ~= nil then
+        local on = args.suspend == true
+        job.flags.suspend = on
+        if on then
+            -- As DFHack's suspend script does: drop the worker so the job really stops.
+            job.flags.working = false
+            if dfhack.job.getWorker(job) then dfhack.job.removeWorker(job, 0) end
+        end
+        table.insert(changed, 'suspend')
+    end
+    if args['repeat'] ~= nil then
+        job.flags['repeat'] = args['repeat'] == true
+        table.insert(changed, 'repeat')
+    end
+    if args.do_now ~= nil then
+        job.flags.do_now = args.do_now == true
+        table.insert(changed, 'do_now')
+    end
+    if #changed == 0 then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, 'nothing to change; pass suspend, repeat, or do_now')
+    end
+    if args.suspend == false or args.do_now == true then dfhack.job.checkBuildingsNow() end
+    return {changed = changed, job = job_row(job)}
+end
+
+local function cancel_job(args)
+    local b, err = find_shop(args)
+    if not b then return err end
+    local job, jerr = find_job(b, args)
+    if not job then return jerr end
+    local was = job_row(job)
+    local order = nil
+    if job.order_id >= 0 then
+        order = {id = job.order_id}
+        pcall(function()
+            for _, o in ipairs(df.global.world.manager_orders.all) do
+                if o.id == job.order_id then
+                    order.label = dfhack.job.getManagerOrderName(o)
+                    break
+                end
+            end
+        end)
+    end
+    if not dfhack.job.removeJob(job) then
+        return rpc.error_result(rpc.ERR_INTERNAL, ('the game refused to cancel job %d'):format(was.id))
+    end
+    local out = {cancelled = true, job = was, queued = #b.jobs}
+    if was.worker then out.note = 'the job was in progress; its worker dropped it' end
+    if order then
+        out.order = order
+        out.order_note = ('this job came from work order %d%s; the order itself stays'):format(
+            order.id, order.label and (' ("' .. order.label .. '")') or '')
+    end
+    return out
+end
+
 function ops()
     return {
         ['workshops.list'] = {namespace = 'workshops', handler = list, needs_map = true},
         ['workshops.get'] = {namespace = 'workshops', handler = get, needs_map = true},
+        ['workshops.tasks'] = {namespace = 'workshops', handler = tasks_op, needs_map = true},
+        ['workshops.add_job'] = {namespace = 'orders_write', handler = add_job, needs_map = true},
+        ['workshops.set_job'] = {namespace = 'orders_write', handler = set_job, needs_map = true},
+        ['workshops.cancel_job'] = {namespace = 'orders_write', handler = cancel_job,
+                                    needs_map = true},
     }
 end

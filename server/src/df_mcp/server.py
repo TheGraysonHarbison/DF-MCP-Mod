@@ -61,9 +61,13 @@ Squads: `list_squads`, `get_squad`, and with `military_write` `create_squad`, `r
 `get_stock_bar`, `list_stocks`, `find_items`, and `list_artifacts` cover what the fort owns;
 `get_fort_status` gives wealth, rank, and population. Work orders: `list_work_orders`,
 `find_job_types`, and with `orders_write` `create_work_order`, `edit_work_order`,
-`delete_work_order`; only the manager dwarf approves them. `list_workshops` and
-`get_workshop` show built workshops, their jobs, and their contents. The map: `get_map_bounds`
-first, then `get_wagon`, `get_tile`, `get_area_map`, and `find_build_space`. `list_hotkeys`
+`delete_work_order`; only the manager dwarf approves them. Workshop jobs need no manager:
+`list_workshop_tasks` shows what a shop can make, and with `orders_write` `add_workshop_job`,
+`set_workshop_job` (suspend, repeat, do now), and `cancel_workshop_job` work its queue.
+`list_workshops` and `get_workshop` show built workshops, their jobs, and their contents.
+The map: the whole map is in reach and `get_map_bounds` gives its bounds, the only limit
+(boxes clip at the edge); the wagon (`get_wagon`) is just the embark point and the default
+search start. Then `get_tile`, `get_area_map`, and `find_build_space`. `list_hotkeys`
 shows the player's 16 F-key zoom points; with `hotkeys_write` name the fort's points of interest
 with `set_hotkey` (never overwrite the player's slots silently) and free one with `clear_hotkey`.
 `place_workshop`

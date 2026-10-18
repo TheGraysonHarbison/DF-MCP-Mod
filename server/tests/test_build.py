@@ -76,10 +76,16 @@ def test_suspend_and_remove_constructions():
     request = last_request(holder)
     assert request["op"] == "build.remove_constructions"
     assert request["args"]["dry_run"] is True
+    assert request["args"]["limit"] == 25
     run(mcp, "remove_constructions", center_x=5, center_y=5, center_z=1, radius=2, dry_run=False)
     assert last_request(holder)["args"] == {
         "dry_run": False,
+        "limit": 25,
         "circle": {"x": 5, "y": 5, "z": 1, "radius": 2},
     }
+    run(mcp, "remove_constructions", x1=1, y1=1, z1=1, x2=2, y2=2, z2=1, limit=100)
+    assert last_request(holder)["args"]["limit"] == 100
+    with pytest.raises(Exception):  # noqa: B017
+        run(mcp, "remove_constructions", x1=1, y1=1, z1=1, x2=2, y2=2, z2=1, limit=0)
     with pytest.raises(Exception):  # noqa: B017
         run(mcp, "remove_constructions", x1=1)

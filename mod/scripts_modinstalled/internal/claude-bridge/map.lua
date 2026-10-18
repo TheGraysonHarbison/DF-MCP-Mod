@@ -10,7 +10,8 @@ local utils = require('utils')
 local M = dfhack.maps
 
 DEFAULT_LIMIT = 25
-MAX_AREA = 64
+-- Default area map size, an efficiency default only: any size up to the map's bounds works.
+DEFAULT_AREA = 32
 
 VIEWS = {'shape', 'material', 'designations'}
 
@@ -22,8 +23,6 @@ DIG_NAMES = {Default = 'mine', UpStair = 'up_stair', DownStair = 'down_stair',
              UpDownStair = 'up_down_stair', Channel = 'channel', Ramp = 'ramp'}
 DESIGNATION_KINDS = {'chop', 'gather', 'mine', 'up_stair', 'down_stair', 'up_down_stair', 'channel', 'ramp',
                      'smooth', 'engrave'}
-MAX_BOX_SIDE = 64
-MAX_BOX_LEVELS = 32
 
 -- One character per tile in map.area. Order matters: the first match wins.
 LEGEND = {
@@ -90,8 +89,21 @@ local function xyz(args, px, py, pz)
     return {x = x, y = y, z = z}
 end
 
--- Shape and material facts for a tile type.
+-- Shape and material facts for a tile type. Pure on the tiletype, so cached: a whole-map
+-- scan reads tens of thousands of tiles but only a few hundred tiletypes. Callers only read.
+local shape_cache = {}
+local tile_shape_uncached
 local function tile_shape(tt)
+    if tt == nil then return nil end
+    local cached = shape_cache[tt]
+    if cached == nil then
+        cached = tile_shape_uncached(tt) or false
+        shape_cache[tt] = cached
+    end
+    return cached or nil
+end
+
+tile_shape_uncached = function(tt)
     local attrs = safe(function() return df.tiletype.attrs[tt] end)
     if not attrs then return nil end
     local shape = attrs.shape
@@ -531,11 +543,11 @@ local function area(args)
     layer_cache = {}
     local pos, err = xyz(args)
     if err then return err end
-    local w = math.floor(tonumber(args.width) or 32)
-    local h = math.floor(tonumber(args.height) or 32)
-    if w < 1 or h < 1 or w > MAX_AREA or h > MAX_AREA then
-        return rpc.error_result(rpc.ERR_BAD_REQUEST,
-            ('"width" and "height" must be 1-%d'):format(MAX_AREA))
+    -- No size cap of our own: the map's bounds are the only limit (P2-4.0).
+    local w = math.floor(tonumber(args.width) or DEFAULT_AREA)
+    local h = math.floor(tonumber(args.height) or DEFAULT_AREA)
+    if w < 1 or h < 1 then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"width" and "height" must be at least 1')
     end
     local view = args.view == nil and 'shape' or tostring(args.view)
     local known = false
@@ -547,6 +559,7 @@ local function area(args)
     local mw, mh = tile_size()
     local x2 = math.min(pos.x + w - 1, mw - 1)
     local y2 = math.min(pos.y + h - 1, mh - 1)
+    local clipped = x2 < pos.x + w - 1 or y2 < pos.y + h - 1
     local rows, groups, counts = {}, {}, {}
     local legend = {}
     local letters, next_letter = {}, 1
@@ -614,12 +627,16 @@ local function area(args)
         origin = {x = pos.x, y = pos.y, z = pos.z},
         width = x2 - pos.x + 1,
         height = y2 - pos.y + 1,
+        requested = {width = w, height = h},
+        clipped = clipped,
+        map_size = {width = mw, height = mh},
         view = view,
         rows = rows,
         legend = legend,
         counts = counts,
         walkable_groups = groups,
-        note = 'rows run north to south (y increasing); each row runs west to east (x increasing)',
+        note = 'rows run north to south (y increasing); each row runs west to east (x increasing)'
+            .. (clipped and '; clipped at the map edge, so fewer rows or columns than requested' or ''),
     }
 end
 
@@ -779,12 +796,16 @@ local function exposed_walls(args)
     }
 end
 
--- First clear w by h rectangle of walkable floor near a point, by expanding rings.
+-- First clear w by h rectangle of walkable floor near a point, by expanding rings. The
+-- wagon (or the map centre) is only the default starting point, for speed: nearer spots are
+-- found first. max_radius has no cap of ours; whole_map searches out to every map corner.
 local function find_space(args)
     local w = math.floor(tonumber(args.width) or 3)
     local h = math.floor(tonumber(args.height) or 3)
-    if w < 1 or h < 1 or w > 31 or h > 31 then
-        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"width" and "height" must be 1-31')
+    local mw, mh = tile_size()
+    if w < 1 or h < 1 or w > mw or h > mh then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('"width" must be 1-%d and "height" 1-%d (the map size)'):format(mw, mh))
     end
     local z = tonumber(args.z)
     local nx, ny = tonumber(args.near_x), tonumber(args.near_y)
@@ -805,8 +826,14 @@ local function find_space(args)
     end
     local center, err = xyz({x = nx, y = ny, z = z})
     if err then return err end
-    local radius = math.floor(tonumber(args.max_radius) or 30)
-    local mw, mh = tile_size()
+    -- The farthest ring that still reaches a map tile: past it every ring is off the map.
+    local reach = math.max(center.x, mw - 1 - center.x, center.y, mh - 1 - center.y)
+    local whole_map = args.whole_map == true
+    local radius = whole_map and reach or math.floor(tonumber(args.max_radius) or 30)
+    if radius < 0 then
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, '"max_radius" must be 0 or more')
+    end
+    local searched_radius = math.min(radius, reach)
     local checked = 0
 
     local function clear_at(x1, y1)
@@ -834,57 +861,122 @@ local function find_space(args)
         return true, group
     end
 
-    for r = 0, radius do
-        for dy = -r, r do
+    -- Walk only the perimeter of each ring (8r cells), so a whole-map search stays linear in
+    -- the number of candidate spots.
+    local function try(r, dx, dy)
+        local x1 = center.x + dx - math.floor(w / 2)
+        local y1 = center.y + dy - math.floor(h / 2)
+        if x1 < 0 or y1 < 0 or x1 + w > mw or y1 + h > mh then return nil end
+        checked = checked + 1
+        local ok, group = clear_at(x1, y1)
+        if not ok then return nil end
+        return {
+            found = true,
+            origin = {x = x1, y = y1, z = z},
+            center = {x = x1 + math.floor(w / 2), y = y1 + math.floor(h / 2), z = z},
+            width = w, height = h,
+            walkable_group = group,
+            distance = r,
+            searched_from = center,
+            checked = checked,
+        }
+    end
+    for r = 0, searched_radius do
+        if r == 0 then
+            local hit = try(0, 0, 0)
+            if hit then return hit end
+        else
+            -- top and bottom rows of the ring, then the left and right columns between them
             for dx = -r, r do
-                if math.abs(dx) == r or math.abs(dy) == r then
-                    local x1 = center.x + dx - math.floor(w / 2)
-                    local y1 = center.y + dy - math.floor(h / 2)
-                    checked = checked + 1
-                    local ok, group = clear_at(x1, y1)
-                    if ok then
-                        return {
-                            found = true,
-                            origin = {x = x1, y = y1, z = z},
-                            center = {x = x1 + math.floor(w / 2), y = y1 + math.floor(h / 2), z = z},
-                            width = w, height = h,
-                            walkable_group = group,
-                            distance = r,
-                            searched_from = center,
-                            checked = checked,
-                        }
-                    end
-                end
+                local hit = try(r, dx, -r) or try(r, dx, r)
+                if hit then return hit end
+            end
+            for dy = -r + 1, r - 1 do
+                local hit = try(r, -r, dy) or try(r, r, dy)
+                if hit then return hit end
             end
         end
     end
-    return {found = false, searched_from = center, max_radius = radius, checked = checked,
-            note = 'no clear rectangle of walkable floor within the radius; try another z or a larger radius'}
+    local covered = searched_radius >= reach
+    return {found = false, searched_from = center, max_radius = radius, searched_radius = searched_radius,
+            whole_map = covered, checked = checked,
+            note = covered and 'no clear rectangle of walkable floor anywhere on this level; try another z'
+                or 'no clear rectangle of walkable floor within the radius; try another z, a larger '
+                    .. 'max_radius, or whole_map=true'}
 end
 
 ----------------------------------------------------------------------------------------------
 -- designations (plan 11.4, item 6.1)
 
--- A box from two corners in any order. Every corner must be inside the map.
-function parse_box(args)
-    local c1, err = xyz(args, 'x1', 'y1', 'z1')
-    if err then return nil, err end
-    local c2, err2 = xyz(args, 'x2', 'y2', 'z2')
-    if err2 then return nil, err2 end
-    local box = {
-        x1 = math.min(c1.x, c2.x), x2 = math.max(c1.x, c2.x),
-        y1 = math.min(c1.y, c2.y), y2 = math.max(c1.y, c2.y),
-        z1 = math.min(c1.z, c2.z), z2 = math.max(c1.z, c2.z),
-    }
-    if box.x2 - box.x1 + 1 > MAX_BOX_SIDE or box.y2 - box.y1 + 1 > MAX_BOX_SIDE then
+-- Clip an ordered box to the map. Returns the box, with clipped = true and the requested
+-- corners when it was cut, or nil, err when no tile of it lies on the map.
+function clip_box(x1, y1, z1, x2, y2, z2)
+    local w, h, d = tile_size()
+    if x2 < 0 or y2 < 0 or z2 < 0 or x1 >= w or y1 >= h or z1 >= d then
         return nil, rpc.error_result(rpc.ERR_BAD_REQUEST,
-            ('a box is at most %d by %d tiles per level'):format(MAX_BOX_SIDE, MAX_BOX_SIDE))
+            ('the box (%d,%d,%d)-(%d,%d,%d) is entirely outside the map: x 0-%d, y 0-%d, z 0-%d'):format(
+                x1, y1, z1, x2, y2, z2, w - 1, h - 1, d - 1))
     end
-    if box.z2 - box.z1 + 1 > MAX_BOX_LEVELS then
-        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST,
-            ('a box spans at most %d levels'):format(MAX_BOX_LEVELS))
+    local box = {
+        x1 = math.max(x1, 0), y1 = math.max(y1, 0), z1 = math.max(z1, 0),
+        x2 = math.min(x2, w - 1), y2 = math.min(y2, h - 1), z2 = math.min(z2, d - 1),
+    }
+    if box.x1 ~= x1 or box.y1 ~= y1 or box.z1 ~= z1 or box.x2 ~= x2 or box.y2 ~= y2 or box.z2 ~= z2 then
+        box.clipped = true
+        box.requested = {x1 = x1, y1 = y1, z1 = z1, x2 = x2, y2 = y2, z2 = z2}
     end
     return box
+end
+
+-- A box from two corners in any order. There is no size cap of ours (P2-4.0): the map's
+-- bounds are the only limit. Corners outside the map are pulled in to the edge and the box
+-- carries clipped = true (with the requested corners); a box with no tile on the map is
+-- refused. Big boxes pause the game while the op walks every tile.
+function parse_box(args)
+    local n = {}
+    for _, k in ipairs({'x1', 'y1', 'z1', 'x2', 'y2', 'z2'}) do
+        local v = tonumber(args[k])
+        if v == nil then
+            return nil, rpc.error_result(rpc.ERR_BAD_REQUEST,
+                '"x1", "y1", "z1", "x2", "y2", and "z2" must be numbers')
+        end
+        n[k] = math.floor(v)
+    end
+    return clip_box(math.min(n.x1, n.x2), math.min(n.y1, n.y2), math.min(n.z1, n.z2),
+                    math.max(n.x1, n.x2), math.max(n.y1, n.y2), math.max(n.z1, n.z2))
+end
+
+-- A filled circle: {x, y, z, radius}. A tile is inside when dx*dx + dy*dy <= r*r + r
+-- (plan 11.3). The centre must be on the map; the radius has no cap of ours and a circle
+-- reaching past the edge is clipped (box.clipped = true). Returns the bounding box and a
+-- membership test, or nil, err.
+function parse_circle(args)
+    local c = args.circle
+    if type(c) ~= 'table' then
+        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, '"circle" must be {x, y, z, radius}')
+    end
+    local cx, cy, cz, r = tonumber(c.x), tonumber(c.y), tonumber(c.z), tonumber(c.radius)
+    if not (cx and cy and cz and r) then
+        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, '"circle" needs numbers x, y, z, radius')
+    end
+    cx, cy, cz, r = math.floor(cx), math.floor(cy), math.floor(cz), math.floor(r)
+    if r < 1 then
+        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, '"radius" must be at least 1')
+    end
+    if not in_bounds(cx, cy, cz) then
+        local w, h, d = tile_size()
+        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST,
+            ('the circle centre (%d,%d,%d) is outside the map: x 0-%d, y 0-%d, z 0-%d'):format(
+                cx, cy, cz, w - 1, h - 1, d - 1))
+    end
+    local box = clip_box(cx - r, cy - r, cz, cx + r, cy + r, cz)
+    box.center = {x = cx, y = cy, z = cz}
+    box.radius = r
+    local limit = r * r + r
+    return box, nil, function(x, y)
+        local dx, dy = x - cx, y - cy
+        return dx * dx + dy * dy <= limit
+    end
 end
 
 -- Designation job types to the kind they carry. When a dwarf takes a designation the game

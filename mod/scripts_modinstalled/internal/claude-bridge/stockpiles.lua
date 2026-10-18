@@ -452,11 +452,13 @@ end
 local function create(args)
     local x1, y1, x2, y2, z
     local inside = nil  -- membership test for a circle (plan 11.3, item 6.4)
+    local clipped = false
     if args.circle ~= nil then
         local box, cerr, test = dig.parse_circle(args)
         if cerr then return cerr end
         x1, y1, x2, y2, z = box.x1, box.y1, box.x2, box.y2, box.z1
         inside = test
+        clipped = box.clipped == true
     else
         x1, y1, x2, y2, z = tonumber(args.x1), tonumber(args.y1), tonumber(args.x2),
                             tonumber(args.y2), tonumber(args.z)
@@ -464,15 +466,14 @@ local function create(args)
             return rpc.error_result(rpc.ERR_BAD_REQUEST,
                 '"x1", "y1", "x2", "y2", "z" are required (or a "circle")')
         end
-        x1, y1, x2, y2, z = math.floor(x1), math.floor(y1), math.floor(x2), math.floor(y2), math.floor(z)
-        if x1 > x2 then x1, x2 = x2, x1 end
-        if y1 > y2 then y1, y2 = y2, y1 end
+        -- No size cap of ours (P2-4.0; quickfort's place module allows any size): the box is
+        -- clipped to the map like every other box.
+        local box, berr = map.parse_box({x1 = x1, y1 = y1, z1 = z, x2 = x2, y2 = y2, z2 = z})
+        if berr then return berr end
+        x1, y1, x2, y2, z = box.x1, box.y1, box.x2, box.y2, box.z1
+        clipped = box.clipped == true
     end
     local w, h = x2 - x1 + 1, y2 - y1 + 1
-    if w > 31 or h > 31 then
-        return rpc.error_result(rpc.ERR_BAD_REQUEST,
-            'a stockpile is at most 31 by 31 tiles (circle radius at most 15)')
-    end
     -- Validate the configuration before anything is painted.
     local _, cat_err = check_categories(args.categories or args.enable)
     if cat_err then return cat_err end
@@ -486,7 +487,7 @@ local function create(args)
         return rpc.error_result(rpc.ERR_BAD_REQUEST, '"name" must be a string of up to 64 characters')
     end
     local footprint = {x1 = x1, y1 = y1, x2 = x2, y2 = y2, z = z, width = w, height = h,
-                       shape = inside and 'circle' or 'rectangle'}
+                       shape = inside and 'circle' or 'rectangle', clipped = clipped}
     local tiles = 0
     for y = y1, y2 do
         for x = x1, x2 do
@@ -538,12 +539,12 @@ local function create(args)
         -- keep the pile but report the configuration problem
         local row = summary(sp)
         row.settings = settings_summary(sp, false)
-        return {status = 'placed_unconfigured', stockpile = row,
+        return {status = 'placed_unconfigured', stockpile = row, footprint = footprint,
                 error = cfg_err.message}
     end
     local row = summary(sp)
     row.settings = settings_summary(sp, false)
-    return {status = 'placed', stockpile = row, changed = changed}
+    return {status = 'placed', stockpile = row, changed = changed, footprint = footprint}
 end
 
 local function configure(args)

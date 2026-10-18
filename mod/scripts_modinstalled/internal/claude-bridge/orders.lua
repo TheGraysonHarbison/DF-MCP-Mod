@@ -8,6 +8,7 @@
 
 local rpc = reqscript('internal/claude-bridge/rpc')
 local materials = reqscript('internal/claude-bridge/materials')
+local worktasks = reqscript('internal/claude-bridge/worktasks')
 
 DEFAULT_LIMIT = 25
 
@@ -356,6 +357,22 @@ local function resolve_material(name)
         .. '"any wood", or a specific material'):format(tostring(name))
 end
 
+-- Why a workshop cannot take an order for this job or reaction, or nil when it can
+-- (P2-2.0: a pinned order must be something the shop offers).
+local function workshop_refusal(b, job_type, reaction_code)
+    if not worktasks.shop_key(b) then
+        return ('building %d is not a workshop or furnace'):format(b.id)
+    end
+    local ok, key, list = worktasks.offers(b, job_type, reaction_code)
+    if ok then return nil end
+    local names, more = worktasks.labels(list, 25)
+    local what = reaction_code and ('reaction ' .. reaction_code)
+        or (df.job_type[job_type] or tostring(job_type))
+    local offered = #names > 0 and table.concat(names, ', ') or 'nothing the bridge knows of'
+    if more > 0 then offered = offered .. (', and %d more'):format(more) end
+    return ('%s %d cannot do %s; it offers: %s'):format(key or 'building', b.id, what, offered)
+end
+
 local function resolve_frequency(name)
     if name == nil then return df.workquota_frequency_type.OneTime end
     for _, f in ipairs(FREQUENCIES) do
@@ -441,8 +458,13 @@ local function create(args)
     end
     local max_workshops = tonumber(args.max_workshops) or 0
     local workshop_id = tonumber(args.workshop_id) or -1
-    if workshop_id >= 0 and not df.building.find(workshop_id) then
-        return rpc.error_result(rpc.ERR_NOT_FOUND, 'no building with id ' .. workshop_id)
+    if workshop_id >= 0 then
+        local b = df.building.find(workshop_id)
+        if not b then
+            return rpc.error_result(rpc.ERR_NOT_FOUND, 'no building with id ' .. workshop_id)
+        end
+        local why = workshop_refusal(b, job_type, reaction and reaction.code or nil)
+        if why then return rpc.error_result(rpc.ERR_BAD_REQUEST, why) end
     end
 
     local handler = df.global.world.manager_orders
@@ -528,8 +550,12 @@ local function edit(args)
         if wid == nil then
             return rpc.error_result(rpc.ERR_BAD_REQUEST, '"workshop_id" must be a building id or -1')
         end
-        if wid >= 0 and not df.building.find(wid) then
-            return rpc.error_result(rpc.ERR_NOT_FOUND, 'no building with id ' .. wid)
+        if wid >= 0 then
+            local b = df.building.find(wid)
+            if not b then return rpc.error_result(rpc.ERR_NOT_FOUND, 'no building with id ' .. wid) end
+            local code = order.reaction_name ~= '' and order.reaction_name or nil
+            local why = workshop_refusal(b, order.job_type, code)
+            if why then return rpc.error_result(rpc.ERR_BAD_REQUEST, why) end
         end
         order.workshop_id = wid
         table.insert(changed, 'workshop_id')

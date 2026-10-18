@@ -451,6 +451,8 @@ local function remove_constructions(args)
         box, berr = map.parse_box(args)
     end
     if berr then return berr end
+    local limit = math.floor(tonumber(args.limit) or DEFAULT_LIMIT)
+    if limit < 1 then return rpc.error_result(rpc.ERR_BAD_REQUEST, '"limit" must be positive') end
     local apply = args.dry_run ~= true
     local counts = {cancelled = 0, designated = 0, already_designated = 0, skipped = 0}
     local tiles, skipped = {}, {}
@@ -474,7 +476,7 @@ local function remove_constructions(args)
                             counts.already_designated = counts.already_designated + 1
                         else
                             counts.designated = counts.designated + 1
-                            if #tiles < DEFAULT_LIMIT then
+                            if #tiles < limit then
                                 table.insert(tiles, {pos = pos, action = 'designated',
                                     material = safe(function()
                                         return dfhack.matinfo.decode(built.mat_type, built.mat_index):toString()
@@ -484,13 +486,13 @@ local function remove_constructions(args)
                         end
                     elseif planned then
                         counts.cancelled = counts.cancelled + 1
-                        if #tiles < DEFAULT_LIMIT then
+                        if #tiles < limit then
                             table.insert(tiles, {pos = pos, action = 'cancelled', building = planned.id})
                         end
                         if apply and not has_mood(planned) then pcall(B.deconstruct, planned) end
                     else
                         counts.skipped = counts.skipped + 1
-                        if #skipped < DEFAULT_LIMIT then table.insert(skipped, pos) end
+                        if #skipped < limit then table.insert(skipped, pos) end
                     end
                 end
             end
@@ -501,7 +503,10 @@ local function remove_constructions(args)
             applied = apply and (counts.cancelled + counts.designated) > 0,
             cancelled = counts.cancelled, designated = counts.designated,
             already_designated = counts.already_designated, skipped = counts.skipped,
-            tiles = tiles, skipped_tiles = skipped,
+            tiles = tiles, skipped_tiles = skipped, limit = limit,
+            tiles_truncated = counts.cancelled + counts.designated > #tiles,
+            skipped_truncated = counts.skipped > #skipped,
+            truncated = counts.cancelled + counts.designated > #tiles or counts.skipped > #skipped,
             note = apply and 'planned constructions cancelled; built ones wait for a miner to remove them, '
                 .. 'which leaves the material on the ground'
                 or 'nothing was changed; call build.remove_constructions with dry_run=false to do it'}

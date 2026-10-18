@@ -7,6 +7,8 @@ when_to_use: Any time a fort action touches the map, the dwarves, the military, 
 # Fortress Quirks
 
 What the game and the bridge have taught us. Each line was learned by doing it wrong once.
+Strategy (stock targets, trade goods, wealth, room value, elves, petitions) is in
+`fortress-basics`.
 
 ## The bridge
 
@@ -56,6 +58,11 @@ What the game and the bridge have taught us. Each line was learned by doing it w
   on top, up/down between, up stair at the bottom; a 1 by 1 box makes a stair column),
   `channel`, `ramp`, `remove_stairs`, `smooth`, `engrave`, `chop`, `gather`. Boxes span
   z-levels; circles take a centre and radius for every kind but stairs.
+- **The whole map is in reach.** Boxes and circles take any size up to the map bounds
+  (`get_map_bounds`) and are clipped at the edge (`box.clipped`). The wagon is only the
+  default start of `find_build_space`; pass a point or `whole_map=true` to look further.
+  Big boxes pause the game longer, so preview them with the plan tools first. One bridge,
+  road, or farm plot is at most 31 by 31 (the game's limit); place several for more.
 - **A designation job without a worker is normal.** The game queues the jobs long before a
   miner picks one. `list_designations` shows pending tiles and taken jobs; the tile's own
   flag clears when the job is created and comes back if the job is cancelled.
@@ -127,7 +134,9 @@ What the game and the bridge have taught us. Each line was learned by doing it w
 
 - **Work orders need a manager.** Without one, orders sit unapproved. `list_nobles` shows
   the seat; `assign_noble` fills it (needs `nobles_write`). The same goes for the
-  bookkeeper (stock counts) and the broker (trade).
+  bookkeeper (stock counts) and the broker (trade). Jobs added straight to a workshop do
+  not: `list_workshop_tasks` shows what the shop offers, `add_workshop_job` queues one
+  (at most 10 per shop), and `set_workshop_job` and `cancel_workshop_job` manage them.
 - `find_job_types` turns a plain name into the job the order needs; `create_work_order`
   takes a material in plain words and refuses orders the game would label "unknown
   material".
