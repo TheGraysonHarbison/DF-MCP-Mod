@@ -1,6 +1,6 @@
 # Project Plan: DFHack Claude Integration Mod
 
-Status: Phases 0 through 21 are built and released as Alpha 1.0.0 (tag `v1.0.0-alpha`, PRs #38 to #58, 13.1 petitions deferred to a README open issue). Patch 1 items P1.0 to P5.0 (labor, seeds, migrant events, trade screen, diplomacy dialog, popups, hotkeys) were planned, built by seven agents, verified in-game, and merged on 2026-10-16 (PRs #59 to #66, protocol 30, design and live findings in section 15); P6.0 released Alpha 1.0.1 (tag `v1.0.1-alpha`) the same day. Patch 2 (uninstall script, workshop tasks, the autosave plan loss, the map-area limits, a fortress-basics skill, petitions) was researched and agreed with the owner on 2026-10-17 (section 16). Last updated 2026-10-17.
+Status: Phases 0 through 21 are built and released as Alpha 1.0.0 (tag `v1.0.0-alpha`, PRs #38 to #58, 13.1 petitions deferred to a README open issue). Patch 1 items P1.0 to P5.0 (labor, seeds, migrant events, trade screen, diplomacy dialog, popups, hotkeys) were planned, built by seven agents, verified in-game, and merged on 2026-10-16 (PRs #59 to #66, protocol 30, design and live findings in section 15); P6.0 released Alpha 1.0.1 (tag `v1.0.1-alpha`) the same day. Patch 2 items P2-1.0 to P2-6.0 (uninstall script, workshop tasks, the autosave plan loss, the map-area limits, a fortress-basics skill, petitions) were planned, built by six agents, checked in-game, and merged on 2026-10-17 (PRs #69 to #75, protocol 35, section 16); P2-7.0, the Alpha 1.0.2 release, is the owner's. Last updated 2026-10-17.
 
 This document is the agreed plan for the project. The README describes the idea and current progress for readers; this file describes how we build it. When the two disagree, fix this file first, then the README.
 
@@ -1099,7 +1099,16 @@ Agreed with the owner on 2026-10-17 (answers to the questions in 16.3).
 3. P2-6.0: open the petitions screen; read the button labels and `have_responsible_person`; record the diff of one vanilla accept and one deny; check whether an accepted location petition shows in `continuing_agreement_id` and whether an accepted resident changes at once.
 4. P2-4.0: a full-map `get_area_map` and a whole-map dig dry run, timed, to see how long the game pauses.
 
-### 16.5 Delivery
+### 16.5 Live findings (2026-10-17)
+
+- Protocol versions moved from the reservation as branches merged in the order P2-1.0, P2-3.0 (32), P2-5.0, P2-4.0 (33), P2-2.0 (34), P2-6.0 (35).
+- P2-1.0: the owner had reinstalled the 1.0.1 release; the first live run removed its script-path line and settings folder as designed. Check `script-paths.txt` and `dfhack-config/mods/` before any unlink test.
+- P2-3.0: `dfhack.getSavePath()` does move to the new folder during play (the test fort moved from `Test` to `region2` mid-session); the plan and goals followed through site data and the mirror files were written into the new folder. A 64 KB plan saves and reloads.
+- P2-4.0: the missing descriptions hit eight tools (dig, furniture, construction, and zone tools), not four. On a 48 by 48, 142-level map a whole-map area read takes 0.03 s, a 61-level whole-map dig dry run 2.2 s, and whole-map designations over every level 1.3 s. The game's own 31-tile limit on bridges, roads, and farm plots stays.
+- P2-2.0: a hand-built bed job at a Carpenter's was taken by a dwarf within two seconds of unpausing; cancelling mid-work freed the log; the game's 10-job limit holds. Forge, craftsdwarf, and reaction jobs are unverified live.
+- P2-6.0: with no petition pending, the dry run found no `PETITIONS` label on the main screen; whether the launcher appears only with a petition waiting is unknown until one arrives.
+
+### 16.6 Delivery
 
 One branch per item from `main`, one PR each, merged after the owner's yes (rule 9): `mod/map-area` (P2-4.0), `mod/plan-persistence` (P2-3.0), `tools/uninstall` (P2-1.0), `skills/fortress-basics` (P2-5.0), `mod/workshop-tasks` (P2-2.0), `mod/petitions` (P2-6.0), `repo/alpha-1.0.2` (P2-7.0, the owner's). Each PR updates the README progress section.
 
