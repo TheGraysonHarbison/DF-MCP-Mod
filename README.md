@@ -177,8 +177,9 @@ Bugs (fixes planned for Patch 2, plan section 16):
 
 Open issues (features without a DFHack API, or where the game offers only mouse-driven UI):
 
-- Petitions: reading and answering petitions through the bridge is not built. Petition events still arrive, and the
-  player answers them in the game. The design is in the plan (13.1).
+- Petitions: `answer_petition` presses the game's own Approve and Deny buttons, but no save with a petition was
+  available when it was built, so answering is unverified in a live game. Check `verified` in its reply, and please
+  report a bug with the reply if it fails.
 - Trade counter-offers: the Accept and Decline buttons of a merchant counter-offer are not measured yet, so
   `press_trade` refuses `accept_counter` and `decline_counter`; the player answers a counter-offer by hand until a live
   session measures them (`claude-bridge trade-snapshot` while hovering).
@@ -425,7 +426,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | 11.2 | Squad equipment (`get_squad_equipment`, `set_squad_uniform`, `set_squad_ammo`) | verified in-game 2026-10-15 on a crossbow test squad: the read showed the leather crossbow preset, 100 bolts, and the leader's carried clothes and axe; a metal breastplate and a metal crossbow replaced their slots, a buckler was added beside the shield, unknown items and material classes were refused with the known names, and metal combat-only bolts replaced the ammunition |
 | 12 | Dev tools (`dev_create_item`, `dev_exterminate`, via the console allowlist) | verified in-game 2026-10-15: five granite boulders created at a tile and read back; `exterminate list` reported the map's wildlife; a race the fort owns was refused without `include_friendly`. Unit spawning dropped: `modtools/create-unit` fails on 53.16-r2 (open issue) |
 | 13 | Events batched and pushed through a Claude Code channel, per-kind toggles (`list_event_kinds`, `poll_events`, `events` permission, settings tabs, `claude-bridge send`) | verified in-game 2026-10-15 up to the org gate: hooks and pollers run, every mapped announcement type exists on 53.16-r2, synthetic events batched after the two-second quiet window and disabled kinds were refused, the server declared the channel capability and emitted the notification, and Claude Code accepted the capability once the server forced the classic handshake (the 2026-07-28 revision never registers a channel). Delivery into the session waits on the organization's Channels switch |
-| 13.1 | Petitions: list and answer | not built; open issue (decided 2026-10-15), design kept in plan section 13 |
+| 13.1 | Petitions: list and answer | moved to P2-6.0 |
 | 14.0 | Plan and goals files in the save, goals window with Send (`get_plan_info`, `read_plan`, `write_plan`, `append_plan`, `read_goals`, `plan` permission, `claude-bridge goals`) | verified in-game 2026-10-15: `claude-df/plan.md` and `goals.md` created inside the save on enable, plan written, appended (accents intact), read back, and a 70 KB write refused; goals window and Ctrl+S delivery checked by the player |
 | 14.1 | No server buffer; the channel queue holds batches until Claude is idle | planned 2026-10-15, delivered with 13 |
 | 14.2 | In-game messages from Claude (`send_message`, `list_message_badges`, no permission needed) | verified in-game 2026-10-15: four messages posted under the rumor, research, deity, and general badges showed in light red in the announcement log and the left-side alerts, the plan message carrying a zoom position; the player approved the look and the rumor default. The owner's icon lives in `mod/assets/` for a later overlay |
@@ -451,5 +452,5 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | P2-3.0 | Plan and goals survive autosaves and saves to a new folder (bug) | planned 2026-10-17 |
 | P2-4.0 | Map area: missing tool descriptions, box caps, wagon-centred defaults (bug) | planned 2026-10-17 |
 | P2-5.0 | `fortress-basics` skill from the owner's gameplay notes | planned 2026-10-17 |
-| P2-6.0 | Petitions: list and answer (replaces 13.1) | planned 2026-10-17 |
+| P2-6.0 | Petitions: list pending and answered petitions with the fort's temples and guildhalls, accept or deny through the game's petitions screen (`list_petitions`, `answer_petition`; `units`, `units_write` and `screens_write` permissions; replaces 13.1) | built 2026-10-17, awaiting live test |
 | P2-7.0 | Alpha 1.0.2 release | owner's, after P2-1.0 to P2-6.0 |

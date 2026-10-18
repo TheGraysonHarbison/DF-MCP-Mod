@@ -234,6 +234,9 @@ What the game and the bridge have taught us. Each line was learned by doing it w
   `unit_ids`). Greet them with work: check their professions, put them on work details,
   and add beds before they sleep on the floor. The "no one came" and "discouraged" texts
   are the same kind with no newcomers.
+- A `petition` event: read it with `list_petitions` (applicant, reason, temple or guildhall
+  asked for, and the fort's existing ones), then `answer_petition(id, accept)`; reading needs
+  `units`, answering needs `units_write` and `screens_write`, and someone who hears petitions.
 - Any batch sent to you re-arms the prompt timer, so a busy fort is driven by events and a
   quiet one by the timer. The timer counts only while the game is unpaused.
 - Without the channel, `poll_events` returns the same batches: call it first without
@@ -256,8 +259,8 @@ monuments.
 
 ## Known open issues
 
-- Petitions cannot be read or answered through the bridge yet; the player answers them in
-  the game. Petition events still arrive.
+- Petition answers are unverified in a live game: if `answer_petition` returns
+  `verified: false`, tell the player and let them check the petition in the game.
 - Trade counter-offers: `accept_counter` and `decline_counter` come back `NOT_FOUND` until the
   buttons are measured; the player answers a counter-offer by hand.
 - The liaison meeting's land-holder step (a barony offer) has not been seen yet; if pressing

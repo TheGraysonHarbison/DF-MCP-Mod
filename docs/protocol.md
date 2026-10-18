@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **30**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **34**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -52,11 +52,11 @@ Transport-level codes the server adds: `MOD_NOT_ENABLED`, `DISCONNECTED`, `RPC_F
 | `settings` | on | `settings.get`, `settings.mods` |
 | `time` | on | `time.now` |
 | `pause_write` | off | `time.set_pause` |
-| `screens_write` | off | `popups.close`, `trade.open_screen`, `trade.press`, `trade.open_dialog`, `trade.dialog_step` |
+| `screens_write` | off | `popups.close`, `trade.open_screen`, `trade.press`, `trade.open_dialog`, `trade.dialog_step`; also checked inside `petitions.answer` |
 | `events` | on | `events.kinds`, `events.poll`, `events.emit`, `timer.status`, `popups.list` |
 | `plan` | on | `plan.info`, `plan.read`, `plan.write`, `plan.append`, `goals.read` |
-| `units` | on | `units.list`, `units.find`, `units.get`, `units.sheet`, `units.full_sheet`, `labor.details` |
-| `units_write` | off | `units.set_nickname` |
+| `units` | on | `units.list`, `units.find`, `units.get`, `units.sheet`, `units.full_sheet`, `labor.details`, `petitions.list` |
+| `units_write` | off | `units.set_nickname`, `petitions.answer` (which also needs `screens_write`) |
 | `labor_write` | off | `labor.assign`, `labor.set_mode` |
 | `nobles` | on | `nobles.list` |
 | `nobles_write` | off | `nobles.assign` |
@@ -315,6 +315,41 @@ Refused with `BAD_REQUEST` when the position is military (`squad_size` above zer
 The change mirrors what DFHack's `make-monarch` does: the assignment's `histfig` is swapped, the previous holder's position link is removed from their historical figure, and a new position link is added to the appointee. `histfig2` records the previous holder. No former-position record is written for the previous holder.
 
 Result: `changed`, `previous` (holder object or absent), `position` (as in `nobles.list`, after the change).
+
+### Petitions
+
+Patch 2 item P2-6.0 (plan section 16). `plotinfo.petitions` holds the ids of the agreements waiting for an answer (`unapproved_agreement_id`); `plotinfo.continuing_agreement_id` holds accepted ones still in force. Each id is a `df.agreement` (`world.agreements.all`): `parties[]` (`id`, `histfig_ids`, `entity_ids`), `details[]` (`type` from `agreement_details_type`, `year`, `year_tick`, and the `data` union read only through the member that matches `type`), `flags` (`petition_not_accepted`, "unset by accepting a petition"; `convicted_accepted`, concluded). Sources: df-structures master `df.agreement.xml`, `df.plotinfo.xml`, `df.d_interface.xml` (`petitions_interfacest`), `df.game_v.xml`, `df.abstract_building.xml`; DFHack 53.16-r2 `list-agreements.lua`, `gui/petitions.lua`; DFHack develop `Gui.cpp` (focus `dwarfmode/Petitions`), all checked 2026-10-17. Not yet verified in-game: no petition save existed when it was built.
+
+### `petitions.list`
+
+Args: `limit` (positive int, default 25), `include_resolved` (boolean, default false). Needs a map. Namespace `units`.
+
+Result: `count` (pending petitions), `petitions` (pending, capped at `limit`), `truncated`, `standing_orders` `{monster_hunter, performer, mercenary, scholar, sanctuary, citizenship}` each `{group, value, meaning (ask, accept, reject; the mapping comes from another project's reading and is not verified)}` or `{available: false}`, `locations` (the fort's temples and guildhalls from the current site's abstract buildings: `{id, type, name, tier (location_tier), zones, deity or profession}`, capped at `limit`), `locations_count`, `locations_truncated`, `screen_open` (the game's petitions screen), `note`. With `include_resolved`: `resolved` (accepted, denied, satisfied, or expired agreements of this site: `continuing_agreement_id` plus every Residency, Citizenship, or Location agreement whose site is the fort, newest first, capped at `limit`), `resolved_count`, `resolved_truncated`.
+
+Each row: `id`, `kind` (`residency`, `citizenship`, `location`, or another detail type lowercased), `status` (`pending`, `accepted`, `denied`, `satisfied`, `expired`, `missing`), `pending`, `continuing`, `flags` `{petition_not_accepted, concluded}`, `detail_types`, `made` `{year, tick}`, `age_days`, `days_left_estimate` (pending only: 336 days minus the age, the one-year rule `list-agreements` uses; the game's own timeout for an unanswered petition is not verified), `applicant` and `government` (`{party_id, name, figures [{hist_figure_id, name, name_english, race, profession, unit_id, on_map, pos}], entities [{entity_id, name, name_native, type, members}]}`; `unit_id` only when the figure has a loaded unit), `site_id`, `summary` (one line). Residency adds `reason` (`history_event_reason` name, e.g. `eradicate_beasts`, `make_a_living_as_a_warrior`, `study`, `entertain_people`, `seek_sanctuary`), `standing_order`, and `term_end` `{year, tick}` when set; citizenship adds `standing_order`; location adds `location` `{type (temple, guildhall), tier (1 or 2), name (Temple, Temple Complex, Guildhall, Grand Guildhall), warned_is_ready, deity {practice, practice_id, name, hist_figure_id or entity_id and religion} or profession {token, caption}}`.
+
+The `petition` event's text now comes from the same row (`<summary> awaits an answer`), falling back to the old kind-only text.
+
+### `petitions.answer`
+
+Args: `id` (agreement id from `petitions.list`), `accept` (boolean), `unpause` (boolean, default false), `dry_run` (boolean), `screen` (boolean, with `dry_run`), `continue` (boolean, set by the server on follow-up calls), `cancel` (boolean; alone, ends the bridge's session and closes its screen). Needs a map, `units_write`, and (unless `dry_run` without `screen`) `screens_write`.
+
+The answer goes through the game's own petitions screen, because accepting makes the game do its own bookkeeping (history event, resident or citizen links, location obligation) that writing the agreement flags and id vectors would skip. The op runs in stages across calls, since the screen text is read from the last frame the game drew; it returns `{done: false, stage, id, waits, note}` until finished and the server's `answer_petition` tool calls again with `continue` every 0.25 s (at most 24 times, then `cancel`). Stages:
+
+1. `start`: refuses `SCREEN_BUSY` when the petitions screen is already open (the player may be answering) or the focus is not `dwarfmode/Default`; clicks the main screen's `PETITIONS` label (`NOT_FOUND` when it is not on screen).
+2. `opening`: waits for `main_interface.petitions.open` and focus `dwarfmode/Petitions`; refuses `NOT_FOUND` and closes the screen when `have_responsible_person` is false or the id is not in the screen's `agreement_id` list; when several petitions are listed and another is selected, writes `selected_agreement_id = id` (the only struct write; assumed to be what clicking the list does).
+3. `ready`: after at least 150 ms, finds exactly one `Approve` and one `Deny` on one row (Deny 8 to 20 columns right); with `dry_run` and `screen` it reports `would_press` and closes without pressing; otherwise clicks the button through `screens.click_at`.
+4. `pressed`: checks the agreement: `outcome` `pending`, `accepted` (left `plotinfo.petitions` with `petition_not_accepted` cleared), `denied` (left with the flag still set), or `gone` (the record was removed). `verified` is true for accept when `accepted`, for deny when `denied` or `gone`, and false when another pending id also left the list.
+
+Each stage waits at most 12 calls for progress, then closes the screen and returns `verified: false` with `reason` and `screen_rows`. Every finish closes the screen with Escape (`screen_closed`, `close_note` when it stayed open) and honours `unpause` as `popups.close` does.
+
+Errors: `BAD_REQUEST` for a bad `id` or `accept`, an id that is an agreement but not pending (names its status), a `continue` without a matching session, or the selection moving; `NOT_FOUND` for an id that is not pending, no `PETITIONS` label, no one to hear petitions, or the id missing from the screen; `NOT_ALLOWED` without `screens_write`; `SCREEN_BUSY` as above.
+
+Final result: `done`, `id`, `accept`, `answered`, `verified`, `outcome`, `in_continuing`, `clicked` `{label, x, y}`, `question_seen` ("Do you approve this request?" on screen), `applicant_on_screen` (the applicant's name found on screen, `null` when it has none), `petition` (the row before the answer), `effects` (what the game is expected to do), `reason` (when not verified), `others_removed` and `warning`, `screen_closed`, `unpaused`, `paused`, `pause_note`, `note`.
+
+`dry_run` without `screen` touches nothing and returns `{done, dry_run, petition, would_press, effects, launcher_visible, can_answer_now, blockers}`; whether someone can hear petitions is only known once the screen is open.
+
+Labels and layout (`PETITIONS`, `Approve`, `Deny`, the question) come from the DF3D project (`bridge/plugin/petition_button.h`); the decision that raw writes cannot resolve a petition matches the multi-dwarf project (`src/fort_admin.cpp`), both checked 2026-10-17.
 
 ### Labor
 
