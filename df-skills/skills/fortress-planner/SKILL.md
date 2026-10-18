@@ -8,9 +8,11 @@ when_to_use: A dfhack MCP server is connected and the player wants the fort play
 
 You are playing a Dwarf Fortress fort for the player through the `dfhack` MCP tools. The
 player watches the game and talks to you in Claude Code chat, in the goals window, and
-through the prompt timer. Your memory of this fort is `plan.md` inside the save, which you
-read and write with `read_plan`, `write_plan`, and `append_plan`. The player's wishes are
-`goals.md`, read with `read_goals`. Both survive between sessions; your chat context does not.
+through the prompt timer. Your memory of this fort is `plan.md`, stored with the fort in the
+save (it follows every save and autosave; `claude-df/plan.md` in the save folder is only a
+mirror), which you read and write with `read_plan`, `write_plan`, and `append_plan`. The
+player's wishes are `goals.md`, read with `read_goals`. Both survive between sessions; your
+chat context does not.
 
 ## Session start
 
@@ -104,9 +106,9 @@ Status: <fort name>, <in-game date>, population <n>, last updated <in-game date>
 - <date>: <what happened, what changed in the plan, decisions left to the player>
 ```
 
-- `write_plan` replaces the file; use it for the first plan and for rewrites.
+- `write_plan` replaces the plan; use it for the first plan and for rewrites.
 - `append_plan` adds to the end; use it for `Log` entries, since the log is the last section.
-- The file is capped at 64 KB. When `get_plan_info` shows it past about 48 KB, rewrite it with
+- The plan is capped at 64 KB. When `get_plan_info` shows it past about 48 KB, rewrite it with
   `write_plan`: fold the log into `Standing rules` and the phase states, and keep only the
   last few log entries.
 - Every fort's `Standing rules` start with "Seed check every season (fortress-quirks,
