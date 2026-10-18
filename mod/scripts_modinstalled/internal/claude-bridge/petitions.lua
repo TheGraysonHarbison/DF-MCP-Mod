@@ -755,7 +755,7 @@ local function preview(id, accept, args)
             would_press = accept and ACCEPT_LABEL or DENY_LABEL, effects = effects(row, accept),
             launcher_visible = launcher, can_answer_now = #blockers == 0, blockers = blockers,
             note = 'nothing was opened or pressed; whether someone can hear petitions is only known once the '
-                .. 'screen is open (pass screen=true with dry_run to open it, find the button, and close it)'}
+                .. 'screen is open (pass screen_check=true to answer_petition to open it, find the button, and close it)'}
 end
 
 local function answer(args)
