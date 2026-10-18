@@ -114,19 +114,25 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         center_z: int | None = None,
         radius: int | None = None,
         dry_run: bool = True,
+        limit: int = 25,
     ) -> dict[str, Any]:
         """Remove constructions (walls, floors, ramps, stairs, fortifications) in a box or a
-        filled circle. Needs `build_write`. Defaults to `dry_run=true`, which only reports;
+        filled circle, any size up to the whole map (clipped at its edge). Needs
+        `build_write`. Defaults to `dry_run=true`, which only reports;
         pass `dry_run=false` to act.
 
         Planned constructions are cancelled at once; finished ones are designated for
         removal and a miner takes them apart, leaving the material on the ground. Natural
         tiles are skipped. Returns `cancelled`, `designated`, `already_designated`,
-        `skipped`, and the first 25 tiles with their action.
+        `skipped`, the first `limit` (default 25) tiles with their action and skipped
+        tiles, and `truncated` (with `tiles_truncated`, `skipped_truncated`) when the lists
+        were cut.
         """
+        if limit < 1:
+            raise ValueError("limit must be at least 1")
         circle = [center_x, center_y, center_z, radius]
         box = [x1, y1, z1, x2, y2, z2]
-        args: dict[str, Any] = {"dry_run": dry_run}
+        args: dict[str, Any] = {"dry_run": dry_run, "limit": limit}
         if all(v is not None for v in circle):
             if any(v is not None for v in box):
                 raise ValueError("give either a box or a circle, not both")

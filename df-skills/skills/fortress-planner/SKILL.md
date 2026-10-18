@@ -45,7 +45,7 @@ Then write or update the plan, and only then start work.
 | Industry | `list_workshops`, `list_work_orders`, `list_building_materials` | Which shops exist, orders waiting on a manager, materials on hand |
 | Storage | `list_stockpiles`, `list_stocks` | Piles by category, goods rotting outside, nothing accepting refuse or corpses |
 | Defense | `list_squads`, `list_others`, `list_buildings` | Hostiles on the map, squads, traps, a door on the entrance |
-| Map | `get_map_bounds`, `get_wagon`, `find_exposed_walls`, `get_area_map` | Where the fort is, the surface level, reachable rock, water |
+| Map | `get_map_bounds`, `get_wagon`, `find_exposed_walls`, `get_area_map` | The whole map is in reach: its bounds (from `get_map_bounds`) are the only limit, and the wagon is just where the fort started. Where the fort is, the surface level, reachable rock, water |
 | Trade | `list_caravans`, `get_trade_depot`, `get_broker`, `list_diplomats` | A caravan on the way, no depot, broker not appointed |
 | Events | `list_event_kinds`, `get_timer_status` | Which events the player enabled, whether the timer runs |
 

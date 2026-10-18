@@ -16,6 +16,8 @@ local M = dfhack.maps
 
 DEFAULT_LIMIT = 25
 LIST_LIMIT = 25
+-- The game's own limit for one farm plot, not ours (see construct.MAX_BUILDING_SIDE: DFHack
+-- buildingplan's get_selection_size_limits clamps FarmPlot to 31 by 31, 53.16-r2).
 MAX_SIDE = 31
 
 SEASONS = {'spring', 'summer', 'autumn', 'winter'}
@@ -445,7 +447,8 @@ function place(args, apply)
     end
     local w, h = box.x2 - box.x1 + 1, box.y2 - box.y1 + 1
     if w > MAX_SIDE or h > MAX_SIDE then
-        return rpc.error_result(rpc.ERR_BAD_REQUEST, ('a farm plot is at most %d by %d'):format(MAX_SIDE, MAX_SIDE))
+        return rpc.error_result(rpc.ERR_BAD_REQUEST, ('the game builds a farm plot at most %d by %d; place several side by side'):format(
+            MAX_SIDE, MAX_SIDE))
     end
     local fertilize = args.fertilize == true
     local counts = {skipped_unsuitable = 0, skipped_building = 0, skipped_edge = 0}

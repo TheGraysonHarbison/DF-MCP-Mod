@@ -27,6 +27,12 @@ BUILDING_KINDS = {bridge = 'Bridge', paved_road = 'RoadPaved', dirt_road = 'Road
                   support = 'Support'}
 DIRECTIONS = {retracting = 'Retracting', raise_north = 'Up', raise_south = 'Down',
               raise_east = 'Right', raise_west = 'Left'}
+-- The game's own limit for one bridge or road, not ours: DFHack's buildingplan mirrors the
+-- vanilla build-area clamp of 31 by 31 for Bridge, FarmPlot, RoadPaved, and RoadDirt
+-- (hack/lua/plugins/buildingplan/planneroverlay.lua get_selection_size_limits, "clamp to
+-- building type area limit"), and quickfort defaults extent buildings to 1-31
+-- (hack/scripts/internal/quickfort/build.lua), both checked on DFHack 53.16-r2 2026-10-17.
+-- Bigger spans are built as several buildings side by side.
 MAX_BUILDING_SIDE = 31
 LIST_LIMIT = 25
 
@@ -253,7 +259,13 @@ local function run_tiles(args, kind, apply)
     if shape_name == 'circle' then
         tiles = circle_tiles(box, inside, hollow)
     elseif shape_name == 'line' then
-        tiles = line_tiles(box.line.x1, box.line.y1, box.line.x2, box.line.y2, thick)
+        -- A line reaching past the map edge keeps only its tiles inside the clipped box.
+        tiles = {}
+        for _, t in ipairs(line_tiles(box.line.x1, box.line.y1, box.line.x2, box.line.y2, thick)) do
+            if t.x >= box.x1 and t.x <= box.x2 and t.y >= box.y1 and t.y <= box.y2 then
+                table.insert(tiles, t)
+            end
+        end
     else
         tiles = box_tiles(box, hollow)
     end
@@ -370,7 +382,8 @@ local function run_building(args, kind, apply)
     end
     if w > MAX_BUILDING_SIDE or h > MAX_BUILDING_SIDE then
         return rpc.error_result(rpc.ERR_BAD_REQUEST,
-            ('a %s is at most %d by %d tiles'):format(kind, MAX_BUILDING_SIDE, MAX_BUILDING_SIDE))
+            ('the game builds a %s at most %d by %d tiles; place several side by side'):format(
+                kind, MAX_BUILDING_SIDE, MAX_BUILDING_SIDE))
     end
     local direction = nil
     if kind == 'bridge' then
