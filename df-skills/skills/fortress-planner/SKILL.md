@@ -49,6 +49,9 @@ Then write or update the plan, and only then start work.
 
 ## Planning rules
 
+Strategy for what to plan (food and drink targets, storage, trade, wealth, rooms, elves,
+petitions) is in the `fortress-basics` skill.
+
 - **Plan seasons ahead.** The plan covers at least the next year in phases. Only the current
   phase has fine detail (coordinates, ids, counts). Later phases are one line each.
 - **Phases and tasks.** A phase is a goal the fort reaches (sealed shelter, food secure, first
@@ -66,8 +69,9 @@ Then write or update the plan, and only then start work.
 - **A missing permission is not a blocker.** When a tool returns `NOT_ALLOWED`, note the
   toggle's name once in chat and in a `send_message`, mark the task `blocked`, and move to
   work that is allowed.
-- **Some decisions are the player's.** Accepting a petition, pressing Trade, holding the
-  liaison meeting, and anything the plan marks as theirs. Say what you recommend with
+- **Some decisions are the player's.** Pressing Trade, holding the liaison meeting, and
+  anything the plan marks as theirs. Petitions are yours to answer (`fortress-basics`,
+  Petitions). Say what you recommend with
   `send_message`, record it under `Log`, and continue with other tasks.
 - **Verify by reading back.** Every write is followed by the read that proves it:
   `list_designations` after `designate_dig`, `list_buildings` or `get_tile` after a

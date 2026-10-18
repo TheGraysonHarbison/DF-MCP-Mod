@@ -7,6 +7,8 @@ when_to_use: Any time a fort action touches the map, the dwarves, the military, 
 # Fortress Quirks
 
 What the game and the bridge have taught us. Each line was learned by doing it wrong once.
+Strategy (stock targets, trade goods, wealth, room value, elves, petitions) is in
+`fortress-basics`.
 
 ## The bridge
 
