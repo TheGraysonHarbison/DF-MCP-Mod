@@ -167,7 +167,13 @@ situation matches, and each can be invoked by hand as `/claude-df:<name>`.
 
 ## Known bugs and open issues
 
-No bugs open.
+Bugs (fixes planned for Patch 2, plan section 16):
+
+- After an autosave or a save to a new folder, Claude's `plan.md` and the player's `goals.md` come back empty: the game
+  writes the new save folder without the mod's `claude-df/` files and the mod creates blank ones. The old text is still
+  in the earlier save folder's `claude-df/`.
+- Claude tends to work in a small area: `plan_dig`, `designate_dig`, `plan_furniture`, and `place_furniture` reach
+  Claude with no tool description, box tools are capped at 64 by 64 tiles, and the map tools start from the wagon.
 
 Open issues (features without a DFHack API, or where the game offers only mouse-driven UI):
 
@@ -362,7 +368,7 @@ drives a game screen).
 - P5.0 Hotkeys: list the game's 16 zoom hotkeys and name, place, and clear them as points of interest.
 - P6.0 Release: Alpha 1.0.1, released 2026-10-16.
 
-**Future plans** (after Patch 1, not scheduled):
+**Future plans** (after Patch 2, not scheduled):
 
 - Burrows and defend-burrow orders, per-month squad schedules, lever linking and pulling, multi-weapon traps, siege
   engine aiming.
@@ -440,3 +446,10 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | P4.0 | Popups: `popup` event with the text, `list_popups`, `close_popup` with optional unpause | verified in-game 2026-10-16: three boxes raised through DFHack while the game was paused were caught by the frame poller, reached the channel, listed with their text, and closed from the bridge; close without unpause left the game paused, close with unpause resumed it; focus stays dwarfmode/Default under a box |
 | P5.0 | Hotkeys: list the 16 slots, set and clear zoom hotkeys (`list_hotkeys`, `set_hotkey`, `clear_hotkey`, `hotkeys_write` permission) | verified in-game 2026-10-16: 16 slots read back with their keys (F1 to F8, Shift+F1 to Shift+F8) and F1 as the wagon; a point of interest written to F2 showed in the game's Hotkeys window and F2 jumped to it; F1 refused without overwrite, an off-map position refused, names clip at the game's 16 characters, clear emptied the slot |
 | P6.0 | Alpha 1.0.1 release (version bumps to 1.0.1a1 and 1.0.1-alpha, protocol 30, tag `v1.0.1-alpha`) | released 2026-10-16 |
+| P2-1.0 | Uninstall script (`tools/unlink-mod.sh`) | planned 2026-10-17, design in [plan section 16](docs/ProjectPlan.md#16-patch-2-addendum-uninstall-workshop-tasks-autosave-map-area-basics-petitions-planned-2026-10-17) |
+| P2-2.0 | Workshop tasks without a manager: list what a shop can make, add, suspend, repeat, and cancel its jobs | planned 2026-10-17 |
+| P2-3.0 | Plan and goals survive autosaves and saves to a new folder (bug) | planned 2026-10-17 |
+| P2-4.0 | Map area: missing tool descriptions, box caps, wagon-centred defaults (bug) | planned 2026-10-17 |
+| P2-5.0 | `fortress-basics` skill from the owner's gameplay notes | planned 2026-10-17 |
+| P2-6.0 | Petitions: list and answer (replaces 13.1) | planned 2026-10-17 |
+| P2-7.0 | Alpha 1.0.2 release | owner's, after P2-1.0 to P2-6.0 |

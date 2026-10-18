@@ -1,6 +1,6 @@
 # Project Plan: DFHack Claude Integration Mod
 
-Status: Phases 0 through 21 are built and released as Alpha 1.0.0 (tag `v1.0.0-alpha`, PRs #38 to #58, 13.1 petitions deferred to a README open issue). Patch 1 items P1.0 to P5.0 (labor, seeds, migrant events, trade screen, diplomacy dialog, popups, hotkeys) were planned, built by seven agents, verified in-game, and merged on 2026-10-16 (PRs #59 to #66, protocol 30, design and live findings in section 15); P6.0 released Alpha 1.0.1 (tag `v1.0.1-alpha`) the same day. Last updated 2026-10-16.
+Status: Phases 0 through 21 are built and released as Alpha 1.0.0 (tag `v1.0.0-alpha`, PRs #38 to #58, 13.1 petitions deferred to a README open issue). Patch 1 items P1.0 to P5.0 (labor, seeds, migrant events, trade screen, diplomacy dialog, popups, hotkeys) were planned, built by seven agents, verified in-game, and merged on 2026-10-16 (PRs #59 to #66, protocol 30, design and live findings in section 15); P6.0 released Alpha 1.0.1 (tag `v1.0.1-alpha`) the same day. Patch 2 (uninstall script, workshop tasks, the autosave plan loss, the map-area limits, a fortress-basics skill, petitions) was researched and agreed with the owner on 2026-10-17 (section 16). Last updated 2026-10-17.
 
 This document is the agreed plan for the project. The README describes the idea and current progress for readers; this file describes how we build it. When the two disagree, fix this file first, then the README.
 
@@ -274,7 +274,19 @@ Design in section 15. New toggles `labor_write`, `hotkeys_write`, `screens_write
 - P5.0 Hotkeys: list the 16 zoom hotkeys and name, place, and clear them as points of interest.
 - P6.0 Release: owner's version bumps, tag `v1.0.1-alpha`, tests, publishing.
 
-### Future (after Patch 1, not scheduled)
+### Patch 2: Alpha 1.0.2 (planned 2026-10-17)
+
+Design and open questions in section 16. Items are numbered P2-1.0 to P2-6.0 to stay clear of Patch 1's P1.0 to P6.0.
+
+- P2-1.0 Uninstall: a `tools/unlink-mod.sh` that undoes `tools/link-mod.sh`.
+- P2-2.0 Workshop tasks: list what a workshop can make, add a job to its queue without a manager, and suspend, repeat, or cancel its jobs. Jobs the workshop cannot do are refused.
+- P2-3.0 Autosave plan loss (bug): `plan.md` and `goals.md` come back empty after an autosave or a save to a new folder. The text moves into DFHack's per-site persistent data, which DFHack writes into every save.
+- P2-4.0 Map area (bug): four tools reach Claude with no description, and the box caps and wagon-centred defaults keep Claude in a small area.
+- P2-5.0 Fortress basics: a new `fortress-basics` skill from the owner's `Gameplay.md`.
+- P2-6.0 Petitions: list pending petitions and accept or deny them (plan item 13.1).
+- P2-7.0 Release: owner's version bumps, tag, publishing.
+
+### Future (after Patch 2, not scheduled)
 
 - Burrows and defend-burrow orders, per-month squad schedule editing, lever linking and pulling, multi-weapon traps, siege engine aiming.
 - Quickfort blueprints, custom work details and workshop worker lists, locations (8.2), tracks and minecarts, door and hatch toggles, the left-side alert buttons.
@@ -1043,6 +1055,53 @@ Built by seven Opus agents in parallel worktrees from one brief each, reviewed, 
 ### 15.6 Delivery
 
 Eight branches from `main`, in this order, one PR each, merged after the owner's yes: `mod/labor` (P1.0, with the `MOD_VERSION` fix), `skills/seeds` (P1.1), `mod/migrant-events` (P1.2), `mod/hotkeys` (P5.0), `mod/popups` (P4.0), `mod/trade-screen` (P2.0), `mod/diplomacy-dialog` (P3.0), `repo/alpha-1.0.1` (P6.0, the owner's). Each PR updates the README progress section; an item the game refuses headlessly moves to the README open issues with its design kept here.
+
+---
+
+## 16. Patch 2 addendum: uninstall, workshop tasks, autosave, map area, basics, petitions (planned 2026-10-17)
+
+The owner's list of six items for Alpha 1.0.2, researched on 2026-10-17 against the repository, the Lua API text and scripts shipped with DFHack 53.16-r2, and df-structures `master`. No live probe yet. Section 16.2 holds the proposals; the decisions are recorded there once the owner answers 16.3.
+
+### 16.1 What the code and DFHack give us
+
+| Need | Source (checked 2026-10-17) |
+|---|---|
+| Install (P2-1.0) | `tools/link-mod.sh` appends `+<repo>/mod/scripts_modinstalled` to `<DF>/dfhack-config/script-paths.txt`. The mod keeps its settings, permissions, allowlist, event toggles, goal prompt, and timer in `dfhack-config/mods/claude-bridge/settings.json` (`state.lua` `state_dir`). Each save holds the enabled flag in DFHack site data (`claude-bridge.lua` `persist_enabled`) and the `claude-df/` folder. Claude Code holds the project `.mcp.json` and the `claude-df` plugin in `.claude/settings.json`. The 2026-10-16 manual uninstall removed the script-path lines and the settings folder. |
+| Workshop jobs (P2-2.0) | `workshops.lua` only reads (`job_row`, line 61). `orders.create` checks `workshop_id` only for existence (`orders.lua` 443-445), so a manager order pinned to a carpenter can ask for smelting; a pinned order still needs the manager. Lua API job module: `dfhack.job.createLinked`, `assignToWorkshop` (false once a workshop holds 10 jobs), `removeJob`, `linkIntoWorld`, `attachJobItem`, `isSuitableItem`, `isSuitableMaterial`; `job.flags` has `repeat`, `suspend`, `do_now` (`df.job.xml`). `dfhack.workshops.getJobs` (`hack/lua/dfhack/workshops.lua` 533) has filter templates for most vanilla shops, but the Forge is commented out and the Craftsdwarf, Bowyer, Still, Farmer, Clothier, Tanner, and Ashery shops are missing. The game's own Add-task list lives in `game.main_interface.building.button` as `interface_button_building_new_jobst` entries with `jobtype`, `mstring` (reaction), `itemtype`, `subtype`, `material`, `matgloss`, `specflag`, `objection`, and the building `bd`, plus the base `press` vmethod (`df.d_interface.xml` 271, 326, 354). That list is the game's own answer to "what can this shop make". |
+| Plan files (P2-3.0) | `plan.lua` builds every path from `dfhack.getSavePath()` and `ensure_files()` creates empty `plan.md` and `goals.md` when they are missing. The game writes an autosave or a save-as into a different folder and copies only its own files, so the next read finds the new folder empty and makes blank files. The Lua state-change events are `SC_WORLD_LOADED`, `SC_WORLD_UNLOADED`, `SC_MAP_LOADED`, `SC_MAP_UNLOADED`, `SC_VIEWSCREEN_CHANGED`, `SC_CORE_INITIALIZED`: there is no save event. DFHack's persistent storage (`dfhack.persistent.saveSiteDataString` and friends) "is kept in memory, so no I/O occurs when getting or saving keys. It is all written to a json file in the game save directory when the game is saved", and it follows the fort into every save. The mod's enabled flag already lives there and survives autosaves. Lua API "Persistent configuration storage" and "State change event codes". |
+| Map area (P2-4.0) | No global cap, but four things narrow Claude's view. (1) Bug: `plan_dig`, `designate_dig` (`server/src/df_mcp/tools/dig.py` 114-120, 144-150), `plan_furniture`, and `place_furniture` (`tools/furniture.py` 151-157, 186-192) write their docstring as `("""...""" + BOX_DOC)`, which Python does not treat as a docstring, so the MCP tools carry no description: Claude never learns the box limits, circles, or that unrevealed rock can be designated. (2) Hard caps: `get_area_map` at most 64x64 (`map.lua` `MAX_AREA`, default 32x32); every box tool at 64x64 tiles and 32 levels (`map.lua` `MAX_BOX_SIDE`, `MAX_BOX_LEVELS`, used by dig, plants, designations, furniture, constructions); circles at radius 31; stockpiles, farms, and buildings at 31x31; zones at 64. A default 4x4 embark is 192 tiles a side. (3) Wagon defaults: `find_build_space` searches from the wagon out to radius 30 on the wagon's level; `find_exposed_walls` uses radius 20 around a given point. (4) Steering: the server instructions (`server.py` 65), `get_map_bounds`/`get_wagon` descriptions, and the planner skill's map row start from the wagon. The 25-row cap is reported everywhere except `remove_constructions` (no flag) and `place_furniture` (`over_limit` count only). |
+| Basics skill (P2-5.0) | `Gameplay.md` (repo root, owner's notes): food and drink minimums, spare barrels and bins, trade value, gems, artifacts, buying, animals, wealth, rooms, cage traps, idle miners, elves, underground happiness, rain. Overlaps `fortress-quirks` "Farming and food" and "Early fort priorities". The bridge has no empty-container filter in `find_items` and no artifact guard in `offer_trade` or `select_trade_goods`. |
+| Petitions (P2-6.0) | No code beyond the event poller (`events.lua` 329-431 reads `plotinfo.petitions`). `plotinfo.petitions` holds pending agreement ids (`df.plotinfo.xml`); `df.agreement` in `world.agreements.all` has `parties[]` and `details[]` whose `type` is Residency, Citizenship, Location (temple or guildhall, with deity or profession and tier), and others; flags `petition_not_accepted` and `convicted_accepted` (`df.agreement.xml`). `main_interface.petitions` has `open`, `have_responsible_person`, `agreement_id[]`, `selected_agreement_id`, and no decision field. `list-agreements.lua` and `gui/petitions` only read. Patch 1's `screens.click_label` (`screens.lua` 154) presses buttons by their on-screen label, as the diplomacy dialog does. |
+
+### 16.2 Decisions
+
+Agreed with the owner on 2026-10-17 (answers to the questions in 16.3).
+
+| Item | Decision |
+|---|---|
+| P2-1.0 Uninstall | `tools/unlink-mod.sh <DF dir>` fully removes the mod from that Dwarf Fortress install: every `script-paths.txt` line that points at a `mod/scripts_modinstalled` holding `claude-bridge.lua` (this folder or an older extracted release) and the settings folder `dfhack-config/mods/claude-bridge/`. It prints what it removed and that DF must be restarted. It does not touch saves (the `claude-df/` folders and the site flag stay) and does not touch Claude Code (the MCP server and the plugin are not part of the game install). README gets an Uninstall section. |
+| P2-2.0 Workshop tasks | API calls, the way manager orders are made, not button clicks: the mod builds the job itself (`df.job`, `job_items` filters, `dfhack.job.assignToWorkshop` or `createLinked` plus `linkIntoWorld`), so no manager is needed. A compatibility table says what each workshop type can do: `dfhack.workshops.getJobs` where it covers the shop, the mod's own entries for the shops it misses (Forge, Craftsdwarf, Bowyer, Still, Farmer, Clothier, Tanner, Ashery), and reactions by their `building` for custom shops. Ops: `workshops.tasks` (read, `workshops`), `workshops.add_job`, `workshops.job_set` (suspend, repeat, do now), `workshops.cancel_job` (in-progress jobs may be cancelled; strange-mood jobs are refused). Writes reuse `orders_write`. `create_work_order` with a `workshop_id` refuses an order that workshop cannot do. |
+| P2-3.0 Autosave | Option B through DFHack's persistent site data (owner: "whichever works best"). The plan and goals texts live under site keys; DFHack writes them into every save, autosaves and saves to a new folder included, so no save hook is needed (the Lua API has none). The goals window uses the same store. On load, an empty store imports the folder's existing files. The `claude-df/plan.md` and `goals.md` files stay as a readable mirror written on every change; the store is the source of truth. No import from other save folders. The 64 KB cap stays. |
+| P2-4.0 Map area | One branch. Claude works with the whole map: every hard size cap of the bridge's own (`MAX_AREA`, `MAX_BOX_SIDE`, `MAX_BOX_LEVELS`, circle radius, find_build_space rectangle, stockpile, farm, zone, and construction footprints) is removed and the only limit is the map's bounds, which differ per game. A cap the game itself imposes stays only when a source proves it, and the description says so. Everything else stays: the 25-row list caps with their `limit` and `truncated` flags (rule 12, flags added to `remove_constructions` and `place_furniture`), and the wagon as the default starting point for searches, described as an efficiency default, not a boundary. The four missing descriptions are fixed, a server test checks every tool has one, and every map tool's description, the instructions text, and the planner skill say the whole map is in reach. |
+| P2-5.0 Basics | New skill `df-skills/skills/fortress-basics/SKILL.md` from `Gameplay.md`, using the wiki's numbers where they differ from the owner's estimates (brew and meal yields). `fortress-quirks` keeps its sections; the two skills link to each other. No new bridge helpers. `Gameplay.md` moves to `docs/`. `df-skills/README.md` and the README Skills section list the skill. |
+| P2-6.0 Petitions | `petitions.list` (read, `units`) and `petitions.answer(id, accept)` folded into existing permissions: answering needs `units_write`, and also `screens_write` when the answer drives the petitions screen. The implementation picks the most reliable path from the research (the game's own Accept and Deny handler where reachable, raw agreement writes otherwise). Claude answers petitions on its own within its permissions; the fortress-basics skill holds the policy. No petition save is available, so the logic ships unverified live and the owner reports bugs. 13.1 closes. |
+| Protocol | Reserved versions so parallel branches do not collide: P2-4.0 31, P2-3.0 32, P2-2.0 33, P2-6.0 34. P2-1.0 and P2-5.0 do not change the protocol. |
+| Tests | Fixture tests on the server for every new or changed tool; Lua syntax checks; live checks per 16.4 where the owner's game allows. An item that passes its live test is merged at once (owner, 2026-10-17). |
+
+### 16.3 Owner's answers (2026-10-17)
+
+1 to 3: the uninstall removes the mod fully from the given DF install, nothing from saves or Claude Code. 4: API calls like manager orders. 5: reuse `orders_write`. 6: yes. 7: yes. 8: whichever works best (B through persistent data). 9: yes, keep the files. 10: no save to recover. 11: one branch per phase. 12: the whole map; remove every hard size cap, keep the wagon as a starting point and the rest, update the descriptions. 13: the wiki's numbers. 14: no. 15: no. 16: move to `docs/`. 17: fold into existing permissions. 18: Claude acts on its own within its permissions. 19: no saves; the owner files bug reports. 20: agreed, mind merge conflicts.
+
+### 16.4 In-game checks before or during implementation
+
+1. P2-3.0: on a fort, write a plan, let an autosave run, and confirm whether `getSavePath` moves to the autosave folder; after the change, confirm the plan reads back from the autosave and from a save-as copy, and that a 64 KB plan saves and loads.
+2. P2-2.0: record the field diff when the owner opens a workshop's Add-task panel; check whether `building.button` fills only while it is open, whether `press` is callable from Lua or a label click is needed, whether category buttons (Craftsdwarf, then Rock, then Mug) need several presses, and what `objection` holds.
+3. P2-6.0: open the petitions screen; read the button labels and `have_responsible_person`; record the diff of one vanilla accept and one deny; check whether an accepted location petition shows in `continuing_agreement_id` and whether an accepted resident changes at once.
+4. P2-4.0: a full-map `get_area_map` and a whole-map dig dry run, timed, to see how long the game pauses.
+
+### 16.5 Delivery
+
+One branch per item from `main`, one PR each, merged after the owner's yes (rule 9): `mod/map-area` (P2-4.0), `mod/plan-persistence` (P2-3.0), `tools/uninstall` (P2-1.0), `skills/fortress-basics` (P2-5.0), `mod/workshop-tasks` (P2-2.0), `mod/petitions` (P2-6.0), `repo/alpha-1.0.2` (P2-7.0, the owner's). Each PR updates the README progress section.
 
 ---
 
