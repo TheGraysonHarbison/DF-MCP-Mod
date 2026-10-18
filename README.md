@@ -169,9 +169,6 @@ situation matches, and each can be invoked by hand as `/claude-df:<name>`.
 
 Bugs (fixes planned for Patch 2, plan section 16):
 
-- After an autosave or a save to a new folder, Claude's `plan.md` and the player's `goals.md` come back empty: the game
-  writes the new save folder without the mod's `claude-df/` files and the mod creates blank ones. The old text is still
-  in the earlier save folder's `claude-df/`.
 - Claude tends to work in a small area: `plan_dig`, `designate_dig`, `plan_furniture`, and `place_furniture` reach
   Claude with no tool description, box tools are capped at 64 by 64 tiles, and the map tools start from the wagon.
 
@@ -448,7 +445,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | P6.0 | Alpha 1.0.1 release (version bumps to 1.0.1a1 and 1.0.1-alpha, protocol 30, tag `v1.0.1-alpha`) | released 2026-10-16 |
 | P2-1.0 | Uninstall script (`tools/unlink-mod.sh`) | planned 2026-10-17, design in [plan section 16](docs/ProjectPlan.md#16-patch-2-addendum-uninstall-workshop-tasks-autosave-map-area-basics-petitions-planned-2026-10-17) |
 | P2-2.0 | Workshop tasks without a manager: list what a shop can make, add, suspend, repeat, and cancel its jobs | planned 2026-10-17 |
-| P2-3.0 | Plan and goals survive autosaves and saves to a new folder (bug) | planned 2026-10-17 |
+| P2-3.0 | Plan and goals survive autosaves and saves to a new folder (bug): stored in DFHack's per-fort site data, `claude-df/` files kept as a mirror, `get_plan_info` reports the storage (protocol 32) | built 2026-10-17, awaiting live test |
 | P2-4.0 | Map area: missing tool descriptions, box caps, wagon-centred defaults (bug) | planned 2026-10-17 |
 | P2-5.0 | `fortress-basics` skill from the owner's gameplay notes | planned 2026-10-17 |
 | P2-6.0 | Petitions: list and answer (replaces 13.1) | planned 2026-10-17 |
