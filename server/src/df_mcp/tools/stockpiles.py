@@ -87,7 +87,9 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         preset_mode: str = "set",
     ) -> dict[str, Any]:
         """Paint a stockpile: a rectangle between two corners, or a filled circle from
-        `center_x`, `center_y`, `z`, and `radius` (1 to 15). Needs `stockpiles_write`.
+        `center_x`, `center_y`, `z`, and `radius` (1 or more). Needs `stockpiles_write`.
+        Any size up to the whole map; a shape past the map edge is clipped
+        (`footprint.clipped`).
 
         Every tile must be revealed, flat floor, with no building, liquid, or tree. Then the
         pile is configured: `categories` enables whole categories with all their options

@@ -8,7 +8,6 @@ from df_mcp.bridge import Bridge
 from df_mcp.tools import call
 from df_mcp.tools.core import READ_ONLY
 
-MAX_AREA = 64
 VIEWS = ("shape", "material", "designations")
 DESIGNATION_KINDS = (
     "chop",
@@ -28,14 +27,18 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
     @mcp.tool(name="get_map_bounds", annotations=READ_ONLY)
     def get_map_bounds() -> dict[str, Any]:
         """Get the map's valid coordinate ranges, its centre, the surface z there, and the
-        wagon's z. Call this before any tile or area read. z counts upward.
+        wagon's z. Call this first: these bounds (different in every game) are the only
+        limit on where you can look, dig, and build; the whole map is in reach. z counts
+        upward.
         """
         return call(bridge, "map.bounds")
 
     @mcp.tool(name="get_wagon", annotations=READ_ONLY)
     def get_wagon() -> dict[str, Any]:
-        """Locate the embark wagon. Its z is the surface level with the most open ground.
-        If it has been deconstructed, returns the map centre at surface level instead.
+        """Locate the embark wagon, where the fort started. Its z is the surface level with
+        the most open ground, and it is the default starting point of `find_build_space`,
+        nothing more: the whole map (`get_map_bounds`) is in reach. If it has been
+        deconstructed, returns the map centre at surface level instead.
         """
         return call(bridge, "map.wagon")
 
@@ -62,7 +65,9 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
     def get_area_map(
         x: int, y: int, z: int, width: int = 32, height: int = 32, view: str = "shape"
     ) -> dict[str, Any]:
-        """Draw a rectangle of one z-level as text, one character per tile, up to 64 by 64.
+        """Draw a rectangle of one z-level as text, one character per tile, any size up to
+        the whole map (default 32 by 32). A rectangle reaching past the map edge is cut
+        there and `clipped` is true; a whole-map read is fine but pauses the game a moment.
 
         `rows` run north to south from (x, y); characters run west to east. `legend` explains
         the characters used. `view` "shape" (default): `#` wall, `.` floor, `^` ramp, `<` `>`
@@ -74,8 +79,8 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         upper-case letter means the game has already made a job for that order.
         `walkable_groups` counts walkable tiles per connectivity group.
         """
-        if not (1 <= width <= MAX_AREA and 1 <= height <= MAX_AREA):
-            raise ValueError(f"width and height must be 1-{MAX_AREA}")
+        if width < 1 or height < 1:
+            raise ValueError("width and height must be at least 1")
         if view not in VIEWS:
             raise ValueError(f"view must be one of {', '.join(VIEWS)}")
         return call(
@@ -97,7 +102,8 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
 
         Use this to plan hallways and rooms without walking tiles: every returned segment is
         rock a dwarf can reach and dig into. Scans the whole level, or a square of `radius`
-        around (`near_x`, `near_y`). Each segment has `x1, y1, x2, y2, z`, `length`,
+        (default 20, any size) around (`near_x`, `near_y`) to save time. Each segment has `x1, y1,
+        x2, y2, z`, `length`,
         `material` (e.g. "granite"), `material_class`, `kind` (natural, smoothed, engraved,
         constructed), `open_sides` (which sides touch walkable floor), and `floor_group` (the
         walkable group of that floor). Longest first, `limit` segments (default 25), with
@@ -136,8 +142,9 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         """List existing dig, stair, channel, ramp, smooth, and engrave orders in a box.
 
         Check this before designating so new orders do not land on tiles that already have
-        one. The box is two corners in any order, at most 64 by 64 tiles per level and 32
-        levels. `kind` filters to one of chop, gather, mine, up_stair, down_stair,
+        one. The box is two corners in any order, any size up to the whole map, clipped at
+        its edge (`box.clipped`); big boxes pause the game longer. `kind` filters to one of chop,
+        gather, mine, up_stair, down_stair,
         up_down_stair, channel, ramp, smooth, engrave. Each row has `pos`, `kind`, `state`
         ("pending": still on the
         tile; "taken": the game has made a job for it), `marker` (blueprint mode, not dug
@@ -173,16 +180,24 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         near_x: int | None = None,
         near_y: int | None = None,
         max_radius: int = 30,
+        whole_map: bool = False,
     ) -> dict[str, Any]:
-        """Find the nearest clear rectangle of walkable floor for a building.
+        """Find the nearest clear rectangle of walkable floor for a building, anywhere on
+        the map.
 
-        Searches outward in rings from (near_x, near_y), defaulting to the wagon or the map
-        centre, on level `z` (default: the wagon's level or the surface). Every tile must be
-        revealed, flat floor, walkable in one connected group, with no building, liquid, or
-        tree. Returns the rectangle's `origin` (top-left) and `center`, or `found: false`.
+        Searches outward in rings from (near_x, near_y) on level `z`. The start defaults to
+        the wagon (or the map centre) and `z` to the wagon's level or the surface, only so
+        the usual search is quick; pass any point and level. `max_radius` (default 30) has
+        no upper limit, and `whole_map` searches out to every map edge. `width` and
+        `height` go up to the map size. Every tile must be revealed, flat floor, walkable
+        in one connected group, with no building, liquid, or tree. Returns the rectangle's
+        `origin` (top-left), `center`, and `distance`, or `found: false` with
+        `searched_radius` and `whole_map` (true when the whole level was searched).
         """
-        if not (1 <= width <= 31 and 1 <= height <= 31):
-            raise ValueError("width and height must be 1-31")
+        if width < 1 or height < 1:
+            raise ValueError("width and height must be at least 1")
+        if max_radius < 0:
+            raise ValueError("max_radius must be 0 or more")
         return call(
             bridge,
             "map.find_space",
@@ -193,5 +208,6 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
                 "near_x": near_x,
                 "near_y": near_y,
                 "max_radius": max_radius,
+                "whole_map": whole_map,
             },
         )

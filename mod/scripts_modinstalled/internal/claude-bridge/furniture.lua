@@ -426,7 +426,10 @@ local function run(args, apply)
         type = key, building_type = entry.type, box = box, dry_run = not apply, applied = false,
         placed = 0, candidates = #targets, skipped_unsuitable = counts.skipped_unsuitable,
         skipped_building = counts.skipped_building, skipped_edge = counts.skipped_edge,
-        over_limit = counts.over_limit, limit = limit, skipped = skipped,
+        over_limit = counts.over_limit, limit = limit, truncated = counts.over_limit > 0,
+        skipped = skipped,
+        skipped_truncated = counts.skipped_unsuitable + counts.skipped_building + counts.skipped_edge
+            > #skipped,
         requirements = requirements, warnings = warnings, buildings = {},
     }
     if #targets == 0 then
@@ -464,6 +467,9 @@ local function run(args, apply)
     end
     result.status = result.placed > 0 and 'placed' or 'nothing_to_place'
     result.applied = result.placed > 0
+    result.buildings_truncated = result.placed > #result.buildings
+    result.skipped_truncated = counts.skipped_unsuitable + counts.skipped_building + counts.skipped_edge
+        > #skipped
     result.plate = plate and {triggers = plate.triggers, citizens = plate.citizens, resets = plate.resets} or nil
     result.note = 'blueprints placed; a dwarf fetches the item and installs it'
     if entry.subtype == 'CageTrap' or entry.subtype == 'StoneFallTrap' then

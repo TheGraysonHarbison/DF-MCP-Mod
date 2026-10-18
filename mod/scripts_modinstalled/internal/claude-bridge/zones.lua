@@ -314,7 +314,9 @@ end
 -- ---------------------------------------------------------------------------------------
 -- Writes (plan 12, item 8.1), under zones_write.
 
-MAX_SIDE = 64
+-- No zone size cap of ours (P2-4.0): quickfort's zone module allows any size
+-- (hack/scripts/internal/quickfort/zone.lua max_width = math.huge, 53.16-r2); the map's
+-- bounds are the limit and shapes are clipped to them.
 
 -- A box {x1, y1, x2, y2, z} or circle for a zone shape. Returns box, membership fn.
 local function parse_shape(args)
@@ -477,7 +479,8 @@ local function create(args)
             .. 'set a room\'s value to zero'):format(#hits, table.concat(hits, ', ')))
     end
     local row = detail(zone, parse_limit(args))
-    return {status = 'created', zone = row, hidden_skipped = hidden, changed = changed or {}, warnings = warnings,
+    return {status = 'created', zone = row, hidden_skipped = hidden, clipped = box.clipped == true,
+            changed = changed or {}, warnings = warnings,
             note = 'the zone exists now; assign an owner or animals with zones.assign'}
 end
 
@@ -495,9 +498,6 @@ local function set_tiles(zone, set)
     end
     if n == 0 then return nil, 'a zone needs at least one tile' end
     local w, h = maxx - minx + 1, maxy - miny + 1
-    if w > MAX_SIDE or h > MAX_SIDE then
-        return nil, ('a zone is at most %d by %d tiles'):format(MAX_SIDE, MAX_SIDE)
-    end
     local extents = df.reinterpret_cast(df.building_extents_type, df.new('uint8_t', w * h))
     for i = 0, w * h - 1 do
         local x, y = minx + i % w, miny + math.floor(i / w)

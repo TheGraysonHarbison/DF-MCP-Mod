@@ -13,7 +13,6 @@ local M = dfhack.maps
 
 DEFAULT_LIMIT = 25
 LIST_LIMIT = 25
-MAX_RADIUS = 31
 KINDS = {'tree', 'shrub', 'sapling'}
 
 local function safe(fn, ...)
@@ -119,38 +118,10 @@ local function plants_in(box, inside)
     return out
 end
 
--- A filled circle {x, y, z, radius}, as dig.parse_circle (kept separate to avoid a module cycle).
-local function parse_circle(args)
-    local c = args.circle
-    if type(c) ~= 'table' then
-        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, '"circle" must be {x, y, z, radius}')
-    end
-    local cx, cy, cz, r = tonumber(c.x), tonumber(c.y), tonumber(c.z), tonumber(c.radius)
-    if not (cx and cy and cz and r) then
-        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, '"circle" needs numbers x, y, z, radius')
-    end
-    cx, cy, cz, r = math.floor(cx), math.floor(cy), math.floor(cz), math.floor(r)
-    if r < 1 or r > MAX_RADIUS then
-        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, ('"radius" must be 1-%d'):format(MAX_RADIUS))
-    end
-    local w, h, d = M.getTileSize()
-    if cx - r < 0 or cy - r < 0 or cx + r >= w or cy + r >= h or cz < 0 or cz >= d then
-        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST,
-            ('the circle reaches outside the map: x 0-%d, y 0-%d, z 0-%d'):format(w - 1, h - 1, d - 1))
-    end
-    local box = {x1 = cx - r, x2 = cx + r, y1 = cy - r, y2 = cy + r, z1 = cz, z2 = cz,
-                 center = {x = cx, y = cy, z = cz}, radius = r}
-    local limit = r * r + r
-    return box, nil, function(x, y)
-        local dx, dy = x - cx, y - cy
-        return dx * dx + dy * dy <= limit
-    end
-end
-
 local function list(args)
     local box, berr, inside
     if args.circle ~= nil then
-        box, berr, inside = parse_circle(args)
+        box, berr, inside = map.parse_circle(args)
     else
         box, berr = map.parse_box(args)
     end
@@ -287,7 +258,8 @@ function designate(box, inside, kind, apply)
         skipped_unsuitable = counts.skipped_unsuitable, skipped_building = 0, skipped_edge = 0,
         by_level = {}, skipped = skipped,
         skipped_truncated = (counts.skipped_existing + counts.skipped_unsuitable) > #skipped,
-        blocks_marked = n, plants = marked, designations_api = api_available(),
+        blocks_marked = n, plants = marked, plants_truncated = counts.designated > #marked,
+        designations_api = api_available(),
         note = apply and (kind == 'chop' and 'trees marked for felling; woodcutters take them when free'
                           or 'shrubs marked for gathering; herbalists take them when free')
             or 'nothing was changed; call dig.designate with the same arguments to place these orders',
