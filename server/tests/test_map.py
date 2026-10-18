@@ -38,12 +38,34 @@ def test_map_tools_send_args():
     run(mcp, "find_build_space", width=3, height=3)
     assert last_request(holder)["op"] == "map.find_space"
     assert last_request(holder)["args"]["z"] is None
+    assert last_request(holder)["args"]["whole_map"] is False
+    assert last_request(holder)["args"]["max_radius"] == 30
+
+
+def test_map_tools_have_no_size_cap_of_their_own():
+    # P2-4.0: the map's bounds are the only limit, and the mod checks them.
+    mcp, holder = make()
+    run(mcp, "get_area_map", x=0, y=0, z=0, width=192, height=192)
+    assert last_request(holder)["args"]["width"] == 192
+    run(mcp, "find_build_space", width=40, height=50, max_radius=500)
+    assert last_request(holder)["args"]["width"] == 40
+    assert last_request(holder)["args"]["max_radius"] == 500
+    run(mcp, "find_build_space", near_x=10, near_y=20, z=150, whole_map=True)
+    assert last_request(holder)["args"]["whole_map"] is True
+    run(mcp, "list_designations", x1=0, y1=0, z1=0, x2=191, y2=191, z2=150)
+    assert last_request(holder)["args"]["x2"] == 191
+    run(mcp, "plan_dig", kind="mine", x1=0, y1=0, z1=0, x2=191, y2=191, z2=100)
+    assert last_request(holder)["args"]["z2"] == 100
+    run(mcp, "plan_dig", kind="mine", center_x=96, center_y=96, center_z=100, radius=90)
+    assert last_request(holder)["args"]["circle"]["radius"] == 90
 
 
 def test_map_tools_reject_bad_sizes():
     mcp, holder = make()
     with pytest.raises(Exception):  # noqa: B017
-        run(mcp, "get_area_map", x=0, y=0, z=0, width=65)
+        run(mcp, "get_area_map", x=0, y=0, z=0, width=0)
+    with pytest.raises(Exception):  # noqa: B017
+        run(mcp, "find_build_space", max_radius=-1)
     with pytest.raises(Exception):  # noqa: B017
         run(mcp, "find_build_space", width=0)
     with pytest.raises(Exception):  # noqa: B017

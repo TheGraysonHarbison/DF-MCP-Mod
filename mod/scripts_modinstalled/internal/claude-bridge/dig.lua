@@ -20,7 +20,6 @@ HARD = {STONE = true, MINERAL = true, LAVA_STONE = true, FEATURE = true, FROZEN_
 ERASE_KINDS = {'mine', 'up_stair', 'down_stair', 'up_down_stair', 'channel', 'ramp',
                'smooth', 'engrave', 'chop', 'gather'}
 SKIPPED_LIMIT = 25
-MAX_RADIUS = 31
 
 local function safe(fn, ...)
     local ok, value = pcall(fn, ...)
@@ -158,33 +157,10 @@ local function parse_kind(args, valid)
     return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, '"kind" must be one of ' .. table.concat(valid, ', '))
 end
 
--- A filled circle: {x, y, z, radius}. A tile is inside when dx*dx + dy*dy <= r*r + r
--- (plan 11.3). Returns the bounding box and a membership test, or nil, err.
+-- A filled circle: {x, y, z, radius}. The shared parser lives in map.lua (no radius cap of
+-- ours, clipped at the map edge); kept here because other modules call dig.parse_circle.
 function parse_circle(args)
-    local c = args.circle
-    if type(c) ~= 'table' then
-        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, '"circle" must be {x, y, z, radius}')
-    end
-    local cx, cy, cz, r = tonumber(c.x), tonumber(c.y), tonumber(c.z), tonumber(c.radius)
-    if not (cx and cy and cz and r) then
-        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, '"circle" needs numbers x, y, z, radius')
-    end
-    cx, cy, cz, r = math.floor(cx), math.floor(cy), math.floor(cz), math.floor(r)
-    if r < 1 or r > MAX_RADIUS then
-        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST, ('"radius" must be 1-%d'):format(MAX_RADIUS))
-    end
-    local w, h, d = M.getTileSize()
-    if cx - r < 0 or cy - r < 0 or cx + r >= w or cy + r >= h or cz < 0 or cz >= d then
-        return nil, rpc.error_result(rpc.ERR_BAD_REQUEST,
-            ('the circle reaches outside the map: x 0-%d, y 0-%d, z 0-%d'):format(w - 1, h - 1, d - 1))
-    end
-    local box = {x1 = cx - r, x2 = cx + r, y1 = cy - r, y2 = cy + r, z1 = cz, z2 = cz,
-                 center = {x = cx, y = cy, z = cz}, radius = r}
-    local limit = r * r + r
-    return box, nil, function(x, y)
-        local dx, dy = x - cx, y - cy
-        return dx * dx + dy * dy <= limit
-    end
+    return map.parse_circle(args)
 end
 
 -- Shared by dig.plan and dig.designate. apply=false only looks.

@@ -30,7 +30,9 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         limit: int = 25,
     ) -> dict[str, Any]:
         """List the trees, shrubs, and saplings whose base tile is in a box (two corners,
-        any levels) or a filled circle on one level (center_x, center_y, center_z, radius).
+        any levels, any size up to the whole map) or a filled circle on one level
+        (center_x, center_y, center_z, radius 1 or more); shapes past the map edge are
+        clipped (`box.clipped`).
 
         Each row has `pos` (the base tile), `kind` (tree, shrub, sapling), `species`,
         `dead`, `marked` (already ordered for felling or gathering), and for trees `size`

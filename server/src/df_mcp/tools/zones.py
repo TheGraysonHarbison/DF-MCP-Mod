@@ -5,7 +5,7 @@ from typing import Any
 from mcp.server import MCPServer
 
 from df_mcp.bridge import Bridge
-from df_mcp.tools import call
+from df_mcp.tools import call, tool_doc
 from df_mcp.tools.core import READ_ONLY, WRITE_SAFE
 from df_mcp.tools.orders import DELETE
 
@@ -128,8 +128,37 @@ def _settings(**kwargs: Any) -> dict[str, Any]:
     return out
 
 
+CREATE_ZONE_DOC = tool_doc(
+    """Paint a new activity zone. Needs `zones_write`.
+
+        `type` is one of meeting_area, bedroom, dining_hall, dormitory, barracks,
+        archery_range, office, tomb, pen, pit, pond, dump, water_source, fishing, sand,
+        clay, gather, animal_training, dungeon. The shape is a box (x1, y1, x2, y2, z, any
+        two corners, any size up to the whole map) or a filled circle (center_x, center_y,
+        radius 1 or more, z); shapes reaching past the map edge are clipped (`clipped`). Every
+        revealed tile counts, walls and water included (walls raise a room's
+        value); hidden tiles are left out. Overlapping a zone of the same type is allowed
+        but warned about. A bedroom, office, dining hall, or tomb needs the matching
+        furniture inside and an owner (`assign_zone`); a pen takes animals the same way.
+        Returns the new zone as `get_zone` shows it.""",
+    SETTINGS_DOC,
+)
+
+
+EDIT_ZONE_DOC = tool_doc(
+    """Change a zone: rename it, activate or deactivate it, grow or shrink it, or
+        change its settings. Needs `zones_write`. Its type cannot change.
+
+        `add_box` and `remove_box` are [x1, y1, x2, y2] on the zone's level; `add_circle`
+        and `remove_circle` are [center_x, center_y, radius]. Removed tiles leave the zone,
+        added revealed tiles join it, and the bounds refit; a zone keeps at least one tile.
+        Returns `changed`, `tiles_added`, `tiles_removed`, and the zone.""",
+    SETTINGS_DOC,
+)
+
+
 def register_writes(mcp: MCPServer, bridge: Bridge) -> None:
-    @mcp.tool(name="create_zone", annotations=WRITE_SAFE)
+    @mcp.tool(name="create_zone", annotations=WRITE_SAFE, description=CREATE_ZONE_DOC)
     def create_zone(
         type: str,
         x1: int | None = None,
@@ -151,22 +180,6 @@ def register_writes(mcp: MCPServer, bridge: Bridge) -> None:
         allow_pets: bool | None = None,
         allow_citizens: bool | None = None,
     ) -> dict[str, Any]:
-        (
-            """Paint a new activity zone. Needs `zones_write`.
-
-        `type` is one of meeting_area, bedroom, dining_hall, dormitory, barracks,
-        archery_range, office, tomb, pen, pit, pond, dump, water_source, fishing, sand,
-        clay, gather, animal_training, dungeon. The shape is a box (x1, y1, x2, y2, z, any
-        two corners, at most 64 by 64) or a filled circle (center_x, center_y, radius 1 to
-        31, z). Every revealed tile counts, walls and water included (walls raise a room's
-        value); hidden tiles are left out. Overlapping a zone of the same type is allowed
-        but warned about. A bedroom, office, dining hall, or tomb needs the matching
-        furniture inside and an owner (`assign_zone`); a pen takes animals the same way.
-        Returns the new zone as `get_zone` shows it.
-
-        """
-            + SETTINGS_DOC
-        )
         args: dict[str, Any] = {
             "type": type.strip().lower().replace(" ", "_"),
             "name": name,
@@ -187,7 +200,7 @@ def register_writes(mcp: MCPServer, bridge: Bridge) -> None:
         )
         return call(bridge, "zones.create", args)
 
-    @mcp.tool(name="edit_zone", annotations=WRITE_SAFE)
+    @mcp.tool(name="edit_zone", annotations=WRITE_SAFE, description=EDIT_ZONE_DOC)
     def edit_zone(
         zone_id: int,
         name: str | None = None,
@@ -205,18 +218,6 @@ def register_writes(mcp: MCPServer, bridge: Bridge) -> None:
         allow_pets: bool | None = None,
         allow_citizens: bool | None = None,
     ) -> dict[str, Any]:
-        (
-            """Change a zone: rename it, activate or deactivate it, grow or shrink it, or
-        change its settings. Needs `zones_write`. Its type cannot change.
-
-        `add_box` and `remove_box` are [x1, y1, x2, y2] on the zone's level; `add_circle`
-        and `remove_circle` are [center_x, center_y, radius]. Removed tiles leave the zone,
-        added revealed tiles join it, and the bounds refit; a zone keeps at least one tile.
-        Returns `changed`, `tiles_added`, `tiles_removed`, and the zone.
-
-        """
-            + SETTINGS_DOC
-        )
         args: dict[str, Any] = {"id": zone_id, "name": name, "active": active}
         for key, box, circle in (
             ("add", add_box, add_circle),

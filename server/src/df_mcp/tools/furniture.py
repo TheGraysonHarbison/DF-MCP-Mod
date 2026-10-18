@@ -5,7 +5,7 @@ from typing import Any
 from mcp.server import MCPServer
 
 from df_mcp.bridge import Bridge
-from df_mcp.tools import call
+from df_mcp.tools import call, tool_doc
 from df_mcp.tools.core import READ_ONLY, WRITE_SAFE
 
 TYPES = (
@@ -62,13 +62,17 @@ DOC = """`type` is one of: door, floodgate, hatch, wall_grate, floor_grate, vert
         finished item of that kind made beforehand in a workshop; when none is in stock the
         call returns `no_materials` with `make_with`, the work order job that makes it (queue
         it with `create_work_order`). Give one tile
-        (x, y, z) or a box on one level (x, y, z, x2, y2) to place one per valid tile, at
-        most `limit` (default 25). `material` restricts the item ("any wood", "plum wood",
+        (x, y, z) or a box on one level (x, y, z, x2, y2), any size up to the map's bounds
+        and clipped at its edge (`box.clipped`), to place one per valid tile, at most `limit`
+        (default 25; `over_limit` counts the valid tiles left over and `truncated` says so).
+        `material` restricts the item ("any wood", "plum wood",
         "sandstone"). Rules: furniture needs a floor; beds an indoor floor; a door a wall or
         fortification cardinally beside it (planned walls do not count until built), with a
         warning when it is not between two opposite walls; a well an open-air tile beside a
         floor; hatches, floor grates, and floor bars a floor, open air, ramp top, or stair.
-        farm_plot is one building over the whole box (at most 31 by 31) and needs no item:
+        farm_plot is one building over the whole box and needs no item; the game builds a
+        plot at most 31 by 31 (its own limit, which DFHack's buildingplan mirrors), so place
+        several for a bigger field:
         tiles that are not soil, grass, or mud floors are cut out; `fertilize` sets
         fertilize-every-season; then set crops with `set_farm_crops`. Traps take a mechanism
         (lever, pressure plate, cage trap, stone-fall trap; the weapon trap also one weapon);
@@ -78,6 +82,21 @@ DOC = """`type` is one of: door, floodgate, hatch, wall_grate, floor_grate, vert
         takes `plate_triggers` (units, water, magma, track), `plate_citizens`, `plate_resets`,
         and `plate_min`/`plate_max` (water or magma depth 1-7). Levers are not linked to
         anything yet (open issue)."""
+
+
+PLAN_FURNITURE_DOC = tool_doc(
+    """Preview a furniture or door placement without changing anything: which tiles
+        qualify, what item it needs and how many are in stock. Needs only `workshops`.""",
+    DOC,
+)
+
+PLACE_FURNITURE_DOC = tool_doc(
+    """Place furniture, doors, hatches, grates, bars, or windows for a dwarf to install.
+        Needs `build_write`. Run `plan_furniture` first. Returns `status` (`placed`,
+        `no_materials` with `make_with`, `nothing_to_place`), `placed`, the skipped tiles
+        with reasons, `requirements` with stock counts, `warnings`, and the building ids.""",
+    DOC,
+)
 
 
 def _args(
@@ -132,7 +151,7 @@ def _args(
 
 
 def register(mcp: MCPServer, bridge: Bridge) -> None:
-    @mcp.tool(name="plan_furniture", annotations=READ_ONLY)
+    @mcp.tool(name="plan_furniture", annotations=READ_ONLY, description=PLAN_FURNITURE_DOC)
     def plan_furniture(
         type: str,
         x: int,
@@ -149,13 +168,6 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         plate_min: int | None = None,
         plate_max: int | None = None,
     ) -> dict[str, Any]:
-        (
-            """Preview a furniture or door placement without changing anything: which tiles
-        qualify, what item it needs and how many are in stock. Needs only `workshops`.
-
-        """
-            + DOC
-        )
         return call(
             bridge,
             "build.plan_furniture",
@@ -165,7 +177,7 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
             ),
         )
 
-    @mcp.tool(name="place_furniture", annotations=WRITE_SAFE)
+    @mcp.tool(name="place_furniture", annotations=WRITE_SAFE, description=PLACE_FURNITURE_DOC)
     def place_furniture(
         type: str,
         x: int,
@@ -182,15 +194,6 @@ def register(mcp: MCPServer, bridge: Bridge) -> None:
         plate_min: int | None = None,
         plate_max: int | None = None,
     ) -> dict[str, Any]:
-        (
-            """Place furniture, doors, hatches, grates, bars, or windows for a dwarf to install.
-        Needs `build_write`. Run `plan_furniture` first. Returns `status` (`placed`,
-        `no_materials` with `make_with`, `nothing_to_place`), `placed`, the skipped tiles
-        with reasons, `requirements` with stock counts, `warnings`, and the building ids.
-
-        """
-            + DOC
-        )
         return call(
             bridge,
             "build.place",

@@ -10,6 +10,10 @@ JSON RPC surface that the `df-mcp` server (in `../server`) calls through DFHack'
 2. In the DFHack console: `enable claude-bridge`.
 3. Check it: `claude-bridge status`.
 
+To remove it again, run `tools/unlink-mod.sh <path to your Dwarf Fortress folder>`: it removes this
+mod's `script-paths.txt` lines and its settings folder `dfhack-config/mods/claude-bridge/`, and
+leaves saves alone. Restart Dwarf Fortress afterwards if it is running.
+
 ## Commands
 
 ```

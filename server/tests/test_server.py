@@ -151,3 +151,36 @@ def test_server_registers_expected_tools():
     assert by_name["assign_work_detail"].annotations.read_only_hint is False
     assert by_name["delete_work_order"].annotations.destructive_hint is True
     assert by_name["create_work_order"].annotations.destructive_hint is False
+
+
+def test_every_tool_has_a_description():
+    # A description built as ("text" + SHARED) in the function body is an expression,
+    # not a docstring, and the tool reaches the client with none (P2-4.0).
+    mcp = build_server(Bridge("h", 1, client_factory=lambda h, p: None))
+    tools = asyncio.run(mcp.list_tools())
+    missing = [t.name for t in tools if not (t.description or "").strip()]
+    assert missing == []
+
+
+def test_shared_doc_text_reaches_the_tools():
+    from df_mcp.tools.construct import SHAPE_DOC
+    from df_mcp.tools.dig import BOX_DOC
+    from df_mcp.tools.furniture import DOC
+    from df_mcp.tools.zones import SETTINGS_DOC
+
+    mcp = build_server(Bridge("h", 1, client_factory=lambda h, p: None))
+    by_name = {t.name: t.description or "" for t in asyncio.run(mcp.list_tools())}
+
+    def first_line(text: str) -> str:
+        return text.splitlines()[0].strip()
+
+    for names, shared in (
+        (("plan_dig", "designate_dig"), BOX_DOC),
+        (("plan_furniture", "place_furniture"), DOC),
+        (("plan_construction", "place_construction"), SHAPE_DOC),
+        (("create_zone", "edit_zone"), SETTINGS_DOC),
+    ):
+        for name in names:
+            assert first_line(shared) in by_name[name], name
+    assert "whole map" in by_name["plan_dig"]
+    assert "64 by 64" not in by_name["designate_dig"]

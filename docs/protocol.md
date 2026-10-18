@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **33**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **34**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -131,23 +131,29 @@ Result: `closed` `{text (first 400 characters), color, portrait}`, `remaining`, 
 
 ### Plan and goals
 
-Two Markdown files in the current save, `<save>/claude-df/plan.md` (Claude's) and `goals.md` (the player's), created empty on enable (`dfhack.getSavePath()` is the region folder, `save/<name>/`, verified 2026-10-15). Files are UTF-8; the ops convert through CP437 on the way out so the dispatcher's UTF-8 conversion returns the file unchanged (characters outside CP437 are lost). Writes arrive as UTF-8 and are stored as given. The goal prompt lives in the mod's settings (`goal_prompt`, default in `plan.lua`), edited in the `claude-bridge goals` window, whose Ctrl+S queues a `goals` event (a special kind that ignores the per-kind toggles) carrying the prompt with `{Put Goals Here}` replaced by the goals; the server delivers that batch as the message itself. Nothing is sent on edit or close.
+Two Markdown texts per fort, Claude's plan and the player's goals, stored in DFHack's persistent site data under the keys `claude-bridge/plan` and `claude-bridge/goals` (each a table `{text = <UTF-8>}`, so an entry stored empty differs from no entry). DFHack keeps that data in memory and writes it into the save directory whenever the game saves, so the texts follow every autosave and save to a new folder (Lua API "Persistent configuration storage", https://docs.dfhack.org/en/stable/docs/dev/Lua%20API.html, checked against DFHack 53.16-r2; the Lua API has no save event). The store needs a loaded fort; outside fortress mode every op returns `NO_WORLD`. The store is the source of truth and nothing is cached in Lua.
+
+Migration: when a text has no store entry and the current save's `claude-df/` file holds non-blank text, that file's bytes are imported into the store on first access (enable, which also runs on every fort load, or any op). Other save folders are never read. A stored text, even an empty one, is never re-imported.
+
+Mirror: `<save>/claude-df/plan.md` and `goals.md` (`dfhack.getSavePath()` is the region folder, `save/<name>/`, verified 2026-10-15) are rewritten from the store after every change and on enable, so the folder the fort was loaded from always holds a readable copy. A text with no store entry gets an empty file only when its file is missing. Editing the mirror files by hand has no effect once a text is stored. A mirror write that fails never fails the op; the result carries a `note`.
+
+The store holds UTF-8, the same bytes the files held; the ops convert through CP437 on the way out so the dispatcher's UTF-8 conversion returns the text unchanged (characters outside CP437 are lost). Writes arrive as UTF-8 and are stored as given. The goal prompt lives in the mod's settings (`goal_prompt`, default in `plan.lua`), edited in the `claude-bridge goals` window (which saves the goals to the store as you type), whose Ctrl+S queues a `goals` event (a special kind that ignores the per-kind toggles) carrying the prompt with `{Put Goals Here}` replaced by the goals; the server delivers that batch as the message itself. Nothing is sent on edit or close.
 
 ### `plan.info`
 
-Args: none. Needs a world. Result: `folder`, `save_folder`, `plan {name, exists, bytes}`, `goals {...}`, `max_bytes` (65536), `goal_prompt`.
+Args: none. Needs a fort. Result: `storage` (`"site data"`), `folder` (the mirror folder, `<save>/claude-df/`), `save_folder`, `plan {name, stored, bytes, mirror_exists, mirror_bytes, mirror_current}`, `goals {...}`, `mirror_current` (both mirror files match the store), `max_bytes` (65536), `goal_prompt`. `stored` is false when the fort has no store entry for that text; `bytes` is the stored text's size. Changed in protocol 32 (was `plan {name, exists, bytes}` about the files).
 
 ### `plan.read`, `goals.read`
 
-Args: none. Needs a world. Result: `file`, `text`, `bytes`.
+Args: none. Needs a fort. Reads the store (importing the current save's file first if the store has no entry). Result: `file`, `text`, `bytes`.
 
 ### `plan.write`
 
-Args: `text` (at most 65536 bytes). Needs a world. Replaces the plan. Result: `file`, `bytes`, `replaced`.
+Args: `text` (at most 65536 bytes). Needs a fort. Replaces the plan in the store, then rewrites the mirror. Result: `file`, `bytes`, `replaced`, `note` (only when the mirror was not written).
 
 ### `plan.append`
 
-Args: `text`. Needs a world. Appends with a newline before and after as needed; refused with `BAD_REQUEST` when the file would pass the cap. Result: `file`, `bytes`, `appended`. All verified in-game 2026-10-15.
+Args: `text`. Needs a fort. Appends with a newline before and after as needed; refused with `BAD_REQUEST` when the plan would pass the cap. Result: `file`, `bytes`, `appended`, `note`. All verified in-game 2026-10-15 with the file storage; the site-data storage (protocol 32) is not yet verified in-game.
 
 ### `messages.say`
 
@@ -532,7 +538,7 @@ Anything else is `BAD_REQUEST` with up to five close inorganic names in the mess
 
 The order is appended to `world.manager_orders.all` with the next id, the way DFHack's `workorder` script does it. `status` is left clear: the manager validates and activates it. Before insertion the handler asks `dfhack.job.getManagerOrderName` for the screen label; if it contains "unknown material" (an order that needs a material and got none), the order is discarded and the call is `BAD_REQUEST` quoting that label. Jobs that take no material, such as custom reactions and meals, pass.
 
-A `workshop_id` must name a workshop or furnace that offers the job (or reaction): the handler asks the same table as `workshops.tasks` and refuses with `BAD_REQUEST` listing what that building offers (since protocol 33), so a carpenter's workshop never gets a smelting order.
+A `workshop_id` must name a workshop or furnace that offers the job (or reaction): the handler asks the same table as `workshops.tasks` and refuses with `BAD_REQUEST` listing what that building offers (since protocol 34), so a carpenter's workshop never gets a smelting order.
 
 Result: `created`, `order` (row).
 
@@ -602,6 +608,8 @@ Result: `cancelled`, `job` (as it was), `queued`, `note` when it was in progress
 
 Coordinates are tile coordinates: `x` west to east, `y` north to south, `z` upward. Every op needs a map. Out-of-range coordinates are `BAD_REQUEST` with the valid ranges. Hidden tiles (not yet revealed to the player) are reported as hidden only.
 
+Map area (P2-4.0, protocol 33): the bridge has no size cap of its own on any map, box, circle, or footprint argument; the map's bounds (`dfhack.maps.getTileSize()`, different per game) are the only limit. Boxes (`x1, y1, z1, x2, y2, z2`, two corners in any order) and circles are clipped to the map: a clipped box carries `clipped: true` and `requested` (the corners as asked), and a box with no tile on the map, or a circle whose centre is off the map, is `BAD_REQUEST`. Circles take any `radius` of 1 or more. The only size limit kept is the game's own: one bridge, road, or farm plot is at most 31 by 31 tiles (DFHack 53.16-r2 `hack/lua/plugins/buildingplan/planneroverlay.lua` `get_selection_size_limits`, which mirrors the vanilla build-area clamp for `Bridge`, `FarmPlot`, `RoadPaved`, `RoadDirt`; quickfort's `build.lua` defaults extent buildings to 1-31 and chunks larger areas). Stockpiles and zones have no game limit (quickfort's `place.lua` and `zone.lua` use `max_width = math.huge`). Big boxes pause the game while the op walks every tile. The wagon is only the default starting point for searches. Lists stay capped at 25 rows with `limit` and a truncated flag.
+
 ### `map.bounds`
 
 Args: none. Result: `x`, `y`, `z` `{min, max}`, `width`, `height`, `depth`, `center`, `surface_z_at_center` (highest outdoor floor or ramp in that column), `wagon_z`.
@@ -620,21 +628,21 @@ Material lookup (plan 11.2, a Lua copy of DFHack's `MapExtras::BlockInfo::getBas
 
 ### `map.area`
 
-Args: `x`, `y`, `z` (top-left origin), `width`, `height` (1-64, default 32), `view` (`shape` default, `material`, `designations`).
+Args: `x`, `y`, `z` (top-left origin, on the map), `width`, `height` (1 or more, default 32; any size up to the whole map), `view` (`shape` default, `material`, `designations`).
 
-Result: `origin`, `width`, `height` (clipped at the map edge), `view`, `rows` (strings, one character per tile), `legend` (characters used), `counts`, `walkable_groups` (walkable tiles per group). Shape legend: `?` hidden, `B` building, `~` water, `%` magma, `T` tree, `#` wall, `^` ramp, `<` `>` `X` stairs, `.` floor, space open air, `*` other. The `material` view replaces `#` with one letter per distinct wall material and kind (`a` through `z`, `A` through `Z`, digits, then `#`), with the legend naming each ("granite wall", "granite wall (smoothed)", "yellow sand wall"); tree trunks show as `T`. The `designations` view draws existing orders over the shape map: `d` mine, `u` up stair, `j` down stair, `i` up/down stair, `h` channel, `r` ramp, `s` smooth, `e` engrave; the same letter in upper case marks an order the game has already turned into a job (see `map.designations`), including on hidden tiles.
+Result: `origin`, `width`, `height` (clipped at the map edge), `requested` `{width, height}`, `clipped` (true when the map edge cut the rectangle), `map_size` `{width, height}`, `view`, `rows` (strings, one character per tile), `legend` (characters used), `counts`, `walkable_groups` (walkable tiles per group). Shape legend: `?` hidden, `B` building, `~` water, `%` magma, `T` tree, `#` wall, `^` ramp, `<` `>` `X` stairs, `.` floor, space open air, `*` other. The `material` view replaces `#` with one letter per distinct wall material and kind (`a` through `z`, `A` through `Z`, digits, then `#`), with the legend naming each ("granite wall", "granite wall (smoothed)", "yellow sand wall"); tree trunks show as `T`. The `designations` view draws existing orders over the shape map: `d` mine, `u` up stair, `j` down stair, `i` up/down stair, `h` channel, `r` ramp, `s` smooth, `e` engrave; the same letter in upper case marks an order the game has already turned into a job (see `map.designations`), including on hidden tiles.
 
 ### `map.find_space`
 
-Args: `width`, `height` (1-31, default 3), `z` (default: wagon level, else the surface at the search point), `near_x`, `near_y` (default: the wagon, else the map centre), `max_radius` (default 30).
+Args: `width`, `height` (1 up to the map's width and height, default 3), `z` (default: wagon level, else the surface at the search point), `near_x`, `near_y` (default: the wagon, else the map centre; an efficiency default, any point on the map works), `max_radius` (default 30, no upper limit; 0 or more), `whole_map` (default false: search out to the farthest map corner from the start point).
 
-Searches outward in square rings for a rectangle where every tile is revealed, flat floor, in one walkable group, with no building, liquid, or plant, and that passes `dfhack.buildings.checkFreeTiles`.
+Searches outward in square rings, walking only each ring's perimeter (rings past the farthest map corner are not walked), for a rectangle where every tile is revealed, flat floor, in one walkable group, with no building, liquid, or plant, and that passes `dfhack.buildings.checkFreeTiles`.
 
-Result: `found`; when true `origin`, `center`, `width`, `height`, `walkable_group`, `distance`, `searched_from`, `checked`; when false `searched_from`, `max_radius`, `checked`, `note`.
+Result: `found`; when true `origin`, `center`, `width`, `height`, `walkable_group`, `distance`, `searched_from`, `checked`; when false `searched_from`, `max_radius`, `searched_radius` (the radius actually walked), `whole_map` (true when every placement on the level was tried), `checked`, `note`.
 
 ### `map.exposed_walls`
 
-Args: `z`; optional `near_x`, `near_y` (together) and `radius` (default 20) to limit the scan to a square, otherwise the whole level; `material` (substring filter on the material name); `limit` (segments, default 25).
+Args: `z`; optional `near_x`, `near_y` (together) and `radius` (default 20, no upper limit) to limit the scan to a square, otherwise the whole level; `material` (substring filter on the material name); `limit` (segments, default 25).
 
 Scans the level for revealed wall tiles with no building that have at least one orthogonal neighbour with a non-zero walkable group. Trees, roots, and tiles of class `other` are left out. Tiles are merged into straight runs along x or y (each tile joins the axis on which its run is longer) when material, kind, and open sides match.
 
@@ -642,7 +650,7 @@ Result: `z`, `scanned` `{x1, y1, x2, y2}`, `total_tiles`, `total_segments`, `cou
 
 ### `map.designations`
 
-Args: `x1`, `y1`, `z1`, `x2`, `y2`, `z2` (two corners in any order; every corner must be inside the map; at most 64 by 64 tiles per level and 32 levels), `kind` (optional: `chop`, `gather`, `mine`, `up_stair`, `down_stair`, `up_down_stair`, `channel`, `ramp`, `smooth`, `engrave`), `assigned_only` (default false), `limit` (default 25). A `Default` dig flag on a tree tile reads as `chop` and on a shrub tile as `gather`; `FellTree` and `GatherPlants` jobs map to the same kinds.
+Args: `x1`, `y1`, `z1`, `x2`, `y2`, `z2` (two corners in any order, any size, clipped to the map), `kind` (optional: `chop`, `gather`, `mine`, `up_stair`, `down_stair`, `up_down_stair`, `channel`, `ramp`, `smooth`, `engrave`), `assigned_only` (default false), `limit` (default 25). A `Default` dig flag on a tree tile reads as `chop` and on a shrub tile as `gather`; `FellTree` and `GatherPlants` jobs map to the same kinds.
 
 Two sources are merged (verified live 2026-10-13). Pending orders are tiles whose `tile_designation.dig` (`Default` is `mine`) or `tile_designation.smooth` (1 smooth, 2 engrave) is set. Taken orders are the entries of `world.jobs.list` whose job type has the `is_designation` attribute (`Dig`, `CarveUpwardStaircase`, `CarveDownwardStaircase`, `CarveUpDownStaircase`, `DigChannel`, `CarveRamp`, `RemoveStairs`, `SmoothWall`, `SmoothFloor`, `DetailWall`, `DetailFloor`, `CarveFortification`), keyed by their `pos`: when the game creates such a job it clears the tile's flag, so a taken order is only visible in the job list, and it reappears as a tile flag if the job is cancelled. The game queues jobs ahead of the miners, so a taken order may have no worker yet; `assigned` means `dfhack.job.getWorker` returned a dwarf.
 
@@ -650,11 +658,11 @@ Result: `box`, `total`, `count`, `truncated`, `counts` (per kind), `taken` (rows
 
 ### `map.plants`
 
-Args: a box (`x1`..`z2`, any levels) or `circle` `{x, y, z, radius}`, `kind` (optional: `tree`, `shrub`, `sapling`), `query` (species substring), `marked_only` (default false), `limit` (default 25). Needs a map.
+Args: a box (`x1`..`z2`, any levels, clipped to the map) or `circle` `{x, y, z, radius}` (radius 1 or more), `kind` (optional: `tree`, `shrub`, `sapling`), `query` (species substring), `marked_only` (default false), `limit` (default 25). Needs a map.
 
 Walks `world.plants.all` and keeps plants whose base position is in the shape. A plant with a `tree_info` is a tree; a tree species without one is a sapling; the rest are shrubs. `marked` comes from `dfhack.designations.isPlantMarked` (a `Default` dig flag on the plant's designation tile, or a `FellTree` or `GatherPlants` job there).
 
-Result: `box`, `shape`, `total`, `count`, `truncated`, `counts` (per kind), `species` (name to count), `plants` `[{pos, kind, species, dead, marked, size {width, depth, height} (trees), designation_tile (trees)}]`, `note`. Verified in-game 2026-10-15.
+Result: `box` (with `clipped`), `shape`, `total`, `count`, `truncated`, `counts` (per kind), `species` (name to count), `plants` `[{pos, kind, species, dead, marked, size {width, depth, height} (trees), designation_tile (trees)}]`, `note`. Verified in-game 2026-10-15.
 
 ### Hotkeys (Patch 1, P5.0)
 
@@ -682,15 +690,15 @@ Result: `slot`, `cleared` (false when the slot was already empty), `previous` `{
 
 ### Digging
 
-Namespace `dig_write` (off by default) for the writes; `dig.plan` is a read under `map`. Rules follow DFHack's quickfort dig module (checked 2026-10-13). A box is two corners in any order (`x1, y1, z1, x2, y2, z2`), every corner inside the map, at most 64 by 64 tiles per level and 32 levels.
+Namespace `dig_write` (off by default) for the writes; `dig.plan` is a read under `map`. Rules follow DFHack's quickfort dig module (checked 2026-10-13). A box is two corners in any order (`x1, y1, z1, x2, y2, z2`), any size, clipped to the map (see Map).
 
 ### `dig.plan`
 
-Args: `kind` (`mine`, `stairs`, `channel`, `ramp`, `remove_stairs`, `smooth`, `engrave`), and either the box or `circle` `{x, y, z, radius}` (one level, radius 1 to 31, a tile is inside when `dx*dx + dy*dy <= r*r + r`, the whole circle must be inside the map; refused for `stairs`). Needs a map and `map`.
+Args: `kind` (`mine`, `stairs`, `channel`, `ramp`, `remove_stairs`, `smooth`, `engrave`), and either the box or `circle` `{x, y, z, radius}` (one level, radius 1 or more, a tile is inside when `dx*dx + dy*dy <= r*r + r`, the centre must be on the map and the rest is clipped to it; refused for `stairs`). Needs a map and `map`.
 
 Computes what `dig.designate` would do and changes nothing. Per tile, in order: no map block, map edge, an existing order or designation job (never overwritten), a building, then the kind's rule. `mine` and `ramp` need a wall or fortification that is not a construction or tree. `channel` takes walls, floors, boulders, pebbles, ramps, stairs, shrubs, and saplings. `remove_stairs` takes carved stairs and ramps. `stairs` needs a box of at least two levels: the top level gets a down stair (up/down if the tile is already an up stair), the bottom an up stair (solid rock only), the levels between up/down stairs. Hidden tiles are designated without a shape check, as the game allows. `smooth` and `engrave` write `tile_designation.smooth` (1 and 2) instead of `dig`: the tile must be revealed, a wall or floor of natural hard rock (tiletype material `STONE`, `MINERAL`, `LAVA_STONE`, `FEATURE`, or `FROZEN_LIQUID`; soil and constructions are refused), not already smooth for `smooth`, and already smooth with no entry in `world.engravings` for `engrave`.
 
-Result: `kind`, `box` (for a circle: its bounding box plus `center` and `radius`), `shape` (`box` or `circle`), `dry_run`, `applied`, `designated`, `skipped_existing`, `skipped_unsuitable`, `skipped_building`, `skipped_edge`, `by_level` `[{z, designated, skipped, dig}]`, `skipped` `[{pos, reason}]` (first 25), `skipped_truncated`, `blocks_marked`, `note`.
+Result: `kind`, `box` (for a circle: its bounding box plus `center` and `radius`; `clipped` and `requested` when cut at the map edge), `shape` (`box` or `circle`), `dry_run`, `applied`, `designated`, `skipped_existing`, `skipped_unsuitable`, `skipped_building`, `skipped_edge`, `by_level` `[{z, designated, skipped, dig}]`, `skipped` `[{pos, reason}]` (first 25), `skipped_truncated`, `blocks_marked`, `note`. For `chop` and `gather` also `plants` (first 25 marked plants) and `plants_truncated`.
 
 ### `dig.designate`
 
@@ -735,11 +743,11 @@ Result: `total_items`, `groups`, `count`, `limit`, `truncated`, `materials` `[{m
 
 ### `build.plan_construction`
 
-Args: `kind` (`wall`, `floor`, `ramp`, `stairs`, `fortification`, `bridge`, `paved_road`, `dirt_road`, `support`); a shape: the box (`x1, y1, z1, x2, y2, z2`, the dig limits), `circle` `{x, y, z, radius}`, or `line` `{x1, y1, x2, y2, z}`; `hollow` (box perimeter or circle ring), `thick` (lines, default true: every diagonal step also gets the orthogonal tile), `material` (a word from the Materials section), `direction` (bridges: `retracting`, `raise_north`, `raise_south`, `raise_east`, `raise_west`). Needs a map and `workshops`. Computes what `build.construct` would do and changes nothing.
+Args: `kind` (`wall`, `floor`, `ramp`, `stairs`, `fortification`, `bridge`, `paved_road`, `dirt_road`, `support`); a shape: the box (`x1, y1, z1, x2, y2, z2`, any size, clipped to the map), `circle` `{x, y, z, radius}`, or `line` `{x1, y1, x2, y2, z}` (tiles past the map edge are dropped); `hollow` (box perimeter or circle ring), `thick` (lines, default true: every diagonal step also gets the orthogonal tile), `material` (a word from the Materials section), `direction` (bridges: `retracting`, `raise_north`, `raise_south`, `raise_east`, `raise_west`). Needs a map and `workshops`. Computes what `build.construct` would do and changes nothing.
 
 Per-tile kinds place one `Construction` building per tile with the subtype `Wall`, `Floor`, `Ramp`, `Fortification`, or for `stairs` the level's subtype: `UpStair` at the bottom, `DownStair` on top, `UpDownStair` between, and `UpDownStair` where the bottom tile is already a down stair or the top tile an up stair (buildingplan's convention). Stairs take a box of at least two levels. A z range repeats the shape per level. Per tile, in order: no map block; map edge; hidden, a building, magma, or water deeper than 1 (quickfort's base rule); then the shape must be `EMPTY`, `FLOOR`, `BOULDER`, `PEBBLES`, `RAMP_TOP`, `BROOK_TOP`, `TWIG`, `SAPLING`, `SHRUB`, or `RAMP`; a constructed tile already of the kind's shape (floor on floor, ramp on ramp, an existing stair of the level's type) is `skipped_existing`. A tile is `unsupported` when it is open air with no non-open tile among its eight neighbours on the level and no wall below; it is still placed. Materials: `needed` is the tile count, `available` the count for the kind's filter (plus the spec's class and form), and when `available < needed` the status is `no_materials` and nothing is placed.
 
-Single buildings take a box on one level, at most 31 by 31. `bridge`: every tile must pass; the anchor edge (the side named by `direction`) cannot sit on a ramp, other tiles may be ramps or stairs; `direction` sets `building_bridgest.direction`; `has_support` comes from `dfhack.buildings.hasSupport`. `paved_road` and `dirt_road`: bad tiles are cut out of the room extents, at least one must remain; dirt roads need soil or grass floor and take no material. `support`: one tile. Material count for bridges and paved roads is `floor(tiles / 4) + 1` (DFHack's `computeMaterialAmount`).
+Single buildings take a box on one level, at most 31 by 31: the game's own limit for one bridge or road (see Map), so a longer span is several buildings. `bridge`: every tile must pass; the anchor edge (the side named by `direction`) cannot sit on a ramp, other tiles may be ramps or stairs; `direction` sets `building_bridgest.direction`; `has_support` comes from `dfhack.buildings.hasSupport`. `paved_road` and `dirt_road`: bad tiles are cut out of the room extents, at least one must remain; dirt roads need soil or grass floor and take no material. `support`: one tile. Material count for bridges and paved roads is `floor(tiles / 4) + 1` (DFHack's `computeMaterialAmount`).
 
 Result (per-tile kinds): `kind`, `shape`, `box` (line endpoints under `line`, circle centre and radius), `hollow`, `thick`, `dry_run`, `applied`, `status` (`plan`, `placed`, `no_materials`, `nothing_to_place`), `placed`, `skipped_existing`, `skipped_unsuitable`, `skipped_building`, `skipped_edge`, `unsupported`, `unsupported_tiles` (first 25), `skipped` `[{pos, reason}]` (first 25), `skipped_truncated`, `by_level`, `materials` `{needed, available, filter}`, `buildings` (first 25 ids), `buildings_truncated`, `warnings`, `note`. Single buildings: `status` (`plan`, `placed`, `no_materials`, `invalid_space` with `blocked_at` and `reason`), `width`, `height`, `tiles`, `direction`, `has_support` (bridges), `materials`, `building` `{id, kind, bounds, material_amount}`.
 
@@ -757,7 +765,7 @@ Args: `type` (plain name: `door`, `floodgate`, `hatch`, `wall_grate`, `floor_gra
 
 Per tile: no map block, map edge, quickfort's base rule (hidden, building, magma, deep water), then the type's rule: `coverable` (hatch, floor grate, floor bars) takes floor, open air, ramp top, or a stair; `well` takes open air or a ramp top with an orthogonal floor neighbour; everything else takes a floor-like tile (`FLOOR`, `BOULDER`, `PEBBLES`, `TWIG`, `SAPLING`, `SHRUB`), beds additionally not `outside`, doors additionally a `WALL` or `FORTIFICATION` tile cardinally adjacent (a planned wall is not a wall yet), with a warning when no two opposite sides are walls. Items: the type's filters from `getFiltersByType` with the spec merged into the first; `requirements` carries each filter's item type, quantity times the tile count, material, and the available count; a shortage gives `status` `no_materials` with `missing` and `make_with` `{job, item, tool_use}` (the first of `ConstructDoor`, `ConstructBed`, `ConstructThrone`, `ConstructTable`, `ConstructCabinet`, `ConstructChest`, `ConstructArmorStand`, `ConstructWeaponRack`, `ConstructStatue`, `ConstructCoffin`, `ConstructSlab`, `ConstructHatchCover`, `ConstructGrate`, `ConstructFloodgate`, `ConstructTractionBench`, `MakeWindow`, `MakeCage`, `MakeChain`, `MakeAnimalTrap`, `MakeTool`, `CutGems`, `MakeInstrument` that exists in `df.job_type`).
 
-Result: `type`, `building_type`, `box`, `dry_run`, `applied`, `status` (`plan`, `placed`, `no_materials`, `nothing_to_place`), `placed`, `candidates`, `skipped_unsuitable`, `skipped_building`, `skipped_edge`, `over_limit`, `limit`, `skipped` `[{pos, reason}]` (first 25), `requirements`, `missing`, `make_with`, `warnings`, `buildings` (ids), `note`.
+Result: `type`, `building_type`, `box`, `dry_run`, `applied`, `status` (`plan`, `placed`, `no_materials`, `nothing_to_place`), `placed`, `candidates`, `skipped_unsuitable`, `skipped_building`, `skipped_edge`, `over_limit` (valid tiles past `limit`), `limit`, `truncated` (true when `over_limit` > 0), `skipped` `[{pos, reason}]` (first 25), `skipped_truncated`, `requirements`, `missing`, `make_with`, `warnings`, `buildings` (first 25 ids), `buildings_truncated` (after placing), `note`. The box may be any size and is clipped to the map (`box.clipped`).
 
 ### `build.place`
 
@@ -765,7 +773,7 @@ Args and result as `build.plan_furniture`. Needs a map and `build_write`. One `c
 
 ### Farm plots
 
-`build.plan_furniture` and `build.place` accept `type` `farm_plot`: one building over the whole box (one level, at most 31 by 31), no items. A tile joins the plot when it is a floor, twig, sapling, or shrub tile whose tiletype material is soil, grass, or plant, or any floor whose block has a solid mud spatter with a non-zero amount on that tile (quickfort's rule, checked 2026-10-15); hidden tiles, buildings, magma, water deeper than 1, map edges, and other floors are cut out of the extents and listed in `skipped` with reasons. `fertilize` (default false) sets fertilize-every-season at placement. The response is the furniture placement shape plus `tiles`, `candidates`, `soil` (materials by tile count; grass tiles name the soil layer under them with "(grass)"), and `mud_tiles`; `placed` is 1 for the one building. A planter builds it (a `ConstructBuilding` job). Verified in-game 2026-10-15.
+`build.plan_furniture` and `build.place` accept `type` `farm_plot`: one building over the whole box (one level, at most 31 by 31, the game's own limit for one plot; see Map), no items. A tile joins the plot when it is a floor, twig, sapling, or shrub tile whose tiletype material is soil, grass, or plant, or any floor whose block has a solid mud spatter with a non-zero amount on that tile (quickfort's rule, checked 2026-10-15); hidden tiles, buildings, magma, water deeper than 1, map edges, and other floors are cut out of the extents and listed in `skipped` with reasons. `fertilize` (default false) sets fertilize-every-season at placement. The response is the furniture placement shape plus `tiles`, `candidates`, `soil` (materials by tile count; grass tiles name the soil layer under them with "(grass)"), and `mud_tiles`; `placed` is 1 for the one building. A planter builds it (a `ConstructBuilding` job). Verified in-game 2026-10-15.
 
 ### `farms.list`
 
@@ -811,11 +819,11 @@ Result: `changed`, `suspended`, `building`.
 
 ### `build.remove_constructions`
 
-Args: the box or `circle` `{x, y, z, radius}`, `dry_run` (default false on the wire; the tool defaults it to true). Needs a map and `build_write`.
+Args: the box or `circle` `{x, y, z, radius}` (any size, clipped to the map), `dry_run` (default false on the wire; the tool defaults it to true), `limit` (default 25, the rows kept in `tiles` and `skipped_tiles`). Needs a map and `build_write`.
 
 Per tile: a finished construction (`dfhack.constructions.findAtTile`, ignoring the `top_of_wall` records above constructed walls) is designated for removal with `designateRemove` unless the tile already carries a dig designation; a planned construction building is removed at once with `deconstruct` (unless a strange mood holds it); other tiles are skipped. `checkDesignationsNow` runs when anything was designated.
 
-Result: `box`, `shape`, `dry_run`, `applied`, `cancelled`, `designated`, `already_designated`, `skipped`, `tiles` `[{pos, action, material | building}]` (first 25), `skipped_tiles` (first 25), `note`.
+Result: `box`, `shape`, `dry_run`, `applied`, `cancelled`, `designated`, `already_designated`, `skipped`, `tiles` `[{pos, action, material | building}]` (first `limit`), `skipped_tiles` (first `limit`), `limit`, `tiles_truncated`, `skipped_truncated`, `truncated` (either list was cut), `note`.
 
 ### Trade (Phase 17.0)
 
@@ -936,11 +944,11 @@ Args: `query` (optional substring), `limit` (default 25). Lists the DFHack stock
 
 ### `stockpiles.create`
 
-Args (circle form): `circle` `{x, y, z, radius}` (radius 1 to 15) in place of the corners; the pile is built with room extents the way quickfort's place module does it, one byte per tile of the bounding box, and `tiles` counts only the tiles inside. Rectangle form args: `x1`, `y1`, `x2`, `y2`, `z` (any two opposite corners, at most 31 by 31), and optionally the configuration fields of `stockpiles.configure` (`categories` as the enable list, `preset`, `preset_mode`, `name`, container limits). Needs a map and `stockpiles_write`.
+Args (circle form): `circle` `{x, y, z, radius}` (radius 1 or more, clipped to the map) in place of the corners; the pile is built with room extents the way quickfort's place module does it, one byte per tile of the bounding box, and `tiles` counts only the tiles inside. Rectangle form args: `x1`, `y1`, `x2`, `y2`, `z` (any two opposite corners, any size, clipped to the map), and optionally the configuration fields of `stockpiles.configure` (`categories` as the enable list, `preset`, `preset_mode`, `name`, container limits). Needs a map and `stockpiles_write`.
 
 The configuration arguments are validated first, so a bad category paints nothing. Every tile is checked with the map rules (revealed, flat floor, no building, liquid, or plant); then `constructBuilding{type=Stockpile, abstract=true, pos, width, height}` paints it, and the configuration is applied.
 
-Result: `status` of `placed` (with `stockpile` row plus `settings`, and `changed`), `placed_unconfigured` (the pile exists but a configuration step failed; `error` says why), or `invalid_space` (`footprint`, `blocked_at`, `reason`).
+Result: `status` of `placed` (with `stockpile` row plus `settings`, `changed`, and `footprint`), `placed_unconfigured` (the pile exists but a configuration step failed; `error` says why; `footprint`), or `invalid_space` (`footprint`, `blocked_at`, `reason`). `footprint` is `{x1, y1, x2, y2, z, width, height, shape, clipped, tiles}`.
 
 ### `stockpiles.configure`
 
@@ -976,11 +984,11 @@ Result: the row plus `extents` (tiles, first `limit`), `tiles_truncated`, `setti
 
 ### `zones.create`
 
-Args: `type` (plain name; `pit` and `pond` both make a `Pond` zone, with `keep_filled` set for `pond`), a box (`x1, y1, x2, y2, z`, at most 64 by 64) or `circle` `{x, y, z, radius}` (1 to 31), `name` (up to 64 characters), `active` (default true), and the type's settings (`check_occupants`; `keep_filled`; `pick_trees`, `pick_shrubs`, `gather_fallen`; `shoot_from` north/south/east/west; `allow_pets`, `allow_citizens`), `limit`. Needs a map and `zones_write`.
+Args: `type` (plain name; `pit` and `pond` both make a `Pond` zone, with `keep_filled` set for `pond`), a box (`x1, y1, x2, y2, z`, any size, clipped to the map) or `circle` `{x, y, z, radius}` (1 or more), `name` (up to 64 characters), `active` (default true), and the type's settings (`check_occupants`; `keep_filled`; `pick_trees`, `pick_shrubs`, `gather_fallen`; `shoot_from` north/south/east/west; `allow_pets`, `allow_citizens`), `limit`. Needs a map and `zones_write`.
 
 Builds room extents over the bounding box with every revealed tile of the shape set (hidden tiles are cut and counted) and calls `constructBuilding{type=Civzone, subtype, abstract=true, pos, width, height, fields={assigned_unit_id=-1, room}}`, as quickfort's zone module does. New pens get `check_occupants`, gather zones all three gather flags, archery ranges shoot from the west, as the game's defaults. A setting that does not belong to the type is `BAD_REQUEST` (on create it is reported as a warning after the zone exists). Zones of the same type sharing a tile are reported in `warnings`.
 
-Result: `status` (`created` or `invalid_space` with `reason`), `zone` (a `zones.get` row), `hidden_skipped`, `changed`, `warnings`, `note`.
+Result: `status` (`created` or `invalid_space` with `reason`), `zone` (a `zones.get` row), `hidden_skipped`, `clipped` (the shape was cut at the map edge), `changed`, `warnings`, `note`.
 
 ### `zones.edit`
 
