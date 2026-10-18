@@ -1,6 +1,6 @@
 # Bridge protocol
 
-Protocol version: **31**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
+Protocol version: **33**. Bump `PROTOCOL_VERSION` in `mod/.../state.lua` and `server/src/df_mcp/__init__.py` together whenever an op's shape changes.
 
 ## Transport
 
@@ -131,23 +131,29 @@ Result: `closed` `{text (first 400 characters), color, portrait}`, `remaining`, 
 
 ### Plan and goals
 
-Two Markdown files in the current save, `<save>/claude-df/plan.md` (Claude's) and `goals.md` (the player's), created empty on enable (`dfhack.getSavePath()` is the region folder, `save/<name>/`, verified 2026-10-15). Files are UTF-8; the ops convert through CP437 on the way out so the dispatcher's UTF-8 conversion returns the file unchanged (characters outside CP437 are lost). Writes arrive as UTF-8 and are stored as given. The goal prompt lives in the mod's settings (`goal_prompt`, default in `plan.lua`), edited in the `claude-bridge goals` window, whose Ctrl+S queues a `goals` event (a special kind that ignores the per-kind toggles) carrying the prompt with `{Put Goals Here}` replaced by the goals; the server delivers that batch as the message itself. Nothing is sent on edit or close.
+Two Markdown texts per fort, Claude's plan and the player's goals, stored in DFHack's persistent site data under the keys `claude-bridge/plan` and `claude-bridge/goals` (each a table `{text = <UTF-8>}`, so an entry stored empty differs from no entry). DFHack keeps that data in memory and writes it into the save directory whenever the game saves, so the texts follow every autosave and save to a new folder (Lua API "Persistent configuration storage", https://docs.dfhack.org/en/stable/docs/dev/Lua%20API.html, checked against DFHack 53.16-r2; the Lua API has no save event). The store needs a loaded fort; outside fortress mode every op returns `NO_WORLD`. The store is the source of truth and nothing is cached in Lua.
+
+Migration: when a text has no store entry and the current save's `claude-df/` file holds non-blank text, that file's bytes are imported into the store on first access (enable, which also runs on every fort load, or any op). Other save folders are never read. A stored text, even an empty one, is never re-imported.
+
+Mirror: `<save>/claude-df/plan.md` and `goals.md` (`dfhack.getSavePath()` is the region folder, `save/<name>/`, verified 2026-10-15) are rewritten from the store after every change and on enable, so the folder the fort was loaded from always holds a readable copy. A text with no store entry gets an empty file only when its file is missing. Editing the mirror files by hand has no effect once a text is stored. A mirror write that fails never fails the op; the result carries a `note`.
+
+The store holds UTF-8, the same bytes the files held; the ops convert through CP437 on the way out so the dispatcher's UTF-8 conversion returns the text unchanged (characters outside CP437 are lost). Writes arrive as UTF-8 and are stored as given. The goal prompt lives in the mod's settings (`goal_prompt`, default in `plan.lua`), edited in the `claude-bridge goals` window (which saves the goals to the store as you type), whose Ctrl+S queues a `goals` event (a special kind that ignores the per-kind toggles) carrying the prompt with `{Put Goals Here}` replaced by the goals; the server delivers that batch as the message itself. Nothing is sent on edit or close.
 
 ### `plan.info`
 
-Args: none. Needs a world. Result: `folder`, `save_folder`, `plan {name, exists, bytes}`, `goals {...}`, `max_bytes` (65536), `goal_prompt`.
+Args: none. Needs a fort. Result: `storage` (`"site data"`), `folder` (the mirror folder, `<save>/claude-df/`), `save_folder`, `plan {name, stored, bytes, mirror_exists, mirror_bytes, mirror_current}`, `goals {...}`, `mirror_current` (both mirror files match the store), `max_bytes` (65536), `goal_prompt`. `stored` is false when the fort has no store entry for that text; `bytes` is the stored text's size. Changed in protocol 32 (was `plan {name, exists, bytes}` about the files).
 
 ### `plan.read`, `goals.read`
 
-Args: none. Needs a world. Result: `file`, `text`, `bytes`.
+Args: none. Needs a fort. Reads the store (importing the current save's file first if the store has no entry). Result: `file`, `text`, `bytes`.
 
 ### `plan.write`
 
-Args: `text` (at most 65536 bytes). Needs a world. Replaces the plan. Result: `file`, `bytes`, `replaced`.
+Args: `text` (at most 65536 bytes). Needs a fort. Replaces the plan in the store, then rewrites the mirror. Result: `file`, `bytes`, `replaced`, `note` (only when the mirror was not written).
 
 ### `plan.append`
 
-Args: `text`. Needs a world. Appends with a newline before and after as needed; refused with `BAD_REQUEST` when the file would pass the cap. Result: `file`, `bytes`, `appended`. All verified in-game 2026-10-15.
+Args: `text`. Needs a fort. Appends with a newline before and after as needed; refused with `BAD_REQUEST` when the plan would pass the cap. Result: `file`, `bytes`, `appended`, `note`. All verified in-game 2026-10-15 with the file storage; the site-data storage (protocol 32) is not yet verified in-game.
 
 ### `messages.say`
 
@@ -566,7 +572,7 @@ Result: the row plus `jobs` `[{id, name, job, order_id, flags, worker {id, name}
 
 Coordinates are tile coordinates: `x` west to east, `y` north to south, `z` upward. Every op needs a map. Out-of-range coordinates are `BAD_REQUEST` with the valid ranges. Hidden tiles (not yet revealed to the player) are reported as hidden only.
 
-Map area (P2-4.0, protocol 31): the bridge has no size cap of its own on any map, box, circle, or footprint argument; the map's bounds (`dfhack.maps.getTileSize()`, different per game) are the only limit. Boxes (`x1, y1, z1, x2, y2, z2`, two corners in any order) and circles are clipped to the map: a clipped box carries `clipped: true` and `requested` (the corners as asked), and a box with no tile on the map, or a circle whose centre is off the map, is `BAD_REQUEST`. Circles take any `radius` of 1 or more. The only size limit kept is the game's own: one bridge, road, or farm plot is at most 31 by 31 tiles (DFHack 53.16-r2 `hack/lua/plugins/buildingplan/planneroverlay.lua` `get_selection_size_limits`, which mirrors the vanilla build-area clamp for `Bridge`, `FarmPlot`, `RoadPaved`, `RoadDirt`; quickfort's `build.lua` defaults extent buildings to 1-31 and chunks larger areas). Stockpiles and zones have no game limit (quickfort's `place.lua` and `zone.lua` use `max_width = math.huge`). Big boxes pause the game while the op walks every tile. The wagon is only the default starting point for searches. Lists stay capped at 25 rows with `limit` and a truncated flag.
+Map area (P2-4.0, protocol 33): the bridge has no size cap of its own on any map, box, circle, or footprint argument; the map's bounds (`dfhack.maps.getTileSize()`, different per game) are the only limit. Boxes (`x1, y1, z1, x2, y2, z2`, two corners in any order) and circles are clipped to the map: a clipped box carries `clipped: true` and `requested` (the corners as asked), and a box with no tile on the map, or a circle whose centre is off the map, is `BAD_REQUEST`. Circles take any `radius` of 1 or more. The only size limit kept is the game's own: one bridge, road, or farm plot is at most 31 by 31 tiles (DFHack 53.16-r2 `hack/lua/plugins/buildingplan/planneroverlay.lua` `get_selection_size_limits`, which mirrors the vanilla build-area clamp for `Bridge`, `FarmPlot`, `RoadPaved`, `RoadDirt`; quickfort's `build.lua` defaults extent buildings to 1-31 and chunks larger areas). Stockpiles and zones have no game limit (quickfort's `place.lua` and `zone.lua` use `max_width = math.huge`). Big boxes pause the game while the op walks every tile. The wagon is only the default starting point for searches. Lists stay capped at 25 rows with `limit` and a truncated flag.
 
 ### `map.bounds`
 
