@@ -127,7 +127,9 @@ What the game and the bridge have taught us. Each line was learned by doing it w
 
 - **Work orders need a manager.** Without one, orders sit unapproved. `list_nobles` shows
   the seat; `assign_noble` fills it (needs `nobles_write`). The same goes for the
-  bookkeeper (stock counts) and the broker (trade).
+  bookkeeper (stock counts) and the broker (trade). Jobs added straight to a workshop do
+  not: `list_workshop_tasks` shows what the shop offers, `add_workshop_job` queues one
+  (at most 10 per shop), and `set_workshop_job` and `cancel_workshop_job` manage them.
 - `find_job_types` turns a plain name into the job the order needs; `create_work_order`
   takes a material in plain words and refuses orders the game would label "unknown
   material".

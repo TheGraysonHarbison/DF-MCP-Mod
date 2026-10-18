@@ -447,7 +447,7 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | P5.0 | Hotkeys: list the 16 slots, set and clear zoom hotkeys (`list_hotkeys`, `set_hotkey`, `clear_hotkey`, `hotkeys_write` permission) | verified in-game 2026-10-16: 16 slots read back with their keys (F1 to F8, Shift+F1 to Shift+F8) and F1 as the wagon; a point of interest written to F2 showed in the game's Hotkeys window and F2 jumped to it; F1 refused without overwrite, an off-map position refused, names clip at the game's 16 characters, clear emptied the slot |
 | P6.0 | Alpha 1.0.1 release (version bumps to 1.0.1a1 and 1.0.1-alpha, protocol 30, tag `v1.0.1-alpha`) | released 2026-10-16 |
 | P2-1.0 | Uninstall script (`tools/unlink-mod.sh`) | planned 2026-10-17, design in [plan section 16](docs/ProjectPlan.md#16-patch-2-addendum-uninstall-workshop-tasks-autosave-map-area-basics-petitions-planned-2026-10-17) |
-| P2-2.0 | Workshop tasks without a manager: list what a shop can make, add, suspend, repeat, and cancel its jobs | planned 2026-10-17 |
+| P2-2.0 | Workshop tasks without a manager: list what a shop can make, add, suspend, repeat, and cancel its jobs | built 2026-10-17, awaiting live test |
 | P2-3.0 | Plan and goals survive autosaves and saves to a new folder (bug) | planned 2026-10-17 |
 | P2-4.0 | Map area: missing tool descriptions, box caps, wagon-centred defaults (bug) | planned 2026-10-17 |
 | P2-5.0 | `fortress-basics` skill from the owner's gameplay notes | planned 2026-10-17 |
