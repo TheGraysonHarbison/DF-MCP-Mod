@@ -25,7 +25,7 @@ function GoalsWindow:init()
         widgets.TextArea{
             view_id = 'goals',
             frame = {t = 1, l = 0, r = 0, h = 16},
-            -- The file is UTF-8, the screen is CP437.
+            -- The goals are stored as UTF-8, the screen is CP437.
             init_text = plan.to_cp437(plan.load_goals()),
             on_text_change = function(text)
                 plan.save_goals(plan.to_utf8(text))
