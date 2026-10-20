@@ -139,6 +139,222 @@ If events never arrive, Claude Code's log for the server is in `~/.cache/claude-
 "channels not enabled by org policy" means the organization's Channels switch is off; "server did not declare
 claude/channel capability" means the session was started without the flag.
 
+## Commands
+
+### DFHack console
+
+Run these in the DFHack console while a fort is loaded.
+
+| Command | What it does |
+|---|---|
+| `enable claude-bridge` | Turn the bridge on for this fort. It stays on for this save and turns itself back on when the save loads. |
+| `disable claude-bridge` | Turn the bridge off for this fort. Claude can no longer reach the game. |
+| `claude-bridge` or `claude-bridge status` | Show whether the bridge is on, every permission, and the console allowlist. |
+| `claude-bridge help` | Print the command's help text. |
+| `claude-bridge settings` | Open the settings window (Permissions, Console, Events, Timer tabs). |
+| `claude-bridge goals` | Open the goals window. Write your goals for the fort; Ctrl+S sends them to Claude. |
+| `claude-bridge perm <namespace> on\|off` | Allow or forbid one permission, by the namespace named in the tool tables below (for example `dig_write`). |
+| `claude-bridge event <kind> on\|off` | Turn one event kind on or off (`list_event_kinds` names them, for example `strange_mood`). |
+| `claude-bridge timer [on\|off\|days N\|month\|minutes N\|reset]` | Turn the prompt timer on or off, set it to every N in-game days, every month, or every N real minutes, or reset its prompt to the default. With no argument it shows the timer. |
+| `claude-bridge allow <command>` | Add a DFHack command to the list Claude may run with `run_console_command`. |
+| `claude-bridge deny <command>` | Remove a DFHack command from that list. |
+| `claude-bridge send <text>` | Send Claude a test event with your text, to check that events reach it. |
+| `claude-bridge reload` | Re-read the mod's scripts from disk without turning it off (for development). |
+| `claude-bridge test <json request>` | Send one raw request to the bridge and print the reply (for development). |
+| `claude-bridge trade-snapshot` | Print the trade screen's internal state as JSON (for development and bug reports). |
+| `claude-bridge dialog-snapshot` | Print the liaison meeting dialog's internal state as JSON (for development and bug reports). |
+
+### Claude's tools
+
+These are the tools Claude calls through the `dfhack` MCP server. You do not type them; ask Claude in plain words and it
+picks the tool. You can still name one ("use `get_fort_status`"). The **Needs** column is the permission that must be on
+(`claude-bridge perm <namespace> on`, or the Permissions tab); a dash means a read that is on by default. Every list is
+capped at 25 rows unless Claude asks for more with `limit`.
+
+**Connection, settings, and time**
+
+| Tool | What it does | Needs |
+|---|---|---|
+| `ping` | Check the bridge is up and a map is loaded; reports the mod and protocol versions. | always allowed |
+| `get_permissions` | Show what you have allowed Claude to do and the console allowlist. | - |
+| `list_mods` | List the active Dwarf Fortress mods and the loaded DFHack plugins. | - |
+| `get_time` | Read the date, time of day, season, weather, and whether the game is paused. | - |
+| `set_paused` | Pause or unpause the game. | `pause_write` |
+| `run_console_command` | Run an allowlisted DFHack console command and return its output. `lua` also needs `lua_eval`. | `console` |
+| `dev_create_item` | Dev testing only: create items with `modtools/create-item` (must be allowlisted). | `console` |
+| `dev_exterminate` | Dev testing only: kill units with `exterminate` (must be allowlisted). | `console` |
+
+**Messages, events, timer, and popups**
+
+| Tool | What it does | Needs |
+|---|---|---|
+| `send_message` | Tell you something in the game, as a light-red announcement you can click to zoom to. | always allowed |
+| `list_message_badges` | List the badge styles `send_message` can use and the message length cap. | always allowed |
+| `list_event_kinds` | List the event kinds the mod can send, which ones you turned on, and the queue state. | - |
+| `poll_events` | Read queued events by hand, for sessions without the channel. | - |
+| `get_timer_status` | Read the prompt timer: on or off, mode, prompt, and how far along it is. | - |
+| `list_popups` | List the game's open box popups, front first. | - |
+| `close_popup` | Close the front popup, as its Close button does. | `screens_write` |
+
+**Plan and goals**
+
+| Tool | What it does | Needs |
+|---|---|---|
+| `get_plan_info` | Show how this fort's plan and goals are stored and how big they are. | - |
+| `read_plan` | Read Claude's plan for this fort. | - |
+| `write_plan` | Replace the whole plan (Markdown, up to 64 KB). | - |
+| `append_plan` | Add a section or note to the end of the plan. | - |
+| `read_goals` | Read your goals from the `claude-bridge goals` window. | - |
+
+**Units, nobles, labor, and petitions**
+
+| Tool | What it does | Needs |
+|---|---|---|
+| `list_units` | List every unit on the map, optionally one bucket or kind. | - |
+| `list_citizens` | List the fort's citizens and long-term residents. | - |
+| `list_domesticated` | List the fort's animals: pets, livestock, war and hunting animals. | - |
+| `list_others` | List everyone else: visitors, merchants, enemies, wildlife. | - |
+| `find_unit` | Find units by name, nickname, or description ("cat") and get their ids. | - |
+| `get_unit` | Read basic info for one unit. | - |
+| `get_unit_sheet` | Read one tab of a unit's profile (Overview, Thoughts, Health, Skills, ...). | - |
+| `get_unit_full_sheet` | Read a unit's whole profile in one call. | - |
+| `set_unit_nickname` | Give a unit a nickname or clear it. | `units_write` |
+| `list_nobles` | List the fort's noble and administrative positions and who holds them. | - |
+| `assign_noble` | Appoint a citizen to a position, or vacate it. | `nobles_write` |
+| `list_work_details` | List the work details (the Labor screen) and who is on each. | - |
+| `assign_work_detail` | Put citizens on a work detail or take them off it. | `labor_write` |
+| `set_work_detail_mode` | Set a work detail to everybody, nobody, or only selected dwarves. | `labor_write` |
+| `list_petitions` | List petitions waiting for an answer, plus the fort's temples and guildhalls. | - |
+| `answer_petition` | Accept or deny a petition through the game's petitions screen. | `units_write` and `screens_write` |
+
+**Military**
+
+| Tool | What it does | Needs |
+|---|---|---|
+| `list_squads` | List squads with their members, leader, routine, and kind. | - |
+| `get_squad` | Read one squad: every slot, member, and uniform. | - |
+| `get_squad_equipment` | Read what each soldier is assigned, carrying, still missing, and wearing, plus ammunition. | - |
+| `list_routes` | List patrol routes and their waypoints. | - |
+| `create_squad` | Create a squad on a vacant military seat. | `military_write` |
+| `rename_squad` | Set or clear a squad's nickname. | `military_write` |
+| `set_squad_symbol` | Set a squad's badge symbol and colours. | `military_write` |
+| `add_to_squad` | Add a citizen to a squad. | `military_write` |
+| `remove_from_squad` | Remove a member from a squad. | `military_write` |
+| `set_squad_leader` | Make a citizen the squad's leader. | `military_write` |
+| `disband_squad` | Disband a squad and free its seat. | `military_write` |
+| `order_squad` | Order a squad to station at a spot, kill a target, patrol a route, or cancel its order. | `military_write` |
+| `set_squad_routine` | Switch a squad's schedule (Off duty, Staggered training, Constant training, Ready). | `military_write` |
+| `create_route` | Create a patrol route from a list of points. | `military_write` |
+| `set_squad_uniform` | Change one uniform category for a squad or one slot. | `military_write` |
+| `set_squad_ammo` | Set a squad's ammunition type, amount, and use. | `military_write` |
+
+**Stocks and kitchen**
+
+| Tool | What it does | Needs |
+|---|---|---|
+| `get_stock_bar` | Read the stock counts at the top of the screen (food, drink, seeds, ...). | - |
+| `list_stocks` | List stored items the way the Stocks screen does. | - |
+| `find_items` | Search stored items by name or material. | - |
+| `list_artifacts` | List the artifacts the fort knows of, with holder and position. | - |
+| `get_fort_status` | Read wealth, rank, population, and tallies such as deaths and invaders repelled. | - |
+| `list_kitchen` | List ingredients in stock and whether each may be cooked or brewed. | - |
+| `set_kitchen` | Allow or ban cooking and brewing of one ingredient. | `kitchen_write` |
+
+**Work orders and workshops**
+
+| Tool | What it does | Needs |
+|---|---|---|
+| `list_work_orders` | List the manager's work orders. | - |
+| `get_work_order` | Read one work order with its conditions. | - |
+| `find_job_types` | Search the jobs and reactions a work order can use. | - |
+| `create_work_order` | Create a work order for the manager to approve. | `orders_write` |
+| `edit_work_order` | Change a work order's amount, frequency, or workshop. | `orders_write` |
+| `delete_work_order` | Delete a work order. | `orders_write` |
+| `list_workshops` | List built workshops and furnaces. | - |
+| `get_workshop` | Read one workshop: its jobs, workers, and contents. | - |
+| `list_workshop_tasks` | List what a workshop can make (its "Add new task" choices). | - |
+| `add_workshop_job` | Add a job straight to a workshop's queue; no manager needed. | `orders_write` |
+| `set_workshop_job` | Suspend or resume, repeat, or do-now one queued job. | `orders_write` |
+| `cancel_workshop_job` | Cancel one queued job. | `orders_write` |
+
+**Map, digging, and plants**
+
+| Tool | What it does | Needs |
+|---|---|---|
+| `get_map_bounds` | Read the map's coordinate ranges and surface level. | - |
+| `get_wagon` | Find the embark wagon, the default starting point for searches. | - |
+| `get_tile` | Read one tile. | - |
+| `get_area_map` | Draw one level of a rectangle as text, one character per tile. | - |
+| `find_exposed_walls` | Find reachable rock walls on one level. | - |
+| `find_build_space` | Find the nearest clear floor rectangle for a building. | - |
+| `list_designations` | List existing dig, stair, channel, ramp, smooth, and engrave orders in a box. | - |
+| `list_plants` | List trees, shrubs, and saplings in a box or circle. | - |
+| `plan_dig` | Preview what a dig order would do, changing nothing. | - |
+| `designate_dig` | Place mining, stair, channel, ramp, smooth, engrave, chop, and gather orders. | `dig_write` |
+| `erase_designations` | Remove dig, chop, and gather orders in a box. | `dig_write` |
+| `list_hotkeys` | List your 16 F-key zoom points. | - |
+| `set_hotkey` | Name a point of interest as an F-key zoom point. | `hotkeys_write` |
+| `clear_hotkey` | Free one zoom slot. | `hotkeys_write` |
+
+**Buildings, constructions, and farms**
+
+| Tool | What it does | Needs |
+|---|---|---|
+| `list_buildings` | List every building except stockpiles and zones. | - |
+| `list_building_materials` | List the building materials the fort can use now. | - |
+| `place_workshop` | Place a workshop or furnace blueprint. | `build_write` |
+| `plan_construction` | Preview walls, floors, ramps, stairs, fortifications, bridges, roads, or supports, changing nothing. | - |
+| `place_construction` | Place walls, floors, ramps, stairs, fortifications, bridges, roads, or supports. | `build_write` |
+| `plan_furniture` | Preview placing furniture, doors, windows, traps, levers, or a farm plot, changing nothing. | - |
+| `place_furniture` | Place furniture, doors, hatches, windows, cages, traps, levers, or a farm plot. | `build_write` |
+| `suspend_building` | Suspend or resume an unbuilt building's construction. | `build_write` |
+| `remove_building` | Ask for a building to be taken down. | `build_write` |
+| `remove_constructions` | Remove constructions in a box or circle. | `build_write` |
+| `list_farms` | List farm plots and their crops per season. | - |
+| `get_farm` | Read one plot: crops, soil, and what it could grow with the seeds in stock. | - |
+| `set_farm_crops` | Set a plot's crop for each season and fertilizing. | `build_write` |
+
+**Stockpiles and zones**
+
+| Tool | What it does | Needs |
+|---|---|---|
+| `list_stockpiles` | List the fort's stockpiles. | - |
+| `get_stockpile` | Read one stockpile and what it accepts. | - |
+| `list_stockpile_presets` | List DFHack's stockpile presets (such as `cat_stone`). | - |
+| `create_stockpile` | Paint a stockpile in a box or circle. | `stockpiles_write` |
+| `configure_stockpile` | Change what a stockpile accepts. | `stockpiles_write` |
+| `rename_stockpile` | Rename a stockpile. | `stockpiles_write` |
+| `delete_stockpile` | Remove a stockpile. | `stockpiles_write` |
+| `list_zones` | List activity zones with type, owner, and size. | - |
+| `get_zone` | Read one zone: tiles, settings, owner, animals, and the furniture inside. | - |
+| `create_zone` | Paint a zone (bedroom, pen, meeting area, ...) with its settings. | `zones_write` |
+| `edit_zone` | Rename, resize, turn on or off, or change a zone's settings. | `zones_write` |
+| `assign_zone` | Give a room to a citizen, or put an animal in a pen, pit, or pond. See the open bug on zone assignments. | `zones_write` |
+| `unassign_zone` | Remove a room's owner or take an animal out. | `zones_write` |
+| `delete_zone` | Delete a zone. | `zones_write` |
+
+**Trade and diplomacy**
+
+| Tool | What it does | Needs |
+|---|---|---|
+| `list_caravans` | List caravans: who, where, mood, and how long they stay. | - |
+| `get_trade_depot` | Read the depot: the goods on both sides with values, and what is still being hauled. | - |
+| `get_broker` | Read who the broker is and whether they are at the depot. | - |
+| `request_broker` | Call the broker (or anyone) to the depot. | `trade_write` |
+| `bring_to_depot` | Have haulers bring goods to the depot. | `trade_write` |
+| `cancel_bring` | Stop bringing goods, or release goods at the depot. | `trade_write` |
+| `offer_trade` | Price and weigh a deal before making it. | `trade_write` |
+| `get_trade_screen` | Read the open trade screen: both sides, selections, and the merchant's reply. | - |
+| `select_trade_goods` | Select goods on the open trade screen. | `trade_write` |
+| `open_trade_screen` | Open the depot's trade screen. | `screens_write` |
+| `press_trade` | Press Trade, Offer, Seize, or close on the trade screen. | `screens_write` |
+| `list_diplomats` | List diplomats and liaisons, recorded meetings, and the standing trade agreements. | - |
+| `get_trade_request_options` | List the goods the fort can ask the liaison's civilization to bring next year. | - |
+| `set_trade_requests` | Set next year's import requests. | `trade_write` |
+| `get_meeting_dialog` | Read the liaison's meeting dialog. | - |
+| `open_meeting_dialog` | Open the meeting dialog, as its alert does. | `screens_write` |
+| `step_meeting_dialog` | Press a button on the meeting dialog. | `screens_write` |
+
 ## Settings
 
 `claude-bridge settings` opens the settings window; the same toggles exist as console commands
@@ -186,7 +402,12 @@ situation matches, and each can be invoked by hand as `/claude-df:<name>`.
 
 ## Known bugs and open issues
 
-No bugs open.
+Open bugs:
+
+- Fine zone assignments: Claude cannot set them. `assign_zone` gives a bedroom, office, dining hall, or tomb to one
+  citizen and puts animals in a pen, pit, or pond, but it cannot assign squads to a barracks or archery range, attach a
+  location (tavern, temple, library, guildhall, hospital) to a zone, or set a zone's individual users. Set those in the
+  zone's own menu in the game for now.
 
 Open issues (features without a DFHack API, or where the game offers only mouse-driven UI):
 
@@ -467,3 +688,4 @@ Plan and rationale live in [docs/ProjectPlan.md](docs/ProjectPlan.md). Wire prot
 | P2-5.0 | `fortress-basics` skill from the owner's gameplay notes | built 2026-10-17; the stock categories it relies on (`barrel`, `bin`, `smallgem`, `rough`) checked against the game 2026-10-17 |
 | P2-6.0 | Petitions: list pending and answered petitions with the fort's temples and guildhalls, accept or deny through the game's petitions screen (`list_petitions`, `answer_petition`; `units`, `units_write` and `screens_write` permissions; replaces 13.1) | built 2026-10-17; checked in-game without a petition (empty list, standing orders read back, an unknown id refused with nothing opened); answering a real petition is unverified until one arrives, so report bugs. The dry run did not find a PETITIONS button on the main screen of a fort with none pending |
 | P2-7.0 | Alpha 1.0.2 release (version bumps to 1.0.2a1 and 1.0.2-alpha, plugin 1.0.2-alpha, protocol 35, tag `v1.0.2-alpha`) | released 2026-10-18 |
+| B1.0 | Beta 1.0.0 release: README Commands section (every console command and MCP tool with its permission), zone-assignment open bug, version bumps to 1.0.0b1 and 1.0.0-beta, plugin 1.0.0-beta, protocol 35, tag `v1.0.0-beta` | released 2026-10-19 |
